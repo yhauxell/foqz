@@ -5,6 +5,83 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/**
+ * Frosted glass panel chrome (matches tldraw menu/toolbar + `.focus-floating-panel`).
+ * Compose with radius/spacing: `className="glass-panel rounded-2xl p-3 …"`.
+ */
+@utility glass-panel {
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  background: rgb(255 255 255 / 46%);
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgb(255 255 255 / 58%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 55%) inset,
+    0 12px 40px rgb(0 0 0 / 9%),
+    0 4px 16px rgb(0 0 0 / 5%);
+  @variant dark {
+    background: rgb(24 24 27 / 42%);
+    border-color: rgb(255 255 255 / 12%);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 8%) inset,
+      0 12px 40px rgb(0 0 0 / 35%);
+  }
+}
+
+/* ⌘K command palette: inset search strip + list (pairs with `glass-panel` on the shell) */
+.focus-command-input-shell {
+  border-bottom: 1px solid rgb(0 0 0 / 8%);
+  background: rgb(255 255 255 / 30%);
+  padding: 10px 14px 12px;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 52%),
+    0 1px 0 rgb(0 0 0 / 4%);
+}
+
+.dark .focus-command-input-shell {
+  border-color: rgb(255 255 255 / 10%);
+  background: rgb(0 0 0 / 24%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    0 1px 0 rgb(0 0 0 / 25%);
+}
+
+.focus-command-hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  color: rgb(82 82 91);
+}
+
+.dark .focus-command-hint {
+  color: rgb(161 161 170);
+}
+
+.focus-command-list-wrap {
+  padding: 8px 8px 12px;
+}
+
+/*
+  Focus overlay z-index ladder (above tldraw canvas; below popovers at 10050+).
+  --z-focus-timer-dim: subtle overlay when a timer runs
+  --z-focus-floating: quick capture + try bar dock
+  --z-focus-sidebar: task list drawer
+  --z-focus-modal: command palette / blocking overlays
+*/
+:root {
+  --z-focus-timer-dim: 200;
+  --z-focus-floating: 5800;
+  --z-focus-sidebar: 5900;
+  --z-focus-modal: 7000;
+  /* Floating quick bar clamp (see FocusEditorUi); bottom reserve smaller when toolbar is vertical (desktop) */
+  --focus-tl-bottom-reserve: 100px;
+  --focus-tl-left-toolbar-reserve: 76px;
+  --focus-tl-right-reserve: 260px;
+}
+
 html,
 body,
 #root {
@@ -23,7 +100,7 @@ body,
   background: #f7f7f3;
   border-radius: 12px;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #111;
 }
 
@@ -56,9 +133,1169 @@ body,
   height: 100%;
 }
 
+/* tldraw main menu strip — same language as .focus-floating-panel (borderless, frosted, soft shadow) */
+.tl-container.tl-theme__light .tlui-menu-zone {
+  border: none;
+  border-radius: 20px;
+  background: rgb(255 255 255 / 46%);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 55%) inset,
+    0 12px 40px rgb(0 0 0 / 9%),
+    0 4px 16px rgb(0 0 0 / 5%);
+}
+
+.tl-container.tl-theme__dark .tlui-menu-zone {
+  border: none;
+  border-radius: 20px;
+  background: rgb(24 24 27 / 42%);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 8%) inset,
+    0 12px 40px rgb(0 0 0 / 35%);
+}
+
+.tl-container.tl-theme__light .tlui-menu-zone *[data-state="open"]::after,
+.tl-container.tl-theme__light
+  .tlui-menu-zone
+  *[data-state="open"]:not(:hover)::after {
+  opacity: 0.45;
+}
+
+.tl-container.tl-theme__dark .tlui-menu-zone *[data-state="open"]::after,
+.tl-container.tl-theme__dark
+  .tlui-menu-zone
+  *[data-state="open"]:not(:hover)::after {
+  opacity: 0.35;
+}
+
+/* Bottom tool strip — same glass as .focus-floating-panel */
+.tl-container.tl-theme__light .tlui-toolbar__tools {
+  background: rgb(255 255 255 / 46%);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  border: 1px solid rgb(255 255 255 / 58%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 55%) inset,
+    0 12px 40px rgb(0 0 0 / 9%),
+    0 4px 16px rgb(0 0 0 / 5%);
+}
+
+.tl-container.tl-theme__dark .tlui-toolbar__tools {
+  background: rgb(24 24 27 / 42%);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  border: 1px solid rgb(255 255 255 / 12%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 8%) inset,
+    0 12px 40px rgb(0 0 0 / 35%);
+}
+
+.tl-container.tl-theme__light .tlui-toolbar__extras__controls {
+  background: rgb(255 255 255 / 46%);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  border: 1px solid rgb(255 255 255 / 58%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 55%) inset,
+    0 8px 28px rgb(0 0 0 / 8%),
+    0 2px 12px rgb(0 0 0 / 5%);
+}
+
+.tl-container.tl-theme__dark .tlui-toolbar__extras__controls {
+  background: rgb(24 24 27 / 42%);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  border: 1px solid rgb(255 255 255 / 12%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 8%) inset,
+    0 8px 28px rgb(0 0 0 / 28%);
+}
+
+.tl-container.tl-theme__light .tlui-toolbar *[data-state="open"]::after,
+.tl-container.tl-theme__light
+  .tlui-toolbar
+  *[data-state="open"]:not(:hover)::after {
+  opacity: 0.45;
+}
+
+.tl-container.tl-theme__dark .tlui-toolbar *[data-state="open"]::after,
+.tl-container.tl-theme__dark
+  .tlui-toolbar
+  *[data-state="open"]:not(:hover)::after {
+  opacity: 0.35;
+}
+
+/*
+ * Desktop: vertical tool rail on the left (tldraw default is horizontal bottom).
+ * Matches tldraw’s own breakpoint: no .tlui-layout__mobile from TABLET_SM (640px).
+ */
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) {
+  grid-template-columns: min-content 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-layout__bottom {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 0;
+  max-height: 100%;
+  overflow-x: visible;
+  /* Only the tool rail scrolls; zoom + minimap stay fixed at the bottom of this column */
+  overflow-y: hidden;
+  padding: 0 0 calc(12px + env(safe-area-inset-bottom, 0px)) 10px;
+  box-sizing: border-box;
+}
+
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-layout__bottom__main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  width: 100%;
+  gap: 12px;
+}
+
+/* Tools (scroll) → help → zoom/minimap + minimap canvas pinned to left bottom */
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-layout__bottom__main
+  > .tlui-toolbar {
+  order: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  align-self: flex-start;
+}
+
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-layout__bottom__main
+  > .tlui-help-menu {
+  order: 1;
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-layout__bottom__main
+  > .tlui-navigation-panel {
+  order: 2;
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-navigation-panel {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  width: 100%;
+  max-width: 220px;
+  padding-top: 4px;
+}
+
+/* Zoom row + minimap: full width of the rail, comfortable inset from corner */
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-navigation-panel
+  .tlui-buttons__horizontal {
+  width: 100%;
+  max-width: 220px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-zoom-menu__button {
+  min-width: 3.25rem;
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-minimap {
+  width: 100%;
+  max-width: 220px;
+  padding-left: 0;
+  padding-right: var(--space-3, 8px);
+  box-sizing: border-box;
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar {
+  width: 100%;
+  max-width: 56px;
+  padding-bottom: 8px;
+  padding-right: 0;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__inner {
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  gap: 8px;
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__left {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+}
+
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-toolbar__extras {
+  /* Desktop: float the style panel on the right (not attached to the tool rail). */
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  width: auto;
+  height: auto;
+  z-index: calc(var(--z-focus-floating) + 1);
+}
+
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-toolbar__extras__controls {
+  flex-direction: column;
+  align-items: stretch;
+  width: auto;
+  min-width: 240px;
+  max-width: min(320px, calc(100vw - 24px));
+  margin-left: 0;
+  border-radius: var(--radius-4, 10px);
+}
+
+/* Desktop: dock the tldraw style panel on the right (instead of under the menu bar). */
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-style-panel__wrapper {
+  position: fixed;
+  top: calc(48px + 12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  margin: 0;
+  max-height: calc(100vh - 48px - 24px);
+  z-index: calc(var(--z-focus-floating) + 2);
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools {
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+}
+
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-toolbar__tools__list {
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+}
+
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-toolbar__overflow {
+  width: 100%;
+}
+
+/* “More tools” chevron: point right when the rail is vertical */
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-toolbar__overflow
+  .tlui-icon {
+  transform: rotate(90deg);
+}
+
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-layout__bottom
+  > .tlui-debug-panel {
+  flex: 0 0 auto;
+}
+
+/* Task list drawer: same glass language as `glass-panel` + .focus-board-tracked-row */
+.focus-sidebar {
+  @apply glass-panel;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: min(280px, 92vw);
+  margin: 10px;
+  z-index: var(--z-focus-sidebar);
+  border-radius: 20px;
+  border-left-color: rgb(0 0 0 / 6%);
+}
+
+.dark .focus-sidebar {
+  border-left-color: rgb(0 0 0 / 35%);
+}
+
+/* Inset glass blocks inside the task drawer (matches .focus-board-tracked-row) */
+.focus-sidebar-inset {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 10px 8px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  line-height: 1.35;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 35%);
+  border: 1px solid rgb(0 0 0 / 8%);
+}
+
+.dark .focus-sidebar-inset {
+  background: rgb(24 24 27 / 45%);
+  border-color: rgb(255 255 255 / 10%);
+}
+
+.focus-sidebar-inset p {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 500;
+  color: rgb(82 82 91);
+  opacity: 0.92;
+}
+
+.dark .focus-sidebar-inset p {
+  color: rgb(161 161 170);
+}
+
+.focus-sidebar-task-row {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 6px 8px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.focus-sidebar-task-row:hover {
+  background: rgb(255 255 255 / 32%);
+  border-color: rgb(0 0 0 / 7%);
+}
+
+.dark .focus-sidebar-task-row:hover {
+  background: rgb(255 255 255 / 6%);
+  border-color: rgb(255 255 255 / 10%);
+}
+
+/* Unified Focus dock: chrome + quick capture + try bar (single frosted shell) */
+.focus-floating-panel {
+  @apply glass-panel;
+  z-index: var(--z-focus-floating);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 12px 12px;
+  border-radius: 20px;
+}
+
+.focus-timer-dim {
+  z-index: var(--z-focus-timer-dim);
+}
+
+.focus-float-drag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 2px 6px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  color: rgb(0 0 0 / 35%);
+}
+
+.focus-float-drag:active {
+  cursor: grabbing;
+}
+
+.dark .focus-float-drag {
+  color: rgb(255 255 255 / 35%);
+}
+
+.focus-dock-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.focus-dock-row-spacer {
+  flex: 1;
+  min-width: 4px;
+}
+
+.focus-dock-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.focus-quick-capture {
+  width: 100%;
+}
+
+/* Unified field: 14px radius matches .focus-try-bar; inset glass track inside 20px panel */
+.focus-quick-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 5px 4px 6px;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 42%);
+  border: 1px solid rgb(255 255 255 / 52%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 58%),
+    0 1px 3px rgb(0 0 0 / 5%);
+}
+
+.dark .focus-quick-field {
+  background: rgb(0 0 0 / 28%);
+  border-color: rgb(255 255 255 / 12%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    0 1px 3px rgb(0 0 0 / 25%);
+}
+
+.focus-quick-field .focus-quick-add {
+  flex-shrink: 0;
+  border-radius: min(var(--radius-md), 10px);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+}
+
+@keyframes focus-global-timer-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.focus-board-tracked-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px 10px 8px;
+  margin: 0 2px;
+  font-size: 11px;
+  line-height: 1.3;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 35%);
+  border: 1px solid rgb(0 0 0 / 8%);
+}
+
+.dark .focus-board-tracked-row {
+  background: rgb(24 24 27 / 45%);
+  border-color: rgb(255 255 255 / 10%);
+}
+
+.focus-board-tracked-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.focus-board-tracked-hint {
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.35;
+  font-weight: 500;
+  color: rgb(82 82 91);
+  opacity: 0.88;
+}
+
+.dark .focus-board-tracked-hint {
+  color: rgb(161 161 170);
+}
+
+.focus-board-tracked-label {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 9px;
+  opacity: 0.75;
+}
+
+.focus-board-tracked-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 0;
+  flex: 1;
+}
+
+.focus-board-tracked-value--primary {
+  font-weight: 700;
+  color: rgb(24 24 27);
+}
+
+.dark .focus-board-tracked-value--primary {
+  color: rgb(250 250 250);
+}
+
+.focus-try-bar-wrap {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.focus-try-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 35%);
+  border: 1px solid rgb(255 255 255 / 40%);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 45%) inset;
+}
+
+.focus-try-bar-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: min(52%, 300px);
+  margin: 0;
+  padding: 4px 8px 4px 6px;
+  border: 1px solid rgb(0 0 0 / 8%);
+  border-radius: 11px;
+  background: rgb(255 255 255 / 45%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 55%) inset,
+    0 1px 3px rgb(0 0 0 / 5%);
+  font-size: 11px;
+  font-weight: 600;
+  color: rgb(39 39 42);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.focus-try-bar-timer:hover {
+  background: rgb(255 255 255 / 62%);
+  border-color: rgb(0 0 0 / 10%);
+}
+
+.focus-try-bar-timer:focus-visible {
+  outline: 2px solid rgb(59 130 246 / 45%);
+  outline-offset: 2px;
+}
+
+.dark .focus-try-bar-timer {
+  background: rgb(24 24 27 / 55%);
+  border-color: rgb(255 255 255 / 12%);
+  color: rgb(228 228 231);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 8%) inset,
+    0 1px 3px rgb(0 0 0 / 25%);
+}
+
+.dark .focus-try-bar-timer:hover {
+  background: rgb(39 39 42 / 72%);
+}
+
+.focus-try-bar-timer__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: rgb(59 130 246);
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 22%);
+  animation: focus-global-timer-pulse 1.6s ease-in-out infinite;
+}
+
+.focus-try-bar-timer__line {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: inherit;
+}
+
+.dark .focus-try-bar {
+  background: rgb(0 0 0 / 22%);
+  border-color: rgb(255 255 255 / 10%);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 6%) inset;
+}
+
+.focus-try-btn {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 36px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: rgb(0 0 0 / 72%);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    transform 0.12s;
+}
+
+.dark .focus-try-btn {
+  color: rgb(255 255 255 / 78%);
+}
+
+.focus-try-btn:hover {
+  background: rgb(0 0 0 / 6%);
+}
+
+.dark .focus-try-btn:hover {
+  background: rgb(255 255 255 / 10%);
+}
+
+.focus-try-btn:active {
+  transform: scale(0.96);
+}
+
+.focus-try-btn[data-variant="danger"]:hover {
+  background: rgb(239 68 68 / 12%);
+  color: #b91c1c;
+}
+
+.focus-try-calendar {
+  position: relative;
+}
+
+.focus-try-day {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  color: rgb(0 0 0 / 55%);
+  pointer-events: none;
+}
+
+.dark .focus-try-day {
+  color: rgb(255 255 255 / 65%);
+}
+
+/* Outer wrapper: overflow visible so floating timer isn’t clipped by shape bounds */
+.focus-task-shell-wrap {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.focus-task-float-timer {
+  position: absolute;
+  left: auto;
+  right: 8px;
+  bottom: 100%;
+  transform: none;
+  margin-bottom: 6px;
+  padding: 5px 12px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  color: rgb(82 82 91);
+  opacity: 0.95;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.dark .focus-task-float-timer {
+  color: rgb(212 212 216);
+}
+
+.focus-task-status-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 4px 2px 8px;
+  border-bottom: 1px solid rgb(0 0 0 / 6%);
+}
+
+.dark .focus-task-status-row {
+  border-bottom-color: rgb(255 255 255 / 8%);
+}
+
+.focus-task-status-chip {
+  align-self: flex-start;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 6%);
+  color: var(--task-muted, #525252);
+}
+
+.focus-task-status-chip[data-status="doing"] {
+  background: rgb(37 99 235 / 16%);
+  color: rgb(29 78 216);
+}
+
+.focus-task-status-chip[data-status="done"] {
+  background: rgb(22 163 74 / 14%);
+  color: rgb(21 128 61);
+}
+
+.focus-task-time-cols {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.focus-task-time-pair {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.focus-task-time-pair:first-child {
+  align-items: flex-start;
+}
+
+.focus-task-time-label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--task-muted, #737373);
+  opacity: 0.85;
+}
+
+.focus-task-time-value {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--task-fg, #171717);
+}
+
+.focus-task-time-value--muted {
+  font-weight: 600;
+  opacity: 0.55;
+}
+
+/* Task card — borderless shell, soft shadow, priority-tinted surface; UI font matches tldraw panels */
+.focus-task-shell {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 12px;
+  border-radius: 22px;
+  border: none;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 4%),
+    0 16px 48px rgb(0 0 0 / 7%),
+    0 40px 80px rgb(0 0 0 / 5%);
+  /* tldraw sets --font-body on some surfaces; --tl-font-sans is always on .tl-container */
+  font-family: var(--font-body, var(--tl-font-sans)), system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  color: var(--task-fg, #1a1a1a);
+}
+
+.focus-task-shell[data-selected="true"] {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 5%),
+    0 20px 56px rgb(59 130 246 / 8%),
+    0 48px 96px rgb(0 0 0 / 6%),
+    0 0 0 1.5px rgb(59 130 246 / 28%);
+}
+
+.focus-task-shell[data-drop-target="true"] {
+  box-shadow:
+    0 1px 2px rgb(59 130 246 / 8%),
+    0 20px 56px rgb(59 130 246 / 14%),
+    0 0 0 1.5px rgb(59 130 246 / 40%);
+  transition: box-shadow 0.12s ease;
+}
+
+.focus-task-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 36px;
+}
+
+.focus-task-handle {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 10px;
+  color: var(--task-muted, #525252);
+  cursor: grab;
+  display: grid;
+  place-items: center;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.focus-task-handle:hover {
+  background: rgb(0 0 0 / 8%);
+  color: var(--task-fg, #171717);
+}
+
+.focus-task-handle:active {
+  cursor: grabbing;
+}
+
+.focus-task-top-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 2em;
+}
+
+.focus-task-est-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--task-muted, #737373);
+  opacity: 0.9;
+}
+
+.focus-task-est-inline {
+  width: 100%;
+  max-width: 140px;
+  margin: 0 auto;
+  border: none;
+  outline: none;
+  background: transparent;
+  text-align: center;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--task-fg, #171717);
+}
+
+.focus-task-est-inline::placeholder {
+  color: var(--task-muted, #a3a3a3);
+  opacity: 0.75;
+}
+
+.focus-task-est-inline:focus {
+  outline: none;
+}
+
+.focus-task-tracked-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  padding: 2px 10px 6px;
+  font-size: 10px;
+  line-height: 1.3;
+  border-bottom: 1px solid rgb(0 0 0 / 6%);
+}
+
+.dark .focus-task-tracked-row {
+  border-bottom-color: rgb(255 255 255 / 8%);
+}
+
+.focus-task-tracked-label {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--task-muted, #737373);
+  opacity: 0.85;
+}
+
+.focus-task-tracked-value {
+  font-weight: 600;
+  color: var(--task-fg, #171717);
+}
+
+.focus-task-tracked-value--muted {
+  font-weight: 500;
+  opacity: 0.65;
+}
+
+.focus-task-top-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.focus-task-round-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition:
+    transform 0.12s,
+    opacity 0.12s,
+    background 0.12s,
+    color 0.12s;
+}
+
+.focus-task-round-btn:focus-visible {
+  outline: 2px solid rgb(59 130 246 / 55%);
+  outline-offset: 2px;
+}
+
+.focus-task-round-btn--ghost {
+  background: rgb(0 0 0 / 6%);
+  color: var(--task-muted, #525252);
+}
+
+.focus-task-round-btn--ghost:hover {
+  background: rgb(0 0 0 / 10%);
+  color: var(--task-fg, #171717);
+}
+
+.focus-task-round-btn--ghost[data-active="true"] {
+  background: rgb(37 99 235 / 18%);
+  color: rgb(29 78 216);
+}
+
+.focus-task-round-btn--delete {
+  background: #171717;
+  color: #fca5a5;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 12%);
+}
+
+.focus-task-round-btn--delete:hover {
+  transform: scale(1.04);
+  color: #fecaca;
+}
+
+.focus-task-round-btn--done {
+  background: rgb(0 0 0 / 8%);
+  color: var(--task-muted, #525252);
+}
+
+.focus-task-round-btn--done:hover {
+  background: rgb(0 0 0 / 12%);
+  color: var(--task-fg, #171717);
+}
+
+.focus-task-round-btn--done[data-done="true"] {
+  background: #16a34a;
+  color: #fff;
+  box-shadow: 0 4px 16px rgb(22 163 74 / 28%);
+}
+
+.focus-task-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.focus-task-carried-row {
+  flex-shrink: 0;
+}
+
+/* Single sticky body — large type */
+.focus-task-content {
+  flex: 1 1 auto;
+  min-height: 120px;
+  width: 100%;
+  margin: 0;
+  padding: 2px 0;
+  resize: none;
+  border: none;
+  border-radius: 0;
+  font: inherit;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: var(--task-fg, #171717);
+  background: transparent;
+}
+
+.focus-task-content::placeholder {
+  color: var(--task-note-placeholder, #8a7560);
+  opacity: 0.72;
+  font-weight: 500;
+}
+
+.focus-task-content:focus {
+  outline: none;
+}
+
+.focus-task-blocked-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--task-muted, #737373);
+  flex-shrink: 0;
+}
+
+.focus-task-blocked-input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 6%);
+  font: inherit;
+  font-size: 12px;
+  color: var(--task-fg, #262626);
+}
+
+.focus-task-blocked-input::placeholder {
+  color: var(--task-muted, #a3a3a3);
+  opacity: 0.8;
+}
+
+.focus-task-blocked-input:focus {
+  outline: none;
+  background: rgb(0 0 0 / 9%);
+}
+
+.focus-task-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding-top: 4px;
+  margin-top: auto;
+}
+
+.focus-task-prio-cycle {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow:
+    0 0 0 2px rgb(255 255 255 / 55%),
+    0 2px 14px rgb(0 0 0 / 12%);
+  transition:
+    transform 0.12s ease,
+    filter 0.12s ease;
+}
+
+.focus-task-prio-cycle:hover {
+  transform: scale(1.06);
+  filter: brightness(1.08);
+}
+
+.focus-task-prio-cycle:focus-visible {
+  outline: 2px solid rgb(59 130 246 / 55%);
+  outline-offset: 3px;
+}
+
+.focus-task-carried {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #7c3aed;
+  background: rgb(245 243 255 / 90%);
+  border: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.focus-timer-pulse {
+  animation: focus-timer-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes focus-timer-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(59 130 246 / 35%);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgb(59 130 246 / 0%);
+  }
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-sans: "Geist Variable", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

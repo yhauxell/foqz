@@ -1,10 +1,10 @@
-# Focus Work Mini App
+# Foqz
 
-Minimal macOS tray app that toggles a centered `tldraw` canvas for quick focus notes.
+Minimal desktop tray app that toggles a centered `tldraw` canvas for quick focus notes.
 
 ## Features
 
-- Tray icon in macOS menu bar
+- Tray icon in the menu bar (macOS) / system tray (Windows & Linux)
 - Single-click show/hide canvas window
 - Window auto-centers when opened
 - Auto-save and restore board state to Electron user data folder
@@ -12,17 +12,17 @@ Minimal macOS tray app that toggles a centered `tldraw` canvas for quick focus n
 ## Run
 
 ```bash
-npm install
-npm run dev
+yarn install
+yarn dev
 ```
 
 ## Build renderer + run production shell
 
 ```bash
-npm run build
-npm start
+yarn build
+yarn start
 ```
 
-Snapshot file location at runtime:
+Snapshot file location at runtime (macOS example):
 
-- `~/Library/Application Support/focus-work-mini-app/board-snapshot.json`
+- `~/Library/Application Support/foqz/board-snapshot.json`

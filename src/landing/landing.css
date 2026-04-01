@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+
+@layer base {
+  html {
+    font-family: "Geist Variable", system-ui, sans-serif;
+  }
+}

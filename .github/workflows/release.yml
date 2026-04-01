@@ -1,0 +1,52 @@
+# Build and publish installers to GitHub Releases on every push to `main`.
+#
+# Versioning: bump the `version` field in package.json when you want a new GitHub Release.
+# Pushing again with the same version usually fails because the release assets already exist.
+#
+# macOS builds are ad-hoc signed in CI. For notarized, trusted installs, add Apple certs and
+# notarize hooks to electron-builder (CSC_LINK, APPLE_ID, etc.).
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  # electron-builder publishes releases and update metadata (latest-*.yml) with this token
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build renderer and package (publish to GitHub Release)
+        shell: bash
+        env:
+          # Unsigned macOS builds in CI (add Apple signing secrets later for notarized releases)
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: yarn dist:publish

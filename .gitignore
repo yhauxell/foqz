@@ -1,0 +1,7 @@
+node_modules
+dist
+dist-landing
+build
+release
+.env
+.env.local

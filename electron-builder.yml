@@ -1,0 +1,42 @@
+# Packaged app id (reverse-DNS). Change if you ship under your own bundle id.
+appId: com.foqz.app
+productName: Foqz
+
+# Output installers to ./release
+directories:
+  output: release
+  # Icons / dmg background go here (repo root `build/` is gitignored for other tooling)
+  buildResources: electron-assets
+
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+
+# --- Auto-update (electron-updater) ---
+# GitHub Releases: CI sets `GITHUB_REPOSITORY`; locally, electron-builder uses `.git` or package.json `repository`.
+# Override with explicit owner/repo if needed. For generic HTTPS only, replace with provider: generic + url.
+publish:
+  provider: github
+
+mac:
+  category: public.app-category.productivity
+  # DMG for manual install; ZIP is what electron-updater uses on macOS.
+  target:
+    - target: dmg
+    - target: zip
+  hardenedRuntime: true
+  entitlements: electron-assets/entitlements.mac.plist
+  entitlementsInherit: electron-assets/entitlements.mac.plist
+
+win:
+  target:
+    - target: nsis
+
+linux:
+  target:
+    - target: AppImage
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
