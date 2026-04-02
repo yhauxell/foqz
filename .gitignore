@@ -5,3 +5,4 @@ build
 release
 .env
 .env.local
+landing-public/release-embed.json

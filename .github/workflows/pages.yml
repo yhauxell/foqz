@@ -5,6 +5,9 @@ name: Deploy landing
 on:
   push:
     branches: [main]
+  # Rebuild so release-embed.json matches the latest release without needing a dummy commit on main.
+  release:
+    types: [published]
 
 concurrency:
   group: pages-${{ github.workflow }}-${{ github.ref }}
@@ -31,6 +34,12 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
+
+      - name: Embed latest release for landing
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/write-landing-release.mjs
 
       - name: Build landing
         env:

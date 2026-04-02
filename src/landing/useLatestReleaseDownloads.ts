@@ -3,6 +3,23 @@ import { downloadsFromReleaseAssets, type ReleaseDownload } from "./githubReleas
 
 type Status = "idle" | "loading" | "ready" | "error"
 
+type GhReleasePayload = {
+  tag_name?: string | null
+  assets?: { name: string; browser_download_url: string }[]
+}
+
+function applyReleasePayload(
+  data: GhReleasePayload,
+  setDownloads: (d: ReleaseDownload[]) => void,
+  setTag: (t: string | null) => void,
+  setStatus: (s: Status) => void,
+) {
+  const assets = Array.isArray(data.assets) ? data.assets : []
+  setDownloads(downloadsFromReleaseAssets(assets))
+  setTag(typeof data.tag_name === "string" ? data.tag_name : null)
+  setStatus("ready")
+}
+
 export function useLatestReleaseDownloads(repo: string) {
   const [status, setStatus] = useState<Status>(repo ? "loading" : "idle")
   const [downloads, setDownloads] = useState<ReleaseDownload[]>([])
@@ -32,27 +49,36 @@ export function useLatestReleaseDownloads(repo: string) {
     setDownloads([])
     setTag(null)
 
-    const url = `https://api.github.com/repos/${owner}/${name}/releases/latest`
+    const apiUrl = `https://api.github.com/repos/${owner}/${name}/releases/latest`
+    const embedUrl = `${import.meta.env.BASE_URL}release-embed.json`
 
-    fetch(url, { headers: { Accept: "application/vnd.github+json" } })
-      .then((r) => {
+    ;(async () => {
+      try {
+        const embedRes = await fetch(embedUrl, { cache: "no-store" })
+        if (embedRes.ok) {
+          const data = (await embedRes.json()) as GhReleasePayload
+          if (cancelled) return
+          applyReleasePayload(data, setDownloads, setTag, setStatus)
+          return
+        }
+      } catch {
+        /* fall through to API */
+      }
+
+      try {
+        const r = await fetch(apiUrl, { headers: { Accept: "application/vnd.github+json" } })
         if (!r.ok) throw new Error(`GitHub ${r.status}`)
-        return r.json() as Promise<{ tag_name?: string; assets?: { name: string; browser_download_url: string }[] }>
-      })
-      .then((data) => {
+        const data = (await r.json()) as GhReleasePayload
         if (cancelled) return
-        const assets = Array.isArray(data.assets) ? data.assets : []
-        setDownloads(downloadsFromReleaseAssets(assets))
-        setTag(typeof data.tag_name === "string" ? data.tag_name : null)
-        setStatus("ready")
-      })
-      .catch(() => {
+        applyReleasePayload(data, setDownloads, setTag, setStatus)
+      } catch {
         if (!cancelled) {
           setDownloads([])
           setTag(null)
           setStatus("error")
         }
-      })
+      }
+    })()
 
     return () => {
       cancelled = true
