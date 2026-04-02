@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
 export default defineConfig({
+  // Required for `loadFile(.../dist/index.html)` in Electron: absolute `/assets/...` breaks under file://.
+  base: "./",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

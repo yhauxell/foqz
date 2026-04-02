@@ -164,6 +164,8 @@ async function saveSettingsToDisk() {
 }
 
 function applyLoginItem() {
+  // macOS returns EPERM for the unpackaged `electron` CLI; login items only apply to the shipped .app.
+  if (!app.isPackaged) return
   try {
     app.setLoginItemSettings({ openAtLogin: appSettings.openAtLogin })
   } catch {}
