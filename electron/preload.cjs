@@ -9,6 +9,16 @@ contextBridge.exposeInMainWorld('focusStore', {
   exportBoardToFile: (snapshot) => ipcRenderer.invoke('snapshot:exportToFile', snapshot),
   importBoardFromFile: () => ipcRenderer.invoke('snapshot:importFromFile'),
   clearBoardFile: () => ipcRenderer.invoke('snapshot:clear'),
+  mcp: {
+    getConfig: () => ipcRenderer.invoke('mcp:getConfig'),
+    saveConfig: (config) => ipcRenderer.invoke('mcp:saveConfig', config),
+    getConfigPath: () => ipcRenderer.invoke('mcp:getConfigPath'),
+    listServers: () => ipcRenderer.invoke('mcp:listServers'),
+    listTools: (serverName) => ipcRenderer.invoke('mcp:listTools', serverName),
+    callTool: (serverName, toolName, args) =>
+      ipcRenderer.invoke('mcp:callTool', { serverName, toolName, args }),
+    restartServer: (serverName) => ipcRenderer.invoke('mcp:restartServer', serverName),
+  },
   /**
    * Register cleanup before the app process exits (Electron `before-quit`).
    * Invoke `handler` (may be async), then notify main so `app.quit()` can finish.

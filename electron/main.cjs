@@ -12,6 +12,10 @@ const {
 const fs = require('node:fs/promises')
 const fsSync = require('node:fs')
 const path = require('node:path')
+const { McpClientManager } = require('./mcp/McpClientManager.cjs')
+const { getMcpConfigPath, loadMcpConfig } = require('./mcp/mcpConfig.cjs')
+
+const mcpManager = new McpClientManager()
 
 app.setName('Foqz')
 app.name = 'Foqz'
@@ -497,7 +501,38 @@ ipcMain.handle('settings:set', async (_event, partial) => {
   return { ok: true, settings: appSettings }
 })
 
+// --- MCP IPC Handlers ---
+
+ipcMain.handle('mcp:getConfig', async () => {
+  return loadMcpConfig(app.getPath('userData'))
+})
+
+ipcMain.handle('mcp:saveConfig', async (_event, config) => {
+  return mcpManager.updateConfig(config)
+})
+
+ipcMain.handle('mcp:getConfigPath', async () => {
+  return getMcpConfigPath(app.getPath('userData'))
+})
+
+ipcMain.handle('mcp:listServers', async () => {
+  return mcpManager.listServers()
+})
+
+ipcMain.handle('mcp:listTools', async (_event, serverName) => {
+  return mcpManager.listTools(serverName)
+})
+
+ipcMain.handle('mcp:callTool', async (_event, { serverName, toolName, args }) => {
+  return mcpManager.callTool(serverName, toolName, args)
+})
+
+ipcMain.handle('mcp:restartServer', async (_event, serverName) => {
+  return mcpManager.restartServer(serverName)
+})
+
 app.on('before-quit', (e) => {
+  mcpManager.disconnectAll().catch(() => {})
   if (appQuitting) return
   if (!mainWindow || mainWindow.isDestroyed()) return
   e.preventDefault()
@@ -598,6 +633,10 @@ app.whenReady().then(async () => {
 
   showWindow()
 
+  mcpManager.init(app.getPath('userData')).catch((err) => {
+    console.error('[mcpManager] initialization error:', err)
+  })
+
   setupAutoUpdater()
 
   app.on('activate', () => {
@@ -607,6 +646,7 @@ app.whenReady().then(async () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  mcpManager.disconnectAll().catch(() => {})
 })
 
 app.on('window-all-closed', (event) => {
