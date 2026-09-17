@@ -14,6 +14,8 @@ import { FocusReflectionShapeUtil } from './focusReflection/FocusReflectionShape
 import { FocusReflectionShapeTool } from './focusReflection/FocusReflectionShapeTool'
 import { FocusSwimlaneShapeUtil } from './focusSwimlane/FocusSwimlaneShapeUtil'
 import { FocusSwimlaneShapeTool } from './focusSwimlane/FocusSwimlaneShapeTool'
+import { ProjectFrameShapeUtil } from './projectFrame/ProjectFrameShapeUtil'
+import { ProjectFrameShapeTool } from './projectFrame/ProjectFrameShapeTool'
 
 export const focusShapeUtils = [
   FocusTaskShapeUtil,
@@ -24,6 +26,7 @@ export const focusShapeUtils = [
   FocusEnergyShapeUtil,
   FocusReflectionShapeUtil,
   FocusSwimlaneShapeUtil,
+  ProjectFrameShapeUtil,
 ] as const
 
 export const focusTools = [
@@ -35,6 +38,7 @@ export const focusTools = [
   FocusEnergyShapeTool,
   FocusReflectionShapeTool,
   FocusSwimlaneShapeTool,
+  ProjectFrameShapeTool,
 ] as const
 
 export {
@@ -47,3 +51,8 @@ export {
   type TaskPaperTokens,
   type TLFocusTaskShape,
 } from './focusTask/FocusTaskShapeUtil'
+
+export {
+  ProjectFrameShapeUtil,
+  type TLProjectFrameShape,
+} from './projectFrame/ProjectFrameShapeUtil'

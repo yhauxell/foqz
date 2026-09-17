@@ -32,13 +32,18 @@ import {
 import type { TLFocusTaskShape } from "@/shapes/focusTask/FocusTaskShapeUtil";
 import {
   Calendar,
+  CheckSquare,
   ChevronRight,
+  FolderPlus,
   Grid2X2,
   List,
   Minus,
+  PanelLeft,
   PanelRight,
   Plus,
   Search,
+  Sparkles,
+  Square,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -123,7 +128,7 @@ export function buildFocusToolsOverride(): TLUiOverrides["tools"] {
       "focus-task": add(
         "focus-task",
         "tool.focus-task",
-        "tool-note",
+        "geo-check-box",
         "shift+t",
       ),
       "focus-timeline": add(
@@ -219,10 +224,6 @@ export function FocusEditorUi({ dockHost }: FocusEditorUiProps) {
         setPaletteOpen((o) => !o);
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === "KeyN") {
-        e.preventDefault();
-        createFocusTask(editor, getViewportCenter(editor), "New task");
-      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -279,6 +280,15 @@ export function FocusEditorUi({ dockHost }: FocusEditorUiProps) {
       switch (action) {
         case "add-task":
           createFocusTask(editor, center, "New task");
+          break;
+        case "add-project":
+          window.dispatchEvent(new CustomEvent("foqz:new-project"));
+          break;
+        case "toggle-sidebar":
+          window.dispatchEvent(new CustomEvent("foqz:toggle-sidebar"));
+          break;
+        case "toggle-copilot":
+          window.dispatchEvent(new CustomEvent("foqz:toggle-copilot"));
           break;
         case "start-day":
           insertDayTemplate(editor);
@@ -432,21 +442,16 @@ export function FocusEditorUi({ dockHost }: FocusEditorUiProps) {
                   }}
                 >
                   <span className="flex items-center gap-2 font-medium">
-                    <span
-                      title="Priority color"
-                      className="inline-block size-3 shrink-0 rounded-md shadow-sm ring-1 ring-black/10"
-                      style={{
-                        background: focusTaskShellColorForPriority(
-                          t.props.priority,
-                        ),
-                      }}
-                    />
-                    <span
-                      title={t.props.status}
-                      className="inline-block size-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: STATUS_HEX[t.props.status] }}
-                    />
-                    {t.props.title}
+                    {t.props.status === "done" ? (
+                      <CheckSquare className="size-3.5 text-zinc-500 shrink-0" />
+                    ) : t.props.status === "doing" ? (
+                      <Sparkles className="size-3.5 text-zinc-200 shrink-0 animate-pulse" />
+                    ) : (
+                      <Square className="size-3.5 text-zinc-500 shrink-0" />
+                    )}
+                    <span className={t.props.status === "done" ? "line-through text-zinc-500" : ""}>
+                      {t.props.title}
+                    </span>
                   </span>
                   <span className="text-[10px] text-zinc-600 dark:text-zinc-400">
                     <span style={{ color: STATUS_HEX[t.props.status] }}>
@@ -494,21 +499,62 @@ export function FocusEditorUi({ dockHost }: FocusEditorUiProps) {
           <CommandGroup heading="Actions">
             <CommandItem
               value="add-task"
-              keywords={["task", "new", "create"]}
+              keywords={["task", "new", "create", "card"]}
               onSelect={() => runPaletteAction("add-task")}
-              className="py-4 rounded-xl"
+              className="py-3 rounded-xl flex items-center justify-between"
             >
-              <List className="size-4" />
-              New Task ({addTaskAtCenterShortcutLabel()})
+              <div className="flex items-center gap-2">
+                <List className="size-4" />
+                <span>New Task</span>
+              </div>
+              <kbd className="font-mono text-[10px] opacity-60">⌘N</kbd>
+            </CommandItem>
+            <CommandItem
+              value="add-project"
+              keywords={["project", "frame", "goal", "new"]}
+              onSelect={() => runPaletteAction("add-project")}
+              className="py-3 rounded-xl flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <FolderPlus className="size-4" />
+                <span>New Project Frame</span>
+              </div>
+              <kbd className="font-mono text-[10px] opacity-60">⌘⇧P</kbd>
+            </CommandItem>
+            <CommandItem
+              value="toggle-sidebar"
+              keywords={["sidebar", "workspace", "queue", "tasks"]}
+              onSelect={() => runPaletteAction("toggle-sidebar")}
+              className="py-3 rounded-xl flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <PanelLeft className="size-4" />
+                <span>Toggle Workspace Sidebar</span>
+              </div>
+              <kbd className="font-mono text-[10px] opacity-60">⌘B</kbd>
+            </CommandItem>
+            <CommandItem
+              value="toggle-copilot"
+              keywords={["copilot", "ai", "chat", "assistant"]}
+              onSelect={() => runPaletteAction("toggle-copilot")}
+              className="py-3 rounded-xl flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-4 text-violet-500" />
+                <span>Toggle AI Copilot</span>
+              </div>
+              <kbd className="font-mono text-[10px] opacity-60">⌘J</kbd>
             </CommandItem>
             <CommandItem
               value="priority-grid"
               keywords={["grid", "priority", "template", "day"]}
               onSelect={() => runPaletteAction("start-day")}
-              className="py-4 rounded-xl"
+              className="py-3 rounded-xl flex items-center justify-between"
             >
-              <Grid2X2 className="size-4" />
-              New Priority Grid
+              <div className="flex items-center gap-2">
+                <Grid2X2 className="size-4" />
+                <span>New Priority Grid</span>
+              </div>
             </CommandItem>
           </CommandGroup>
         </CommandList>

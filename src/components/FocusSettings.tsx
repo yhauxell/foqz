@@ -6,7 +6,7 @@ import { ensureNotificationPermission } from "@/lib/focusSessionFeedback";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { TLShapeId } from "tldraw";
-import { getSnapshot, loadSnapshot, useEditor } from "tldraw";
+import { getSnapshot, loadSnapshot, useEditor, useValue } from "tldraw";
 
 function Section({
   title,
@@ -85,10 +85,16 @@ function ToggleRowControl(
 export function FocusColorSchemeSync() {
   const editor = useEditor();
   const { settings } = useFocusAppSettings();
+  const isDark = useValue("isDark", () => editor.user.getIsDarkMode(), [editor]);
 
   useEffect(() => {
     editor.user.updateUserPreferences({ colorScheme: settings.colorScheme });
   }, [editor, settings.colorScheme]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDark);
+    document.body.classList.toggle("dark", isDark);
+  }, [isDark]);
 
   return null;
 }

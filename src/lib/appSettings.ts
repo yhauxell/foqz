@@ -43,7 +43,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   globalToggleShortcut: "CommandOrControl+Shift+F",
   notifyOnTimerEnd: true,
   playSoundOnTimerEnd: false,
-  colorScheme: "system",
+  colorScheme: "light",
   // 9am..5pm
   workingHours: { startMin: 9 * 60, endMin: 17 * 60 },
 };
