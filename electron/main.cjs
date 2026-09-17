@@ -13,6 +13,9 @@ const fs = require('node:fs/promises')
 const fsSync = require('node:fs')
 const path = require('node:path')
 
+app.setName('Foqz')
+app.name = 'Foqz'
+
 let mainWindow
 let tray
 let animating = false
@@ -174,6 +177,10 @@ function applyLoginItem() {
 function applyDockIcon() {
   if (!app.dock) return
   try {
+    const iconPath = path.join(__dirname, '../electron-assets/icon.png')
+    if (fsSync.existsSync(iconPath)) {
+      app.dock.setIcon(iconPath)
+    }
     if (appSettings.showDockIcon) {
       app.dock.show()
     } else {
@@ -211,21 +218,34 @@ function registerToggleShortcut() {
 }
 
 function createTrayIcon() {
-  const size = 16
-  const canvas = Buffer.alloc(size * size * 4, 0)
+  const trayPath = path.join(__dirname, '../electron-assets/trayTemplate.png')
+  if (fsSync.existsSync(trayPath)) {
+    const icon = nativeImage.createFromPath(trayPath)
+    icon.setTemplateImage(true)
+    return icon
+  }
 
+  // Fallback: procedural 2-tone focus target buffer (18x18)
+  const size = 18
+  const canvas = Buffer.alloc(size * size * 4, 0)
+  const cx = size / 2.0
+  const cy = size / 2.0
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const idx = (y * size + x) * 4
-      const inBounds = x >= 1 && x <= 14 && y >= 1 && y <= 14
-      const isLine1 = y >= 4 && y <= 5 && x >= 3 && x <= 12
-      const isLine2 = y >= 7 && y <= 8 && x >= 3 && x <= 12
-      const isLine3 = y >= 10 && y <= 11 && x >= 3 && x <= 9
-
-      if (isLine1 || isLine2 || isLine3) {
-        canvas[idx] = 255; canvas[idx + 1] = 255; canvas[idx + 2] = 255; canvas[idx + 3] = 255
-      } else if (inBounds) {
-        canvas[idx] = 0; canvas[idx + 1] = 0; canvas[idx + 2] = 0; canvas[idx + 3] = 255
+      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy)
+      if (d <= 1.8) {
+        // Center dot: solid
+        canvas[idx + 3] = 255
+      } else if (Math.abs(d - 3.8) <= 0.6) {
+        // Inner ring: solid
+        canvas[idx + 3] = 255
+      } else if (d >= 4.8 && d <= 6.8) {
+        // 2-tone middle band: 45% opacity
+        canvas[idx + 3] = 115
+      } else if (Math.abs(d - 7.8) <= 0.6) {
+        // Outer ring: solid
+        canvas[idx + 3] = 255
       }
     }
   }
@@ -314,7 +334,9 @@ function attachBlurHandler() {
 }
 
 function createWindow() {
+  const appIconPath = path.join(__dirname, '../electron-assets/icon.png')
   const opts = {
+    title: 'Foqz',
     width: 980,
     height: 720,
     show: false,
@@ -323,6 +345,7 @@ function createWindow() {
     hasShadow: true,
     roundedCorners: true,
     backgroundColor: '#00000000',
+    icon: fsSync.existsSync(appIconPath) ? appIconPath : undefined,
     alwaysOnTop: appSettings.alwaysOnTop,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -491,7 +514,72 @@ app.on('before-quit', (e) => {
   }
 })
 
+function setupAppMenu() {
+  const isMac = process.platform === 'darwin'
+  const template = [
+    ...(isMac
+      ? [
+          {
+            label: 'Foqz',
+            submenu: [
+              { label: 'About Foqz', role: 'about' },
+              { type: 'separator' },
+              { role: 'services' },
+              { type: 'separator' },
+              { label: 'Hide Foqz', role: 'hide' },
+              { label: 'Hide Others', role: 'hideOthers' },
+              { label: 'Show All', role: 'unhide' },
+              { type: 'separator' },
+              { label: 'Quit Foqz', role: 'quit' },
+            ],
+          },
+        ]
+      : []),
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac
+          ? [
+              { type: 'separator' },
+              { role: 'front' },
+              { type: 'separator' },
+              { role: 'window' },
+            ]
+          : [{ role: 'close' }]),
+      ],
+    },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 app.whenReady().then(async () => {
+  setupAppMenu()
   await loadSettingsFromDisk()
   applyDockIcon()
   applyLoginItem()
