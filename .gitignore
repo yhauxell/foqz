@@ -6,3 +6,4 @@ release
 .env
 .env.local
 landing-public/release-embed.json
+electron-assets/concepts

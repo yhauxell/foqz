@@ -97,11 +97,17 @@ body,
   height: 100%;
   display: grid;
   grid-template-rows: 48px 1fr;
-  background: #f7f7f3;
+  background: #f4f4f5;
   border-radius: 12px;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #111;
+  color: #18181b;
+}
+
+.dark .app,
+html.dark .app {
+  background: #09090b;
+  color: #fafafa;
 }
 
 .topbar {
@@ -109,8 +115,15 @@ body,
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
-  border-bottom: 1px solid #d9d9d2;
+  border-bottom: 1px solid #e4e4e7;
   -webkit-app-region: drag;
+  background: #ffffff;
+}
+
+.dark .topbar,
+html.dark .topbar {
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  background: #09090b;
 }
 
 .topbar * {
@@ -119,31 +132,39 @@ body,
 
 .title {
   font-size: 13px;
-  letter-spacing: 0.2px;
-  color: #444;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: #18181b;
+}
+
+.dark .title,
+html.dark .title {
+  color: #fafafa;
 }
 
 .status {
-  font-size: 12px;
-  color: #666;
+  font-size: 11px;
+  color: #71717a;
+  font-family: monospace;
 }
 
 .canvas {
   width: 100%;
   height: 100%;
+  background: #fafafa;
 }
 
-/* tldraw main menu strip — same language as .focus-floating-panel (borderless, frosted, soft shadow) */
-.tl-container.tl-theme__light .tlui-menu-zone {
-  border: none;
-  border-radius: 20px;
-  background: rgb(255 255 255 / 46%);
-  backdrop-filter: blur(28px) saturate(1.35);
-  -webkit-backdrop-filter: blur(28px) saturate(1.35);
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 55%) inset,
-    0 12px 40px rgb(0 0 0 / 9%),
-    0 4px 16px rgb(0 0 0 / 5%);
+.dark .canvas,
+html.dark .canvas {
+  background: #09090b;
+}
+
+/* Hide floating tldraw menu zone (Ideas bar / hamburger / quick actions) — integrated into TopbarBoardMenu */
+.tl-container .tlui-menu-zone,
+.tlui-menu-zone {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .tl-container.tl-theme__dark .tlui-menu-zone {
@@ -169,6 +190,122 @@ body,
   .tlui-menu-zone
   *[data-state="open"]:not(:hover)::after {
   opacity: 0.35;
+}
+
+/*
+ * Task Markdown Rendering Styles (Title & Body)
+ */
+.task-title-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.dark .task-title-markdown code {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f4f4f5;
+}
+
+.task-title-markdown strong {
+  font-weight: 600;
+}
+
+.task-markdown-body {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.task-markdown-body p {
+  margin: 0 0 4px 0;
+}
+
+.task-markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.task-markdown-body ul,
+.task-markdown-body ol {
+  margin: 2px 0 4px 0;
+  padding-left: 18px;
+}
+
+.task-markdown-body li {
+  margin-bottom: 2px;
+}
+
+.task-markdown-body li input.task-checkbox-input {
+  margin-right: 6px;
+  vertical-align: -1px;
+  accent-color: #10b981;
+  cursor: pointer;
+}
+
+.task-markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.dark .task-markdown-body code {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f4f4f5;
+}
+
+.task-markdown-body pre {
+  margin: 4px 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  background: rgba(0, 0, 0, 0.04);
+  font-size: 11px;
+}
+
+.dark .task-markdown-body pre {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.task-markdown-body pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.task-markdown-body a {
+  color: #3b82f6;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.task-markdown-body blockquote {
+  border-left: 2px solid #d4d4d8;
+  padding-left: 8px;
+  margin: 4px 0;
+  color: #71717a;
+}
+
+.dark .task-markdown-body blockquote {
+  border-left-color: #3f3f46;
+  color: #a1a1aa;
+}
+
+.task-markdown-body h1,
+.task-markdown-body h2,
+.task-markdown-body h3,
+.task-markdown-body h4 {
+  font-weight: 600;
+  margin: 6px 0 2px 0;
+  font-size: 12px;
+  color: inherit;
+}
+
+.task-markdown-body del,
+.task-markdown-body s {
+  text-decoration: line-through;
+  opacity: 0.7;
 }
 
 /* Bottom tool strip — same glass as .focus-floating-panel */
@@ -229,219 +366,139 @@ body,
 }
 
 /*
- * Desktop: vertical tool rail on the left (tldraw default is horizontal bottom).
- * Matches tldraw’s own breakpoint: no .tlui-layout__mobile from TABLET_SM (640px).
+ * Desktop: Horizontal main tool bar placed at the TOP (center).
  */
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) {
-  grid-template-columns: min-content 1fr;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 
+/* Position the main tool bar at top center */
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-layout__bottom {
-  grid-column: 1;
-  grid-row: 2;
-  align-self: stretch;
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  bottom: auto;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  min-height: 0;
-  max-height: 100%;
-  overflow-x: visible;
-  /* Only the tool rail scrolls; zoom + minimap stay fixed at the bottom of this column */
-  overflow-y: hidden;
-  padding: 0 0 calc(12px + env(safe-area-inset-bottom, 0px)) 10px;
-  box-sizing: border-box;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  z-index: 150;
+  padding: 0;
+  margin: 0;
 }
 
 .app
   .tl-container
   .tlui-layout:not(.tlui-layout__mobile)
   .tlui-layout__bottom__main {
-  flex: 1 1 auto;
-  min-height: 0;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  width: 100%;
-  gap: 12px;
-}
-
-/* Tools (scroll) → help → zoom/minimap + minimap canvas pinned to left bottom */
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-layout__bottom__main
-  > .tlui-toolbar {
-  order: 0;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  align-self: flex-start;
-}
-
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-layout__bottom__main
-  > .tlui-help-menu {
-  order: 1;
-  flex: 0 0 auto;
-  align-self: flex-start;
-}
-
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-layout__bottom__main
-  > .tlui-navigation-panel {
-  order: 2;
-  flex: 0 0 auto;
-  align-self: stretch;
-}
-
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-navigation-panel {
-  position: relative;
-  left: auto;
-  bottom: auto;
-  width: 100%;
-  max-width: 220px;
-  padding-top: 4px;
-}
-
-/* Zoom row + minimap: full width of the rail, comfortable inset from corner */
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-navigation-panel
-  .tlui-buttons__horizontal {
-  width: 100%;
-  max-width: 220px;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 4px;
-  padding: 2px 0;
-}
-
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-zoom-menu__button {
-  min-width: 3.25rem;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-minimap {
-  width: 100%;
-  max-width: 220px;
-  padding-left: 0;
-  padding-right: var(--space-3, 8px);
-  box-sizing: border-box;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
 }
 
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar {
-  width: 100%;
-  max-width: 56px;
-  padding-bottom: 8px;
-  padding-right: 0;
-  align-items: flex-start;
-  justify-content: flex-start;
+  width: auto;
+  max-width: none;
+  padding: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
 }
 
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__inner {
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  width: auto;
+  gap: 4px;
 }
 
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__left {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
-}
-
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-toolbar__extras {
-  /* Desktop: float the style panel on the right (not attached to the tool rail). */
-  position: fixed;
-  top: calc(12px + env(safe-area-inset-top, 0px));
-  right: calc(12px + env(safe-area-inset-right, 0px));
+  flex-direction: row;
+  align-items: center;
   width: auto;
-  height: auto;
-  z-index: calc(var(--z-focus-floating) + 1);
-}
-
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-toolbar__extras__controls {
-  flex-direction: column;
-  align-items: stretch;
-  width: auto;
-  min-width: 240px;
-  max-width: min(320px, calc(100vw - 24px));
-  margin-left: 0;
-  border-radius: var(--radius-4, 10px);
-}
-
-/* Desktop: dock the tldraw style panel on the right (instead of under the menu bar). */
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-style-panel__wrapper {
-  position: fixed;
-  top: calc(48px + 12px + env(safe-area-inset-top, 0px));
-  right: calc(12px + env(safe-area-inset-right, 0px));
-  margin: 0;
-  max-height: calc(100vh - 48px - 24px);
-  z-index: calc(var(--z-focus-floating) + 2);
 }
 
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools {
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
-  max-width: 100%;
+  flex-direction: row;
+  align-items: center;
+  width: auto;
+  max-width: none;
+  border-radius: 9999px;
+  padding: 4px 8px;
 }
 
 .app
   .tl-container
   .tlui-layout:not(.tlui-layout__mobile)
   .tlui-toolbar__tools__list {
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  width: auto;
+  gap: 2px;
 }
 
 .app
   .tl-container
   .tlui-layout:not(.tlui-layout__mobile)
   .tlui-toolbar__overflow {
+  width: auto;
+}
+
+/* Contextual Selection HUD is rendered dynamically via ContextualSelectionHud.tsx */
+
+/* Help menu pinned to bottom left */
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-help-menu {
+  position: absolute;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  left: 12px;
+  top: auto;
+  right: auto;
+  z-index: 100;
+  pointer-events: auto;
+}
+
+/* Zoom row + minimap pinned to bottom right */
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-navigation-panel {
+  position: absolute;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  right: 12px;
+  top: auto;
+  left: auto;
+  width: auto;
+  max-width: 240px;
+  z-index: 100;
+  pointer-events: auto;
+}
+
+.app
+  .tl-container
+  .tlui-layout:not(.tlui-layout__mobile)
+  .tlui-navigation-panel
+  .tlui-buttons__horizontal {
+  width: auto;
+  max-width: 240px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-minimap {
   width: 100%;
-}
-
-/* “More tools” chevron: point right when the rail is vertical */
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-toolbar__overflow
-  .tlui-icon {
-  transform: rotate(90deg);
-}
-
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-layout__bottom
-  > .tlui-debug-panel {
-  flex: 0 0 auto;
+  max-width: 200px;
 }
 
 /* Task list drawer: same glass language as `glass-panel` + .focus-board-tracked-row */
@@ -1278,6 +1335,227 @@ body,
   padding: 3px 8px;
   border-radius: 999px;
 }
+
+/* Agent Task Card Styles */
+.focus-task-model-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgb(0 0 0 / 6%);
+  color: var(--task-muted, #525252);
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.12s, color 0.12s;
+}
+
+.focus-task-model-pill:hover {
+  background: rgb(0 0 0 / 10%);
+  color: var(--task-fg, #171717);
+}
+
+.dark .focus-task-model-pill {
+  background: rgb(255 255 255 / 8%);
+  color: rgb(212 212 216);
+}
+
+.dark .focus-task-model-pill:hover {
+  background: rgb(255 255 255 / 14%);
+  color: #fff;
+}
+
+.focus-task-model-pill--online {
+  color: rgb(21 128 61);
+}
+
+.dark .focus-task-model-pill--online {
+  color: rgb(74 222 128);
+}
+
+.focus-task-output-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 4%);
+  border: 1px solid rgb(0 0 0 / 7%);
+}
+
+.dark .focus-task-output-wrap {
+  background: rgb(0 0 0 / 25%);
+  border-color: rgb(255 255 255 / 8%);
+}
+
+.focus-task-output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--task-muted, #737373);
+}
+
+.focus-task-output-content {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  color: var(--task-fg, #171717);
+  padding: 2px 0;
+}
+
+.focus-task-gate-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+  margin-top: 4px;
+  border-top: 1px solid rgb(0 0 0 / 6%);
+}
+
+.dark .focus-task-gate-bar {
+  border-top-color: rgb(255 255 255 / 8%);
+}
+
+.focus-task-gate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.1s, opacity 0.12s;
+}
+
+.focus-task-gate-btn:hover {
+  transform: translateY(-1px);
+}
+
+.focus-task-gate-btn:active {
+  transform: translateY(0);
+}
+
+.focus-task-gate-btn--run {
+  background: #18181b;
+  color: #fafafa;
+}
+
+.dark .focus-task-gate-btn--run {
+  background: #f4f4f5;
+  color: #09090b;
+}
+
+.focus-task-gate-btn--stop {
+  background: rgb(239 68 68 / 16%);
+  color: rgb(220 38 38);
+}
+
+.focus-task-gate-btn--approve {
+  background: rgb(34 197 94 / 16%);
+  color: rgb(21 128 61);
+}
+
+.dark .focus-task-gate-btn--approve {
+  background: rgb(34 197 94 / 22%);
+  color: rgb(74 222 128);
+}
+
+.focus-task-gate-btn--refine {
+  background: rgb(59 130 246 / 14%);
+  color: rgb(29 78 216);
+}
+
+.dark .focus-task-gate-btn--refine {
+  background: rgb(59 130 246 / 20%);
+  color: rgb(96 165 250);
+}
+
+.focus-task-gate-btn--discard {
+  background: rgb(0 0 0 / 6%);
+  color: var(--task-muted, #737373);
+}
+
+.dark .focus-task-gate-btn--discard {
+  background: rgb(255 255 255 / 8%);
+  color: rgb(161 161 170);
+}
+
+.focus-task-refine-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.focus-task-refine-input {
+  flex: 1;
+  min-width: 0;
+  background: rgb(0 0 0 / 5%);
+  border: 1px solid rgb(0 0 0 / 12%);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--task-fg, #171717);
+  outline: none;
+}
+
+.dark .focus-task-refine-input {
+  background: rgb(0 0 0 / 30%);
+  border-color: rgb(255 255 255 / 12%);
+  color: #fff;
+}
+
+.focus-task-refine-input:focus {
+  border-color: rgb(59 130 246 / 50%);
+}
+
+.topbar-ollama-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgb(0 0 0 / 5%);
+  color: rgb(113 113 122);
+  border: 1px solid rgb(0 0 0 / 6%);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.dark .topbar-ollama-pill {
+  background: rgb(255 255 255 / 6%);
+  color: rgb(161 161 170);
+  border-color: rgb(255 255 255 / 8%);
+}
+
+.topbar-ollama-pill--online {
+  color: rgb(21 128 61);
+}
+
+.dark .topbar-ollama-pill--online {
+  color: rgb(74 222 128);
+}
+
 
 .focus-timer-pulse {
   animation: focus-timer-pulse 1.6s ease-in-out infinite;
