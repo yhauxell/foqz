@@ -5,6 +5,7 @@
   "private": true,
   "description": "Foqz — tray toggle, tldraw canvas, and focus timers",
   "author": "Foqz",
+  "license": "MIT",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
