@@ -5,21 +5,61 @@ export interface OllamaModelInfo {
   model: string
   size: number
   parameterSize?: string
+  capabilities?: string[]
+}
+
+export interface OllamaToolCall {
+  id?: string
+  function: {
+    name: string
+    arguments: Record<string, any>
+  }
+}
+
+export interface OllamaToolDefinition {
+  type: 'function'
+  function: {
+    name: string
+    description?: string
+    parameters?: Record<string, any>
+  }
 }
 
 export interface OllamaChatMessage {
-  role: 'system' | 'user' | 'assistant'
+  role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
+  tool_calls?: OllamaToolCall[]
+  name?: string
+}
+
+export interface StreamOllamaChatResult {
+  content: string
+  toolCalls: OllamaToolCall[]
+}
+
+export interface StreamOllamaChatOptions {
+  baseUrl?: string
+  model: string
+  messages?: OllamaChatMessage[]
+  prompt?: string
+  system?: string
+  tools?: OllamaToolDefinition[]
+  onChunk?: (chunk: string) => void
+  onToolCalls?: (calls: OllamaToolCall[]) => void
+  onDone?: (fullText: string, toolCalls: OllamaToolCall[]) => void
+  onError?: (err: Error) => void
+  signal?: AbortSignal
 }
 
 const OLLAMA_BASE_URL = 'http://127.0.0.1:11434'
 
 /**
- * Check if local Ollama daemon is reachable and return available models.
+ * Check if local Ollama daemon is reachable and return available models and capabilities.
  */
 export async function getOllamaStatus(baseUrl: string = OLLAMA_BASE_URL): Promise<{
   online: boolean
   models: string[]
+  modelDetails?: OllamaModelInfo[]
 }> {
   try {
     const controller = new AbortController()
@@ -32,9 +72,24 @@ export async function getOllamaStatus(baseUrl: string = OLLAMA_BASE_URL): Promis
     if (!res.ok) {
       return { online: false, models: [] }
     }
-    const data = (await res.json()) as { models?: Array<{ name: string }> }
+    const data = (await res.json()) as {
+      models?: Array<{
+        name: string
+        model?: string
+        size?: number
+        capabilities?: string[]
+        details?: { parameter_size?: string }
+      }>
+    }
     const models = (data.models ?? []).map((m) => m.name)
-    return { online: true, models }
+    const modelDetails = (data.models ?? []).map((m) => ({
+      name: m.name,
+      model: m.model || m.name,
+      size: m.size || 0,
+      parameterSize: m.details?.parameter_size,
+      capabilities: m.capabilities || [],
+    }))
+    return { online: true, models, modelDetails }
   } catch {
     return { online: false, models: [] }
   }
@@ -61,31 +116,71 @@ export function pickDefaultOllamaModel(models: string[]): string {
   return models[0]
 }
 
-export interface StreamOllamaChatOptions {
-  baseUrl?: string
-  model: string
-  messages?: OllamaChatMessage[]
-  prompt?: string
-  system?: string
-  onChunk?: (chunk: string) => void
-  onDone?: (fullText: string) => void
-  onError?: (err: Error) => void
-  signal?: AbortSignal
+/**
+ * Resiliently parses a tool call from content string if a model emitted JSON directly.
+ */
+function tryParseToolCallFromContent(
+  content: string,
+  declaredTools: OllamaToolDefinition[],
+): OllamaToolCall | null {
+  const trimmed = content.trim()
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
+
+  try {
+    const parsed = JSON.parse(trimmed)
+    // Format A: { "name": "...", "arguments": { ... } }
+    if (typeof parsed.name === 'string') {
+      const toolMatch = declaredTools.find((t) => t.function.name === parsed.name)
+      if (toolMatch) {
+        return {
+          id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          function: {
+            name: parsed.name,
+            arguments:
+              typeof parsed.arguments === 'object' && parsed.arguments !== null
+                ? parsed.arguments
+                : {},
+          },
+        }
+      }
+    }
+    // Format B: { "type": "function", "function": { "name": "...", "arguments": { ... } } }
+    if (parsed.function && typeof parsed.function.name === 'string') {
+      const name = parsed.function.name
+      const toolMatch = declaredTools.find((t) => t.function.name === name)
+      if (toolMatch) {
+        let args = parsed.function.arguments || {}
+        if (typeof args === 'string') {
+          try {
+            args = JSON.parse(args)
+          } catch {}
+        }
+        return {
+          id: parsed.id || `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          function: { name, arguments: args },
+        }
+      }
+    }
+  } catch {
+    // ignore parse failure
+  }
+  return null
 }
 
 /**
- * Stream chat completion from local Ollama.
+ * Stream chat completion from local Ollama with native tool calling support.
  * Supports both object options and legacy positional callback signatures.
  */
 export async function streamOllamaChat(
   opts: StreamOllamaChatOptions,
   legacyOnChunk?: (chunk: string) => void,
   legacySignal?: AbortSignal,
-): Promise<string> {
+): Promise<StreamOllamaChatResult> {
   const baseUrl = opts.baseUrl || OLLAMA_BASE_URL
   const model = opts.model
   const onChunk = opts.onChunk || legacyOnChunk || (() => {})
   const onDone = opts.onDone
+  const onToolCalls = opts.onToolCalls
   const onError = opts.onError
   const signal = opts.signal || legacySignal
 
@@ -98,16 +193,24 @@ export async function streamOllamaChat(
     messages.push({ role: 'user', content: opts.prompt })
   }
 
+  const payload: Record<string, any> = {
+    model,
+    messages,
+    stream: true,
+  }
+
+  if (opts.tools && opts.tools.length > 0) {
+    payload.tools = opts.tools
+  }
+
   let accumulated = ''
+  const toolCalls: OllamaToolCall[] = []
+
   try {
     const res = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages,
-        stream: true,
-      }),
+      body: JSON.stringify(payload),
       signal,
     })
 
@@ -124,6 +227,52 @@ export async function streamOllamaChat(
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
 
+    const processJsonLine = (line: string) => {
+      const trimmed = line.trim()
+      if (!trimmed) return
+      try {
+        const parsed = JSON.parse(trimmed) as {
+          message?: {
+            content?: string
+            tool_calls?: Array<{
+              id?: string
+              function?: { name?: string; arguments?: any }
+            }>
+          }
+          done?: boolean
+        }
+
+        const content = parsed.message?.content ?? ''
+        if (content) {
+          accumulated += content
+          onChunk(content)
+        }
+
+        const rawToolCalls = parsed.message?.tool_calls
+        if (Array.isArray(rawToolCalls)) {
+          for (const tc of rawToolCalls) {
+            if (tc?.function?.name) {
+              let args = tc.function.arguments || {}
+              if (typeof args === 'string') {
+                try {
+                  args = JSON.parse(args)
+                } catch {}
+              }
+              toolCalls.push({
+                id: tc.id || `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                function: {
+                  name: tc.function.name,
+                  arguments: args,
+                },
+              })
+            }
+          }
+        }
+      } catch {
+        // ignore chunk parse errors
+      }
+    }
+
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -133,57 +282,43 @@ export async function streamOllamaChat(
       buffer = lines.pop() ?? ''
 
       for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
-        try {
-          const parsed = JSON.parse(trimmed) as {
-            message?: { content?: string }
-            done?: boolean
-          }
-          const content = parsed.message?.content ?? ''
-          if (content) {
-            accumulated += content
-            onChunk(content)
-          }
-          if (parsed.done) {
-            onDone?.(accumulated)
-            return accumulated
-          }
-        } catch {
-          // ignore chunk parse errors
-        }
+        processJsonLine(line)
       }
     }
 
     if (buffer.trim()) {
-      try {
-        const parsed = JSON.parse(buffer.trim()) as {
-          message?: { content?: string }
-          done?: boolean
-        }
-        const content = parsed.message?.content ?? ''
-        if (content) {
-          accumulated += content
-          onChunk(content)
-        }
-      } catch {
-        // ignore
+      processJsonLine(buffer)
+    }
+
+    // Check if model emitted JSON tool call in content
+    if (toolCalls.length === 0 && opts.tools && opts.tools.length > 0 && accumulated.trim()) {
+      const extracted = tryParseToolCallFromContent(accumulated, opts.tools)
+      if (extracted) {
+        toolCalls.push(extracted)
       }
     }
 
-    onDone?.(accumulated)
-    return accumulated
+    if (toolCalls.length > 0) {
+      onToolCalls?.(toolCalls)
+    }
+
+    onDone?.(accumulated, toolCalls)
+    return { content: accumulated, toolCalls }
   } catch (err: any) {
     if (err?.name === 'AbortError') {
-      onDone?.(accumulated)
-      return accumulated
+      onDone?.(accumulated, toolCalls)
+      return { content: accumulated, toolCalls }
     }
     onError?.(err instanceof Error ? err : new Error(String(err)))
     throw err
   }
 }
 
-let cachedStatus: { online: boolean; models: string[] } = { online: false, models: [] }
+let cachedStatus: {
+  online: boolean
+  models: string[]
+  modelDetails?: OllamaModelInfo[]
+} = { online: false, models: [] }
 let statusListeners: Array<() => void> = []
 
 function notifyStatusListeners() {
@@ -249,6 +384,7 @@ export function useOllama() {
   return {
     online: status.online,
     models: status.models,
+    modelDetails: status.modelDetails,
     selectedModel: effectiveModel,
     setSelectedModel,
     refresh,
