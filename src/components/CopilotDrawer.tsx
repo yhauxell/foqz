@@ -16,9 +16,13 @@ import {
   Box,
   MousePointerClick,
   Timer,
+  Wrench,
 } from "lucide-react";
 import { type Editor, type TLShapeId, useValue } from "tldraw";
-import { useOllama, streamOllamaChat } from "@/lib/ollama";
+import { useOllama } from "@/lib/ollama";
+import { runAgentLoop, type AgentToolCallEvent } from "@/lib/mcpAgentLoop";
+import { NATIVE_FOQZ_TOOLS, createCanvasToolExecutor } from "@/lib/canvasTools";
+import type { McpTool } from "@/lib/mcpTypes";
 import {
   FOQZ_SYSTEM_PROMPT,
   parseCanvasActions,
@@ -58,6 +62,19 @@ export function CopilotDrawer({
   const [copied, setCopied] = useState(false);
   const [spawnedCount, setSpawnedCount] = useState<number | null>(null);
   const [storeTick, setStoreTick] = useState(0);
+  const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [executedTools, setExecutedTools] = useState<AgentToolCallEvent[]>([]);
+  const [mcpTools, setMcpTools] = useState<McpTool[]>([]);
+
+  // Load external MCP tools from Electron main process
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.focusStore?.mcp?.listTools) {
+      window.focusStore.mcp
+        .listTools()
+        .then((tools) => setMcpTools(tools || []))
+        .catch(() => {});
+    }
+  }, [open]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -145,9 +162,10 @@ export function CopilotDrawer({
       abortControllerRef.current = null;
     }
     setIsStreaming(false);
+    setActiveTool(null);
   }, []);
 
-  // Send prompt to Ollama with full canvas context
+  // Send prompt to Ollama with full canvas context & MCP tool calling
   const handleSend = useCallback(
     async (customPrompt?: string) => {
       const userText = (customPrompt ?? prompt).trim();
@@ -159,6 +177,8 @@ export function CopilotDrawer({
       setIsStreaming(true);
       setOutput("");
       setSpawnedCount(null);
+      setExecutedTools([]);
+      setActiveTool(null);
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -171,23 +191,33 @@ export function CopilotDrawer({
         contextMsg = `[Active Canvas Board Context (${boardItems.length} item${boardItems.length > 1 ? "s" : ""})]:\n${boardSummary}`;
       }
 
-      const fullPrompt = contextMsg
-        ? `${contextMsg}\n\nUser request: ${
-            userText ||
-            (selectedItems.length > 0
-              ? "Analyze the selected canvas items and break them down into actionable subtasks."
-              : "Review all items on the canvas and suggest next steps.")
-          }`
-        : userText;
+      const promptToRun =
+        userText ||
+        (selectedItems.length > 0
+          ? "Analyze the selected canvas items and break them down into actionable subtasks."
+          : "Review all items on the canvas and suggest next steps.");
+
+      const localToolExecutor = createCanvasToolExecutor(editor, () => primaryShape);
+      const allTools = [...NATIVE_FOQZ_TOOLS, ...mcpTools];
 
       try {
-        await streamOllamaChat({
+        await runAgentLoop({
           model: selectedModel || "qwen2.5-coder:7b",
-          prompt: fullPrompt,
-          system: FOQZ_SYSTEM_PROMPT,
+          userPrompt: promptToRun,
+          systemPrompt: FOQZ_SYSTEM_PROMPT,
+          canvasContext: contextMsg,
+          tools: allTools,
           onChunk: (delta) => {
             setOutput((prev) => prev + delta);
           },
+          onToolCallStart: (evt) => {
+            setActiveTool(`${evt.serverName || "foqz"}:${evt.toolName}`);
+          },
+          onToolCallEnd: (evt) => {
+            setActiveTool(null);
+            setExecutedTools((prev) => [...prev, evt]);
+          },
+          localToolExecutor,
           signal: controller.signal,
         });
       } catch (err: any) {
@@ -200,6 +230,7 @@ export function CopilotDrawer({
         }
       } finally {
         setIsStreaming(false);
+        setActiveTool(null);
         abortControllerRef.current = null;
       }
     },
@@ -212,6 +243,9 @@ export function CopilotDrawer({
       online,
       handleStop,
       selectedModel,
+      editor,
+      primaryShape,
+      mcpTools,
     ],
   );
 
@@ -659,6 +693,41 @@ export function CopilotDrawer({
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-4 space-y-3 font-mono text-xs leading-relaxed text-zinc-800 dark:text-zinc-300 select-text"
       >
+        {/* Active Tool Execution Indicator */}
+        {activeTool && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800/60 text-xs text-violet-700 dark:text-violet-300 animate-pulse font-mono shadow-xs">
+            <Wrench className="size-3.5 animate-spin text-violet-500" />
+            <span className="font-semibold">Calling {activeTool}...</span>
+          </div>
+        )}
+
+        {/* Executed Tools List */}
+        {executedTools.length > 0 && (
+          <div className="p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 space-y-1.5 font-sans">
+            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold px-0.5">
+              <span>Executed Tools ({executedTools.length})</span>
+            </div>
+            <div className="space-y-1">
+              {executedTools.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex items-center justify-between px-2 py-1.5 rounded bg-white dark:bg-zinc-800/80 border border-zinc-200/60 dark:border-zinc-700/60 text-[11px] font-mono text-zinc-700 dark:text-zinc-300 shadow-2xs"
+                >
+                  <span className="flex items-center gap-1.5 truncate">
+                    <Wrench className="size-3 text-violet-500 shrink-0" />
+                    <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                      {t.serverName || "foqz"}:{t.toolName}
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-zinc-400 shrink-0">
+                    {t.durationMs ? `${t.durationMs}ms` : "done"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {output ? (
           <div className="space-y-3 font-sans">
             {outputSegments.map((seg, sIdx) => {
