@@ -239,13 +239,13 @@ class McpClientManager {
     return aggregated
   }
 
-/**
- * Normalizes tool arguments against schema definitions to handle common LLM alias discrepancies
- * (e.g. `query` vs `q`, stringified numbers, missing repo syntax).
- * @param {any} toolDef
- * @param {any} rawArgs
- */
-function normalizeToolArgs(toolDef, rawArgs) {
+  /**
+   * Normalizes tool arguments against schema definitions to handle common LLM alias discrepancies
+   * (e.g. `query` vs `q`, stringified numbers, missing repo syntax).
+   * @param {any} toolDef
+   * @param {any} rawArgs
+   */
+  normalizeToolArgs(toolDef, rawArgs) {
   const args = { ...(rawArgs || {}) }
   const schema = toolDef?.inputSchema || {}
   const properties = schema.properties || {}
@@ -370,7 +370,7 @@ function normalizeToolArgs(toolDef, rawArgs) {
     }
 
     const toolDef = entry.tools?.find((t) => t.name === toolName)
-    const normalizedArgs = normalizeToolArgs(toolDef, args)
+    const normalizedArgs = this.normalizeToolArgs(toolDef, args)
 
     try {
       const res = await entry.client.callTool({
