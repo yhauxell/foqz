@@ -117,6 +117,9 @@ export function McpSettingsTab() {
       setServers(serversList || []);
       setConfig(mcpCfg || { mcpServers: {} });
       setConfigPath(cfgPath || "");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("foqz:mcp-updated"));
+      }
     } catch {
       // ignore
     } finally {

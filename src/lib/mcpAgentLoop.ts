@@ -122,8 +122,15 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
   const messages: OllamaChatMessage[] = []
   const executedTools: AgentToolCallEvent[] = []
 
+  const toolsList = options.tools || []
+  const ollamaTools = formatMcpToolsForOllama(toolsList)
+
   if (options.systemPrompt) {
-    messages.push({ role: 'system', content: options.systemPrompt })
+    let sys = options.systemPrompt
+    if (ollamaTools.length > 0) {
+      sys += `\n\nWhen tools are provided, call the relevant functions to inspect data or update the canvas. When you receive tool execution results, summarize them naturally for the user. Do not output raw tool invocation JSON objects in your final text response.`
+    }
+    messages.push({ role: 'system', content: sys })
   }
 
   const userContent = options.canvasContext
@@ -131,9 +138,6 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
     : options.userPrompt
 
   messages.push({ role: 'user', content: userContent })
-
-  const toolsList = options.tools || []
-  const ollamaTools = formatMcpToolsForOllama(toolsList)
 
   let steps = 0
 
@@ -198,10 +202,18 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
       }
     }
 
-    // Tools were called: record assistant response with tool calls
+    // Tools were called: record assistant response with tool calls.
+    // If the assistant emitted raw JSON or tool tags as content, normalize content to empty string
+    // so subsequent conversation turns recognize this as a pure function-calling turn.
+    const isRawToolCallString =
+      chatResult.content.trim().startsWith('{') ||
+      chatResult.content.trim().startsWith('[') ||
+      chatResult.content.trim().startsWith('```') ||
+      chatResult.content.trim().startsWith('<tool_call>')
+
     messages.push({
       role: 'assistant',
-      content: chatResult.content,
+      content: isRawToolCallString ? '' : chatResult.content,
       tool_calls: chatResult.toolCalls,
     })
 

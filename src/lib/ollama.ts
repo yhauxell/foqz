@@ -117,54 +117,126 @@ export function pickDefaultOllamaModel(models: string[]): string {
 }
 
 /**
- * Resiliently parses a tool call from content string if a model emitted JSON directly.
+/**
+ * Matches a declared tool by exact name, colon notation, or suffix.
  */
-function tryParseToolCallFromContent(
+function findDeclaredTool(
+  name: string,
+  declaredTools: OllamaToolDefinition[],
+): OllamaToolDefinition | null {
+  // 1. Exact match (e.g. "github__list_issues" === "github__list_issues")
+  let match = declaredTools.find((t) => t.function.name === name)
+  if (match) return match
+
+  // 2. Normalized colon vs double-underscore (e.g. "github:list_issues" -> "github__list_issues")
+  const normalized = name.replace(':', '__')
+  match = declaredTools.find((t) => t.function.name === normalized)
+  if (match) return match
+
+  // 3. Suffix match (e.g. "list_issues" matches "github__list_issues")
+  const suffixMatches = declaredTools.filter(
+    (t) => t.function.name.endsWith(`__${name}`) || t.function.name === name,
+  )
+  if (suffixMatches.length === 1) return suffixMatches[0]
+
+  return null
+}
+
+/**
+ * Extracts balanced JSON objects or arrays from arbitrary content text.
+ */
+function extractJsonObjects(text: string): any[] {
+  const objects: any[] = []
+  let depth = 0
+  let startIdx = -1
+  let inString = false
+  let escape = false
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inString) {
+      if (escape) {
+        escape = false
+      } else if (ch === '\\') {
+        escape = true
+      } else if (ch === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (ch === '"') {
+      inString = true
+      continue
+    }
+
+    if (ch === '{' || ch === '[') {
+      if (depth === 0) startIdx = i
+      depth++
+    } else if (ch === '}' || ch === ']') {
+      depth--
+      if (depth === 0 && startIdx !== -1) {
+        const candidate = text.slice(startIdx, i + 1)
+        try {
+          const parsed = JSON.parse(candidate)
+          if (Array.isArray(parsed)) {
+            objects.push(...parsed)
+          } else {
+            objects.push(parsed)
+          }
+        } catch {}
+        startIdx = -1
+      }
+    }
+  }
+  return objects
+}
+
+/**
+ * Resiliently parses tool calls from content string if a model emitted JSON directly.
+ */
+export function parseToolCallsFromContent(
   content: string,
   declaredTools: OllamaToolDefinition[],
-): OllamaToolCall | null {
-  const trimmed = content.trim()
-  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
+): OllamaToolCall[] {
+  const toolCalls: OllamaToolCall[] = []
+  if (!content || !content.trim()) return toolCalls
 
-  try {
-    const parsed = JSON.parse(trimmed)
-    // Format A: { "name": "...", "arguments": { ... } }
-    if (typeof parsed.name === 'string') {
-      const toolMatch = declaredTools.find((t) => t.function.name === parsed.name)
-      if (toolMatch) {
-        return {
-          id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          function: {
-            name: parsed.name,
-            arguments:
-              typeof parsed.arguments === 'object' && parsed.arguments !== null
-                ? parsed.arguments
-                : {},
-          },
-        }
-      }
+  const candidates = extractJsonObjects(content)
+
+  for (const item of candidates) {
+    if (!item || typeof item !== 'object') continue
+    let toolName = ''
+    let toolArgs: any = {}
+
+    if (typeof item.name === 'string') {
+      toolName = item.name
+      toolArgs = item.arguments || {}
+    } else if (item.function && typeof item.function.name === 'string') {
+      toolName = item.function.name
+      toolArgs = item.function.arguments || {}
     }
-    // Format B: { "type": "function", "function": { "name": "...", "arguments": { ... } } }
-    if (parsed.function && typeof parsed.function.name === 'string') {
-      const name = parsed.function.name
-      const toolMatch = declaredTools.find((t) => t.function.name === name)
-      if (toolMatch) {
-        let args = parsed.function.arguments || {}
-        if (typeof args === 'string') {
-          try {
-            args = JSON.parse(args)
-          } catch {}
-        }
-        return {
-          id: parsed.id || `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          function: { name, arguments: args },
-        }
-      }
+
+    if (!toolName) continue
+
+    if (typeof toolArgs === 'string') {
+      try {
+        toolArgs = JSON.parse(toolArgs)
+      } catch {}
     }
-  } catch {
-    // ignore parse failure
+
+    const matchedTool = findDeclaredTool(toolName, declaredTools)
+    if (matchedTool) {
+      toolCalls.push({
+        id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        function: {
+          name: matchedTool.function.name,
+          arguments: typeof toolArgs === 'object' && toolArgs !== null ? toolArgs : {},
+        },
+      })
+    }
   }
-  return null
+  return toolCalls
 }
 
 /**
@@ -292,9 +364,9 @@ export async function streamOllamaChat(
 
     // Check if model emitted JSON tool call in content
     if (toolCalls.length === 0 && opts.tools && opts.tools.length > 0 && accumulated.trim()) {
-      const extracted = tryParseToolCallFromContent(accumulated, opts.tools)
-      if (extracted) {
-        toolCalls.push(extracted)
+      const extracted = parseToolCallsFromContent(accumulated, opts.tools)
+      if (extracted.length > 0) {
+        toolCalls.push(...extracted)
       }
     }
 

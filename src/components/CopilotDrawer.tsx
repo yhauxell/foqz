@@ -94,12 +94,18 @@ export function CopilotDrawer({
 
   // Load external MCP tools from Electron main process
   useEffect(() => {
-    if (typeof window !== "undefined" && window.focusStore?.mcp?.listTools) {
-      window.focusStore.mcp
-        .listTools()
-        .then((tools) => setMcpTools(tools || []))
-        .catch(() => {});
-    }
+    const fetchTools = () => {
+      if (typeof window !== "undefined" && window.focusStore?.mcp?.listTools) {
+        window.focusStore.mcp
+          .listTools()
+          .then((tools) => setMcpTools(tools || []))
+          .catch(() => {});
+      }
+    };
+
+    fetchTools();
+    window.addEventListener("foqz:mcp-updated", fetchTools);
+    return () => window.removeEventListener("foqz:mcp-updated", fetchTools);
   }, [open]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -224,7 +230,20 @@ export function CopilotDrawer({
           : "Review all items on the canvas and suggest next steps.");
 
       const localToolExecutor = createCanvasToolExecutor(editor, () => primaryShape);
-      const allTools = [...NATIVE_FOQZ_TOOLS, ...mcpTools];
+
+      // Refresh MCP tools immediately before running loop
+      let currentMcpTools = mcpTools;
+      if (typeof window !== "undefined" && window.focusStore?.mcp?.listTools) {
+        try {
+          const fresh = await window.focusStore.mcp.listTools();
+          if (fresh && fresh.length > 0) {
+            currentMcpTools = fresh;
+            setMcpTools(fresh);
+          }
+        } catch {}
+      }
+
+      const allTools = [...NATIVE_FOQZ_TOOLS, ...(currentMcpTools || [])];
 
       try {
         await runAgentLoop({
@@ -238,6 +257,8 @@ export function CopilotDrawer({
           },
           onToolCallStart: (evt) => {
             setActiveTool(`${evt.serverName || "foqz"}:${evt.toolName}`);
+            // Clear any raw tool-call JSON text that was streamed into chat bubble
+            setOutput("");
           },
           onToolCallEnd: (evt) => {
             setActiveTool(null);
