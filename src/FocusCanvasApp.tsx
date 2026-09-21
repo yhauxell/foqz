@@ -74,6 +74,18 @@ function FocusCanvasAppInner() {
   const [status, setStatus] = useState("Loading board...");
   const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<
+    "general" | "workingHours" | "mcp" | "data"
+  >("general");
+
+  const handleOpenSettings = useCallback(
+    (initialTab: "general" | "workingHours" | "mcp" | "data" = "general") => {
+      setSettingsInitialTab(initialTab);
+      setSettingsOpen(true);
+    },
+    [],
+  );
+
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [selectedShapeId, setSelectedShapeId] = useState<TLShapeId | null>(null);
@@ -571,7 +583,7 @@ function FocusCanvasAppInner() {
             size="icon-sm"
             className="text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800"
             aria-label="Settings"
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => handleOpenSettings("general")}
           >
             <Settings className="size-4" />
           </Button>
@@ -619,6 +631,7 @@ function FocusCanvasAppInner() {
             <FocusSettings
               open={settingsOpen}
               onClose={() => setSettingsOpen(false)}
+              initialTab={settingsInitialTab}
             />
           </Tldraw>
         </main>
@@ -629,6 +642,7 @@ function FocusCanvasAppInner() {
           open={copilotOpen}
           onClose={() => setCopilotOpen(false)}
           selectedShapeId={selectedShapeId}
+          onOpenSettings={handleOpenSettings}
         />
       </div>
     </div>

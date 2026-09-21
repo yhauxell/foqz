@@ -4,6 +4,7 @@ import { useFocusAppSettings } from "@/context/FocusAppSettingsContext";
 import { mergeAppSettings } from "@/lib/appSettings";
 import { ensureNotificationPermission } from "@/lib/focusSessionFeedback";
 import { X } from "lucide-react";
+import { McpSettingsTab } from "@/components/McpSettingsTab";
 import { useCallback, useEffect, useState } from "react";
 import type { TLShapeId } from "tldraw";
 import { getSnapshot, loadSnapshot, useEditor, useValue } from "tldraw";
@@ -106,7 +107,7 @@ function parsePresetsText(s: string): number[] {
     .filter((n) => Number.isFinite(n) && n >= 1 && n <= 480);
 }
 
-type SettingsTab = "general" | "workingHours" | "data";
+type SettingsTab = "general" | "workingHours" | "mcp" | "data";
 
 function formatTime(min: number): string {
   const m = Math.min(24 * 60, Math.max(0, Math.round(min)));
@@ -130,13 +131,15 @@ function parseTimeToMinutes(v: string): number | null {
 export function FocusSettings({
   open,
   onClose,
+  initialTab = "general",
 }: {
   open: boolean;
   onClose: () => void;
+  initialTab?: SettingsTab;
 }) {
   const editor = useEditor();
   const { settings, update } = useFocusAppSettings();
-  const [tab, setTab] = useState<SettingsTab>("general");
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [shortcutDraft, setShortcutDraft] = useState(settings.globalToggleShortcut);
   const [presetsDraft, setPresetsDraft] = useState(() =>
     settings.durationPresets.join(", "),
@@ -157,8 +160,8 @@ export function FocusSettings({
   }, [settings.globalToggleShortcut, settings.durationPresets]);
 
   useEffect(() => {
-    if (open) setTab("general");
-  }, [open]);
+    if (open) setTab(initialTab);
+  }, [open, initialTab]);
 
   const persistWorkingHours = useCallback(async () => {
     setSaveError(null);
@@ -264,7 +267,9 @@ export function FocusSettings({
       }}
     >
       <div
-        className="flex max-h-[min(92vh,760px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border/90 bg-background/95 shadow-2xl backdrop-blur-md dark:border-white/12 dark:bg-zinc-950/95"
+        className={`flex max-h-[min(92vh,760px)] w-full ${
+          tab === "mcp" ? "max-w-2xl" : "max-w-lg"
+        } flex-col overflow-hidden rounded-2xl border border-border/90 bg-background/95 shadow-2xl backdrop-blur-md transition-[max-width] duration-200 dark:border-white/12 dark:bg-zinc-950/95`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border/60 px-5 py-4">
@@ -287,7 +292,7 @@ export function FocusSettings({
             <button
               type="button"
               className={[
-                "h-8 flex-1 rounded-lg px-3 text-sm font-medium transition",
+                "h-8 flex-1 rounded-lg px-2 sm:px-3 text-xs sm:text-sm font-medium transition",
                 tab === "general"
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -299,7 +304,7 @@ export function FocusSettings({
             <button
               type="button"
               className={[
-                "h-8 flex-1 rounded-lg px-3 text-sm font-medium transition",
+                "h-8 flex-1 rounded-lg px-2 sm:px-3 text-xs sm:text-sm font-medium transition",
                 tab === "workingHours"
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -311,7 +316,19 @@ export function FocusSettings({
             <button
               type="button"
               className={[
-                "h-8 flex-1 rounded-lg px-3 text-sm font-medium transition",
+                "h-8 flex-1 rounded-lg px-2 sm:px-3 text-xs sm:text-sm font-medium transition",
+                tab === "mcp"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+              onClick={() => setTab("mcp")}
+            >
+              MCP Servers
+            </button>
+            <button
+              type="button"
+              className={[
+                "h-8 flex-1 rounded-lg px-2 sm:px-3 text-xs sm:text-sm font-medium transition",
                 tab === "data"
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -504,6 +521,12 @@ export function FocusSettings({
                     </div>
                   </div>
                 </Row>
+              </Section>
+            ) : null}
+
+            {tab === "mcp" ? (
+              <Section title="Model Context Protocol (MCP)">
+                <McpSettingsTab />
               </Section>
             ) : null}
 

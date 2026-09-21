@@ -17,6 +17,10 @@ import {
   MousePointerClick,
   Timer,
   Wrench,
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { type Editor, type TLShapeId, useValue } from "tldraw";
 import { useOllama } from "@/lib/ollama";
@@ -47,6 +51,7 @@ interface CopilotDrawerProps {
   open: boolean;
   onClose: () => void;
   selectedShapeId: TLShapeId | null;
+  onOpenSettings?: (tab?: "general" | "workingHours" | "mcp" | "data") => void;
 }
 
 export function CopilotDrawer({
@@ -54,6 +59,7 @@ export function CopilotDrawer({
   open,
   onClose,
   selectedShapeId,
+  onOpenSettings,
 }: CopilotDrawerProps) {
   const { online, models, selectedModel, setSelectedModel } = useOllama();
   const [prompt, setPrompt] = useState("");
@@ -65,6 +71,26 @@ export function CopilotDrawer({
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [executedTools, setExecutedTools] = useState<AgentToolCallEvent[]>([]);
   const [mcpTools, setMcpTools] = useState<McpTool[]>([]);
+
+  // HUD and accordion states
+  const [showToolsHud, setShowToolsHud] = useState(false);
+  const [expandedToolIds, setExpandedToolIds] = useState<Set<string>>(new Set());
+  const [copiedToolKey, setCopiedToolKey] = useState<string | null>(null);
+
+  const toggleToolExpanded = useCallback((id: string) => {
+    setExpandedToolIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const copyPayload = useCallback((key: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedToolKey(key);
+    setTimeout(() => setCopiedToolKey(null), 2000);
+  }, []);
 
   // Load external MCP tools from Electron main process
   useEffect(() => {
@@ -306,7 +332,30 @@ export function CopilotDrawer({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          {/* Active Tools HUD Pill */}
+          <button
+            type="button"
+            title={`${NATIVE_FOQZ_TOOLS.length + mcpTools.length} tools available (click to inspect HUD)`}
+            onClick={() => {
+              setShowToolsHud((prev) => !prev);
+              if (window.focusStore?.mcp?.listTools) {
+                window.focusStore.mcp
+                  .listTools()
+                  .then((tools) => setMcpTools(tools || []))
+                  .catch(() => {});
+              }
+            }}
+            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors ${
+              showToolsHud
+                ? "bg-violet-100 dark:bg-violet-950/70 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300"
+                : "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-950 dark:hover:text-white"
+            }`}
+          >
+            <Wrench className="size-3 text-violet-500" />
+            <span>{NATIVE_FOQZ_TOOLS.length + mcpTools.length}</span>
+          </button>
+
           {/* Model Pill */}
           <button
             type="button"
@@ -343,6 +392,90 @@ export function CopilotDrawer({
           </button>
         </div>
       </div>
+
+      {/* Live Tools HUD Panel */}
+      {showToolsHud && (
+        <div className="border-b border-zinc-200 dark:border-zinc-800/80 bg-zinc-100/80 dark:bg-zinc-950/80 p-3 space-y-3 font-sans shrink-0 max-h-72 overflow-y-auto animate-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Wrench className="size-3.5 text-violet-500" />
+              <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                Active Tools HUD ({NATIVE_FOQZ_TOOLS.length + mcpTools.length})
+              </span>
+            </div>
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={() => onOpenSettings("mcp")}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-violet-600 dark:text-violet-400 hover:underline"
+              >
+                <SettingsIcon className="size-3" />
+                <span>Configure MCP</span>
+              </button>
+            )}
+          </div>
+
+          {/* Canvas Native Tools */}
+          <div className="space-y-1.5">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold">
+              Canvas Native Tools ({NATIVE_FOQZ_TOOLS.length})
+            </div>
+            <div className="grid grid-cols-1 gap-1">
+              {NATIVE_FOQZ_TOOLS.map((tool) => (
+                <div
+                  key={tool.name}
+                  className="px-2 py-1.5 rounded bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-[11px] shadow-2xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-semibold text-violet-600 dark:text-violet-400">
+                      foqz:{tool.name}
+                    </span>
+                    <span className="text-[10px] text-zinc-400 font-mono">built-in</span>
+                  </div>
+                  {tool.description && (
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-snug">
+                      {tool.description}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* External MCP Tools */}
+          <div className="space-y-1.5">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold">
+              External MCP Tools ({mcpTools.length})
+            </div>
+            {mcpTools.length === 0 ? (
+              <div className="px-2.5 py-2.5 rounded bg-white/60 dark:bg-zinc-900/60 border border-dashed border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-400 text-center">
+                No external MCP tools connected. Click &quot;Configure MCP&quot; to connect servers.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-1">
+                {mcpTools.map((tool) => (
+                  <div
+                    key={`${tool.serverName}_${tool.name}`}
+                    className="px-2 py-1.5 rounded bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-[11px] shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                        {tool.serverName}:{tool.name}
+                      </span>
+                      <span className="text-[10px] text-zinc-400 font-mono">mcp</span>
+                    </div>
+                    {tool.description && (
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-snug">
+                        {tool.description}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Context Card: Displays any selected shape(s) or board context */}
       <div className="p-3 border-b border-zinc-200 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/30 shrink-0">
@@ -701,29 +834,146 @@ export function CopilotDrawer({
           </div>
         )}
 
-        {/* Executed Tools List */}
+        {/* Executed Tools Collapsible Accordion */}
         {executedTools.length > 0 && (
           <div className="p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 space-y-1.5 font-sans">
             <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold px-0.5">
               <span>Executed Tools ({executedTools.length})</span>
+              <span>
+                {executedTools.reduce((acc, t) => acc + (t.durationMs || 0), 0)}ms total
+              </span>
             </div>
-            <div className="space-y-1">
-              {executedTools.map((t) => (
-                <div
-                  key={t.id}
-                  className="flex items-center justify-between px-2 py-1.5 rounded bg-white dark:bg-zinc-800/80 border border-zinc-200/60 dark:border-zinc-700/60 text-[11px] font-mono text-zinc-700 dark:text-zinc-300 shadow-2xs"
-                >
-                  <span className="flex items-center gap-1.5 truncate">
-                    <Wrench className="size-3 text-violet-500 shrink-0" />
-                    <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                      {t.serverName || "foqz"}:{t.toolName}
-                    </span>
-                  </span>
-                  <span className="text-[10px] text-zinc-400 shrink-0">
-                    {t.durationMs ? `${t.durationMs}ms` : "done"}
-                  </span>
-                </div>
-              ))}
+            <div className="space-y-1.5">
+              {executedTools.map((t) => {
+                const isExpanded = expandedToolIds.has(t.id);
+                const argsStr = JSON.stringify(t.args || {}, null, 2);
+                let resultText = "";
+                if (t.result?.content) {
+                  resultText = t.result.content
+                    .map((c) =>
+                      typeof c === "string" ? c : c.text || JSON.stringify(c, null, 2),
+                    )
+                    .join("\n");
+                } else if (t.result) {
+                  resultText = JSON.stringify(t.result, null, 2);
+                }
+
+                return (
+                  <div
+                    key={t.id}
+                    className="overflow-hidden rounded-md border border-zinc-200/80 dark:border-zinc-700/70 bg-white dark:bg-zinc-800/80 text-[11px] shadow-2xs"
+                  >
+                    {/* Header Row (Clickable Accordion Trigger) */}
+                    <button
+                      type="button"
+                      onClick={() => toggleToolExpanded(t.id)}
+                      className="w-full flex items-center justify-between px-2 py-1.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-700/40 transition-colors"
+                    >
+                      <span className="flex items-center gap-1.5 truncate">
+                        {isExpanded ? (
+                          <ChevronDown className="size-3 text-zinc-400 shrink-0" />
+                        ) : (
+                          <ChevronRight className="size-3 text-zinc-400 shrink-0" />
+                        )}
+                        {t.isError ? (
+                          <AlertTriangle className="size-3 text-rose-500 shrink-0" />
+                        ) : (
+                          <Wrench className="size-3 text-violet-500 shrink-0" />
+                        )}
+                        <span className="font-semibold font-mono text-zinc-900 dark:text-zinc-100 truncate">
+                          {t.serverName || "foqz"}:{t.toolName}
+                        </span>
+                      </span>
+
+                      <span className="flex items-center gap-1.5 shrink-0 pl-2">
+                        {t.isError ? (
+                          <span className="text-[10px] font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-1 rounded">
+                            failed
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-1 rounded">
+                            success
+                          </span>
+                        )}
+                        <span className="text-[10px] text-zinc-400 font-mono">
+                          {t.durationMs ? `${t.durationMs}ms` : "done"}
+                        </span>
+                      </span>
+                    </button>
+
+                    {/* Collapsible Content */}
+                    {isExpanded && (
+                      <div className="border-t border-zinc-200/60 dark:border-zinc-700/60 bg-zinc-50/50 dark:bg-zinc-900/50 p-2 space-y-2 text-[10px] font-mono">
+                        {/* Input Arguments */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-zinc-500">
+                            <span className="font-semibold uppercase tracking-wider">
+                              Input Arguments
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => copyPayload(`in_${t.id}`, argsStr)}
+                              className="inline-flex items-center gap-1 hover:text-zinc-800 dark:hover:text-zinc-200"
+                            >
+                              {copiedToolKey === `in_${t.id}` ? (
+                                <>
+                                  <Check className="size-2.5 text-emerald-500" />
+                                  <span>Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="size-2.5" />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          <pre className="p-1.5 rounded bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 overflow-x-auto max-h-36 text-zinc-800 dark:text-zinc-200 leading-tight">
+                            {argsStr}
+                          </pre>
+                        </div>
+
+                        {/* Output Result */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-zinc-500">
+                            <span className="font-semibold uppercase tracking-wider">
+                              Output Result
+                            </span>
+                            {resultText && (
+                              <button
+                                type="button"
+                                onClick={() => copyPayload(`out_${t.id}`, resultText)}
+                                className="inline-flex items-center gap-1 hover:text-zinc-800 dark:hover:text-zinc-200"
+                              >
+                                {copiedToolKey === `out_${t.id}` ? (
+                                  <>
+                                    <Check className="size-2.5 text-emerald-500" />
+                                    <span>Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="size-2.5" />
+                                    <span>Copy</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
+                          <pre
+                            className={`p-1.5 rounded border overflow-x-auto max-h-36 leading-tight whitespace-pre-wrap ${
+                              t.isError
+                                ? "bg-rose-50/50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300"
+                                : "bg-zinc-100 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200"
+                            }`}
+                          >
+                            {resultText || "(No output returned)"}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
