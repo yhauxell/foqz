@@ -41,7 +41,9 @@ export interface RunAgentLoopOptions {
   localToolExecutor?: (
     toolName: string,
     args: Record<string, any>,
+    serverName?: string,
   ) => Promise<McpToolCallResult>
+  conversationHistory?: OllamaChatMessage[]
 }
 
 export interface AgentLoopResult {
@@ -131,6 +133,14 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
       sys += `\n\nWhen tools are provided, call the relevant functions to inspect data or update the canvas. When you receive tool execution results, summarize them naturally for the user. Do not output raw tool invocation JSON objects in your final text response.`
     }
     messages.push({ role: 'system', content: sys })
+  }
+
+  if (options.conversationHistory && options.conversationHistory.length > 0) {
+    for (const msg of options.conversationHistory) {
+      if (msg.role !== 'system') {
+        messages.push(msg)
+      }
+    }
   }
 
   const userContent = options.canvasContext
