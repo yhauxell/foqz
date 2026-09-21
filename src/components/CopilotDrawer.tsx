@@ -23,7 +23,10 @@ import {
   AlertTriangle,
   Settings as SettingsIcon,
   RotateCcw,
+  Cpu,
+  RefreshCw,
 } from "lucide-react";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { type Editor, type TLShapeId, useValue } from "tldraw";
 import { useOllama, type OllamaChatMessage } from "@/lib/ollama";
 import { runAgentLoop, type AgentToolCallEvent } from "@/lib/mcpAgentLoop";
@@ -74,7 +77,9 @@ export function CopilotDrawer({
   selectedShapeId,
   onOpenSettings,
 }: CopilotDrawerProps) {
-  const { online, models, selectedModel, setSelectedModel } = useOllama();
+  const { online, models, modelDetails, selectedModel, setSelectedModel, refresh } =
+    useOllama();
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<CopilotChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -192,13 +197,6 @@ export function CopilotDrawer({
   const { selectedItems, selectedSummary, boardItems, boardSummary, primaryShape } =
     canvasCtx;
 
-  // Cycle available models
-  const cycleModel = useCallback(() => {
-    if (!models.length) return;
-    const idx = models.indexOf(selectedModel);
-    const next = models[(idx + 1) % models.length];
-    setSelectedModel(next);
-  }, [models, selectedModel, setSelectedModel]);
 
   // Stop streaming
   const handleStop = useCallback(() => {
@@ -485,30 +483,138 @@ export function CopilotDrawer({
             <span>{NATIVE_FOQZ_TOOLS.length + mcpTools.length}</span>
           </button>
 
-          {/* Model Pill */}
-          <button
-            type="button"
-            title={
-              online
-                ? `Ollama Model: ${selectedModel || "Auto"} (click to cycle)`
-                : "Ollama is offline (start localhost:11434)"
-            }
-            onClick={cycleModel}
-            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors ${
-              online
-                ? "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-950 dark:hover:text-white"
-                : "bg-zinc-100/60 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-500"
-            }`}
-          >
-            <span
-              className={`size-1.5 rounded-full ${
-                online ? "bg-emerald-500" : "bg-zinc-400 dark:bg-zinc-600"
-              }`}
-            />
-            <span className="truncate max-w-[100px]">
-              {selectedModel || "ollama"}
-            </span>
-          </button>
+          {/* Model Selector Dropdown */}
+          <Popover open={modelMenuOpen} onOpenChange={setModelMenuOpen}>
+            <PopoverTrigger
+              render={
+                <button
+                  type="button"
+                  title={
+                    online
+                      ? `Selected Model: ${selectedModel || "Auto"} (click to change)`
+                      : "Ollama is offline (start localhost:11434)"
+                  }
+                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors ${
+                    online
+                      ? "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-950 dark:hover:text-white"
+                      : "bg-zinc-100/60 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-500"
+                  }`}
+                />
+              }
+            >
+              <span
+                className={`size-1.5 rounded-full shrink-0 ${
+                  online ? "bg-emerald-500" : "bg-zinc-400 dark:bg-zinc-600"
+                }`}
+              />
+              <span className="truncate max-w-[85px]">
+                {selectedModel || (online ? "Select" : "offline")}
+              </span>
+              <ChevronDown className="size-3 text-zinc-400 shrink-0" />
+            </PopoverTrigger>
+
+            <PopoverContent
+              align="end"
+              sideOffset={6}
+              className="w-64 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-xl text-zinc-900 dark:text-zinc-100 z-50 font-sans"
+            >
+              {/* Dropdown Header */}
+              <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider border-b border-zinc-100 dark:border-zinc-800/80 pb-1.5 mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Cpu className="size-3 text-violet-500" />
+                  <span>Ollama Models</span>
+                </span>
+                <span className="font-mono">
+                  {online ? `${models.length} installed` : "offline"}
+                </span>
+              </div>
+
+              {/* Model Options List */}
+              <div className="flex flex-col gap-0.5 max-h-56 overflow-y-auto py-0.5">
+                {!online ? (
+                  <div className="p-3 text-center space-y-1 text-zinc-500 dark:text-zinc-400">
+                    <p className="text-xs font-medium text-rose-600 dark:text-rose-400">
+                      Ollama is unreachable
+                    </p>
+                    <p className="text-[10px] leading-tight">
+                      Ensure Ollama is running on port 11434 (<code className="font-mono">ollama serve</code>).
+                    </p>
+                  </div>
+                ) : models.length === 0 ? (
+                  <div className="p-3 text-center space-y-1 text-zinc-500 dark:text-zinc-400">
+                    <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      No models installed
+                    </p>
+                    <p className="text-[10px] leading-tight">
+                      Run <code className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded">ollama pull qwen2.5-coder:7b</code> in terminal.
+                    </p>
+                  </div>
+                ) : (
+                  models.map((modelName) => {
+                    const isSelected = modelName === selectedModel;
+                    const detail = modelDetails?.find((d) => d.name === modelName);
+                    const sizeLabel =
+                      detail?.parameterSize ||
+                      (detail?.size ? `${(detail.size / 1e9).toFixed(1)} GB` : null);
+
+                    return (
+                      <button
+                        key={modelName}
+                        type="button"
+                        onClick={() => {
+                          setSelectedModel(modelName);
+                          setModelMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors ${
+                          isSelected
+                            ? "bg-violet-50 dark:bg-violet-950/60 text-violet-900 dark:text-violet-100 font-medium"
+                            : "hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span
+                            className={`size-1.5 rounded-full shrink-0 ${
+                              isSelected
+                                ? "bg-violet-600 dark:bg-violet-400"
+                                : "bg-zinc-300 dark:bg-zinc-700"
+                            }`}
+                          />
+                          <span className="truncate font-mono text-[11px]">
+                            {modelName}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0 pl-2">
+                          {sizeLabel && (
+                            <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 px-1 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800">
+                              {sizeLabel}
+                            </span>
+                          )}
+                          {isSelected ? (
+                            <Check className="size-3.5 text-violet-600 dark:text-violet-400" />
+                          ) : (
+                            <div className="size-3.5" />
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Footer Refresh Action */}
+              <div className="border-t border-zinc-100 dark:border-zinc-800/80 pt-1 mt-1">
+                <button
+                  type="button"
+                  onClick={() => refresh()}
+                  className="w-full flex items-center justify-center gap-1.5 py-1 text-[10px] text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                >
+                  <RefreshCw className="size-2.5" />
+                  <span>Refresh installed models</span>
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
 
           {/* New Chat Button */}
           <button
