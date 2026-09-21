@@ -239,6 +239,114 @@ class McpClientManager {
     return aggregated
   }
 
+/**
+ * Normalizes tool arguments against schema definitions to handle common LLM alias discrepancies
+ * (e.g. `query` vs `q`, stringified numbers, missing repo syntax).
+ * @param {any} toolDef
+ * @param {any} rawArgs
+ */
+function normalizeToolArgs(toolDef, rawArgs) {
+  const args = { ...(rawArgs || {}) }
+  const schema = toolDef?.inputSchema || {}
+  const properties = schema.properties || {}
+  const required = schema.required || []
+
+  // Common LLM argument alias mappings
+  const aliasMap = {
+    q: ['query', 'search', 'term', 'keyword', 'text', 'prompt'],
+    query: ['q', 'search', 'term', 'keyword', 'text', 'prompt'],
+    repo: ['repository', 'repo_name', 'name'],
+    owner: ['user', 'username', 'org', 'organization'],
+    issue_number: ['issueNumber', 'issue', 'number', 'id'],
+    pull_number: ['pullNumber', 'pull', 'pr', 'number', 'id'],
+    path: ['file_path', 'filePath', 'file', 'filename'],
+    content: ['body', 'text', 'code'],
+    message: ['commit_message', 'commitMessage', 'msg'],
+    branch: ['ref', 'branch_name', 'branchName'],
+  }
+
+  for (const [propName, propDef] of Object.entries(properties)) {
+    if (args[propName] === undefined || args[propName] === null) {
+      const aliases = aliasMap[propName] || []
+      for (const alias of aliases) {
+        if (args[alias] !== undefined && args[alias] !== null) {
+          args[propName] = args[alias]
+          break
+        }
+      }
+    }
+
+    const val = args[propName]
+    if (val !== undefined && val !== null) {
+      if (propDef.type === 'number' || propDef.type === 'integer') {
+        if (typeof val === 'string') {
+          const parsed = Number(val)
+          if (!isNaN(parsed)) {
+            args[propName] = propDef.type === 'integer' ? Math.round(parsed) : parsed
+          }
+        }
+      } else if (propDef.type === 'string') {
+        if (typeof val !== 'string') {
+          args[propName] = String(val)
+        }
+      } else if (propDef.type === 'boolean') {
+        if (typeof val === 'string') {
+          args[propName] = val.toLowerCase() === 'true' || val === '1'
+        }
+      }
+    }
+  }
+
+  // GitHub MCP search tools require 'q' (e.g. search_issues, search_code, search_users)
+  const isQRequiredTool =
+    toolDef?.name === 'search_issues' ||
+    toolDef?.name === 'search_code' ||
+    toolDef?.name === 'search_users' ||
+    required.includes('q')
+
+  if (isQRequiredTool) {
+    if (!args.q) {
+      const qParts = []
+      const textPart =
+        args.query || args.search || args.term || args.keyword || args.text || args.prompt
+      if (textPart) qParts.push(textPart)
+
+      if (args.owner && args.repo) {
+        qParts.push(`repo:${args.owner}/${args.repo}`)
+      } else if (args.repo) {
+        qParts.push(`repo:${args.repo}`)
+      }
+
+      if (toolDef?.name === 'search_issues') {
+        if (args.state && (args.state === 'open' || args.state === 'closed')) {
+          qParts.push(`is:${args.state}`)
+        }
+        if (qParts.length === 0) {
+          qParts.push('is:issue is:open')
+        }
+      }
+
+      args.q = qParts.join(' ').trim() || '*'
+    } else {
+      // If q exists, but owner and repo were passed separately and not in q
+      if (args.owner && args.repo && !args.q.includes('repo:')) {
+        args.q = `${args.q} repo:${args.owner}/${args.repo}`
+      } else if (args.repo && !args.q.includes('repo:')) {
+        args.q = `${args.q} repo:${args.repo}`
+      }
+    }
+  }
+
+  // search_repositories requires 'query'
+  if (toolDef?.name === 'search_repositories' || (required.includes('query') && !properties.q)) {
+    if (!args.query) {
+      args.query = args.q || args.search || args.name || args.repo || '*'
+    }
+  }
+
+  return args
+}
+
   /**
    * Calls a tool on a connected server.
    * @param {string} serverName
@@ -261,10 +369,13 @@ class McpClientManager {
       }
     }
 
+    const toolDef = entry.tools?.find((t) => t.name === toolName)
+    const normalizedArgs = normalizeToolArgs(toolDef, args)
+
     try {
       const res = await entry.client.callTool({
         name: toolName,
-        arguments: args || {},
+        arguments: normalizedArgs || {},
       })
       return {
         isError: Boolean(res.isError),

@@ -103,6 +103,114 @@ export function formatMcpToolsForOllama(tools: McpTool[]): OllamaToolDefinition[
 }
 
 /**
+ * Normalizes tool arguments against schema definitions to handle common LLM alias discrepancies
+ * (e.g. `query` vs `q`, stringified numbers, missing repo syntax).
+ */
+export function normalizeToolArgs(
+  toolDef?: McpTool,
+  rawArgs?: Record<string, any>,
+): Record<string, any> {
+  const args = { ...(rawArgs || {}) }
+  const schema = toolDef?.inputSchema || {}
+  const properties = schema.properties || {}
+  const required = schema.required || []
+
+  const aliasMap: Record<string, string[]> = {
+    q: ['query', 'search', 'term', 'keyword', 'text', 'prompt'],
+    query: ['q', 'search', 'term', 'keyword', 'text', 'prompt'],
+    repo: ['repository', 'repo_name', 'name'],
+    owner: ['user', 'username', 'org', 'organization'],
+    issue_number: ['issueNumber', 'issue', 'number', 'id'],
+    pull_number: ['pullNumber', 'pull', 'pr', 'number', 'id'],
+    path: ['file_path', 'filePath', 'file', 'filename'],
+    content: ['body', 'text', 'code'],
+    message: ['commit_message', 'commitMessage', 'msg'],
+    branch: ['ref', 'branch_name', 'branchName'],
+  }
+
+  for (const [propName, propDef] of Object.entries(properties)) {
+    if (args[propName] === undefined || args[propName] === null) {
+      const aliases = aliasMap[propName] || []
+      for (const alias of aliases) {
+        if (args[alias] !== undefined && args[alias] !== null) {
+          args[propName] = args[alias]
+          break
+        }
+      }
+    }
+
+    const val = args[propName]
+    if (val !== undefined && val !== null) {
+      const pType = (propDef as any).type
+      if (pType === 'number' || pType === 'integer') {
+        if (typeof val === 'string') {
+          const parsed = Number(val)
+          if (!isNaN(parsed)) {
+            args[propName] = pType === 'integer' ? Math.round(parsed) : parsed
+          }
+        }
+      } else if (pType === 'string') {
+        if (typeof val !== 'string') {
+          args[propName] = String(val)
+        }
+      } else if (pType === 'boolean') {
+        if (typeof val === 'string') {
+          args[propName] = val.toLowerCase() === 'true' || val === '1'
+        }
+      }
+    }
+  }
+
+  // GitHub MCP search tools require 'q' (e.g. search_issues, search_code, search_users)
+  const isQRequiredTool =
+    toolDef?.name === 'search_issues' ||
+    toolDef?.name === 'search_code' ||
+    toolDef?.name === 'search_users' ||
+    required.includes('q')
+
+  if (isQRequiredTool) {
+    if (!args.q) {
+      const qParts: string[] = []
+      const textPart =
+        args.query || args.search || args.term || args.keyword || args.text || args.prompt
+      if (textPart) qParts.push(textPart)
+
+      if (args.owner && args.repo) {
+        qParts.push(`repo:${args.owner}/${args.repo}`)
+      } else if (args.repo) {
+        qParts.push(`repo:${args.repo}`)
+      }
+
+      if (toolDef?.name === 'search_issues') {
+        if (args.state && (args.state === 'open' || args.state === 'closed')) {
+          qParts.push(`is:${args.state}`)
+        }
+        if (qParts.length === 0) {
+          qParts.push('is:issue is:open')
+        }
+      }
+
+      args.q = qParts.join(' ').trim() || '*'
+    } else {
+      if (args.owner && args.repo && !args.q.includes('repo:')) {
+        args.q = `${args.q} repo:${args.owner}/${args.repo}`
+      } else if (args.repo && !args.q.includes('repo:')) {
+        args.q = `${args.q} repo:${args.repo}`
+      }
+    }
+  }
+
+  // search_repositories requires 'query'
+  if (toolDef?.name === 'search_repositories' || (required.includes('query') && !properties.q)) {
+    if (!args.query) {
+      args.query = args.q || args.search || args.name || args.repo || '*'
+    }
+  }
+
+  return args
+}
+
+/**
  * Determines if an error returned by Ollama is caused by lack of tools support.
  */
 function isToolUnsupportedError(err: Error): boolean {
@@ -130,7 +238,12 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
   if (options.systemPrompt) {
     let sys = options.systemPrompt
     if (ollamaTools.length > 0) {
-      sys += `\n\nWhen tools are provided, call the relevant functions to inspect data or update the canvas. When you receive tool execution results, summarize them naturally for the user. Do not output raw tool invocation JSON objects in your final text response.`
+      sys += `\n\nWhen tools are provided, call the relevant functions to inspect data or update the canvas.
+Tool argument guidelines:
+- For search tools (e.g. search_issues, search_code, search_users), the search query parameter MUST be named "q" (e.g. {"q": "is:issue repo:owner/repo"}).
+- For repository inspection (e.g. list_issues, get_issue), provide "owner" and "repo".
+- Pass issue_number and pull_number as integer numbers (e.g. 11, not "11").
+When you receive tool execution results, summarize them naturally for the user in clear markdown. Do not output raw tool invocation JSON objects in your final text response.`
     }
     messages.push({ role: 'system', content: sys })
   }
@@ -242,12 +355,23 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
 
       const rawName = tc.function.name
       const { serverName, toolName } = parseToolName(rawName)
+      const matchingTool = toolsList.find((t) => {
+        if (t.serverName && serverName) {
+          return (
+            (t.serverName === serverName && t.name === toolName) ||
+            encodeToolName(t.serverName, t.name) === rawName
+          )
+        }
+        return t.name === toolName
+      })
+      const normalizedArgs = normalizeToolArgs(matchingTool, tc.function.arguments || {})
+
       const callEvent: AgentToolCallEvent = {
         id: tc.id || `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         serverName,
         toolName,
         rawName,
-        args: tc.function.arguments || {},
+        args: normalizedArgs,
       }
 
       options.onToolCallStart?.(callEvent)
@@ -309,10 +433,14 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
       options.onToolCallEnd?.(callEvent)
 
       // Format result content for the follow-up message
-      const formattedContent =
+      let formattedContent =
         toolResult.content
           ?.map((c) => (typeof c.text === 'string' ? c.text : JSON.stringify(c)))
           .join('\n') || JSON.stringify(toolResult)
+
+      if (toolResult.isError) {
+        formattedContent = `[Tool Execution Failed]: ${formattedContent}\nPlease explain this error to the user in conversational markdown and suggest how to resolve it.`
+      }
 
       messages.push({
         role: 'tool',
