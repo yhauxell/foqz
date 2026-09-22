@@ -96,7 +96,7 @@ function FocusCanvasAppInner() {
   }>({ totalTasks: 0, doneTasks: 0, projects: [] });
 
   const { settings, update } = useFocusAppSettings();
-  const { online, selectedModel, models, setSelectedModel } = useOllama();
+  const { online } = useOllama();
 
   const isDark =
     settings.colorScheme === "dark" ||
@@ -535,32 +535,24 @@ function FocusCanvasAppInner() {
             <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘N</kbd>
           </button>
 
-          {/* Ollama Model / Status Pill */}
+          {/* Toggle AI Copilot */}
           <button
             type="button"
+            title="Toggle AI Copilot (⌘J)"
+            onClick={() => setCopilotOpen((v) => !v)}
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-              online
-                ? "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 hover:text-zinc-950 dark:hover:text-white"
-                : "bg-zinc-100/60 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-500"
+              copilotOpen
+                ? "bg-violet-100 dark:bg-violet-950/70 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300"
+                : "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 hover:text-zinc-950 dark:hover:text-white"
             }`}
-            title={
-              online
-                ? `Ollama online • Model: ${selectedModel || "Auto"} (click to cycle)`
-                : "Ollama offline • Start Ollama at localhost:11434"
-            }
-            onClick={() => {
-              if (!models.length) return;
-              const idx = models.indexOf(selectedModel);
-              const next = models[(idx + 1) % models.length];
-              setSelectedModel(next);
-            }}
           >
+            <Sparkles className="size-3.5 text-violet-500" />
+            <span>Copilot</span>
             <span
               className={`size-1.5 rounded-full ${online ? "bg-emerald-500" : "bg-zinc-400 dark:bg-zinc-600"}`}
+              title={online ? "Ollama is online" : "Ollama is offline"}
             />
-            <span className="truncate max-w-[100px]">
-              {online ? selectedModel || "ollama" : "ollama: off"}
-            </span>
+            <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘J</kbd>
           </button>
 
           {/* 1-Click Theme Toggle Button (Light / Dark) */}
@@ -587,18 +579,6 @@ function FocusCanvasAppInner() {
           >
             <Settings className="size-4" />
           </Button>
-
-          {/* Copilot Side Trigger (matches left toolbar PanelLeft trigger) */}
-          <button
-            type="button"
-            title="Toggle AI Copilot (⌘J)"
-            onClick={() => setCopilotOpen((v) => !v)}
-            className={`p-1.5 rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors ml-0.5 ${
-              copilotOpen ? "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-900 dark:text-white" : ""
-            }`}
-          >
-            <PanelRight className="size-4" />
-          </button>
 
           {/* Status */}
           <div className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono pl-1">{status}</div>
