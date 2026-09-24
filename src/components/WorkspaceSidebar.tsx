@@ -303,7 +303,7 @@ export function WorkspaceSidebar({
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                     <button
                       type="button"
-                      title="Open in Copilot"
+                      title="Open in Assistant"
                       onClick={(e) => {
                         e.stopPropagation();
                         onOpenCopilot(t.id);

@@ -553,10 +553,10 @@ function ProjectFrameBody({ shape }: { shape: TLProjectFrameShape }) {
               {doneTasks}/{totalTasks} Done
             </span>
 
-            {/* Copilot Plan Button */}
+            {/* Assistant Plan Button */}
             <button
               type="button"
-              title="Break down goal with Copilot"
+              title="Break down goal with Assistant"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={onOpenCopilotForProject}
               className="size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"

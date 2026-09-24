@@ -824,7 +824,7 @@ export function FocusSettings({
                 <div className="p-3.5 rounded-xl border border-border bg-card/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
                   <div>
                     <div className="text-xs font-semibold text-foreground">Active AI Engine</div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">Primary model provider used by the Copilot chat and canvas tools.</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">Primary model provider used by the Assistant chat and canvas tools.</div>
                   </div>
                   <select
                     value={settings.activeAiProvider || "ollama"}

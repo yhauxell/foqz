@@ -473,7 +473,7 @@ export function ContextualSelectionHud() {
     : Math.round(Math.min(viewportBounds.h - BOTTOM_RESERVE, relMaxY + GAP));
 
   // Stable horizontal clamping so the pill NEVER shifts horizontally when expanding or collapsing
-  const maxContentHalfWidth = isSingleTask ? 195 : isSingleProjectFrame ? 180 : 135;
+  const maxContentHalfWidth = isSingleTask ? 210 : isSingleProjectFrame ? 200 : 210;
   const minLeft = maxContentHalfWidth + 16;
   const maxLeft = Math.max(minLeft, viewportBounds.w - maxContentHalfWidth - 16);
   const leftPos = Math.round(Math.max(minLeft, Math.min(maxLeft, relMidX)));
@@ -678,10 +678,10 @@ export function ContextualSelectionHud() {
           className={`flex items-center transition-[max-width,opacity] duration-[400ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
             isExpanded
               ? isSingleTask
-                ? "max-w-[390px] opacity-100 overflow-visible"
+                ? "max-w-[420px] opacity-100 overflow-visible"
                 : isSingleProjectFrame
-                ? "max-w-[360px] opacity-100 overflow-visible"
-                : "max-w-[270px] opacity-100 overflow-visible"
+                ? "max-w-[390px] opacity-100 overflow-visible"
+                : "max-w-[420px] opacity-100 overflow-visible"
               : "max-w-0 opacity-0 overflow-hidden pointer-events-none"
           }`}
         >
@@ -799,10 +799,10 @@ export function ContextualSelectionHud() {
                 {singleTask.props.status}
               </button>
 
-              {/* Copilot Action */}
+              {/* Assistant Action */}
               <button
                 type="button"
-                title="Focus in Copilot (⌘J)"
+                title="Focus in Assistant (⌘J)"
                 onClick={handleOpenCopilot}
                 className="p-1 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-colors cursor-pointer"
               >

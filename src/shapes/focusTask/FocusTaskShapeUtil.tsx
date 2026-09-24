@@ -743,7 +743,7 @@ const FocusTaskBody = React.memo(function FocusTaskBody({
             </button>
             <button
               type="button"
-              title="Copilot assistance"
+              title="Assistant assistance"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={onOpenCopilot}
               className={`p-1 rounded transition-colors ${

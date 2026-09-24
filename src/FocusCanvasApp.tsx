@@ -353,27 +353,6 @@ function FocusCanvasAppInner() {
           migratePageNamesToFocusBoard(ed);
           refreshCanvasStats(ed);
 
-          // Double-click on canvas spawns a task card at cursor
-          ed.on("event", (info) => {
-            if (info.name === "double_click" && info.target === "canvas") {
-              const pagePoint = ed.inputs.currentPagePoint;
-              const newId = createShapeId();
-              ed.createShape({
-                id: newId,
-                type: "focus-task",
-                x: pagePoint.x - 130,
-                y: pagePoint.y - 42,
-                props: {
-                  w: 260,
-                  h: 84,
-                  title: "",
-                  status: "open",
-                },
-              });
-              ed.select(newId);
-            }
-          });
-
           // Track selection changes
           ed.on("change", () => {
             const selected = ed.getSelectedShapeIds();
@@ -560,19 +539,7 @@ function FocusCanvasAppInner() {
             Foqz
           </div>
 
-          {/* Global Daily Clearance Progress Pill */}
-          <div
-            className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-700 dark:text-zinc-300"
-            title="Daily clearance progress across all projects"
-          >
-            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>
-              {stats.doneTasks}/{stats.totalTasks} Done Today
-            </span>
-          </div>
-
           {/* Board / Page Switcher & Canvas Actions (replaces floating Ideas bar) */}
-          <div className="h-4 w-px bg-zinc-200 dark:border-zinc-800 mx-0.5" />
           <TopbarBoardMenu editor={editor} />
 
           {/* Quick-Jump Project Dropdown */}
@@ -598,7 +565,7 @@ function FocusCanvasAppInner() {
           ) : null}
         </div>
 
-        {/* Right section: Quick Create + Copilot + Ollama + Theme + Settings */}
+        {/* Right section: Quick Create + Assistant + Search + Settings */}
         <div className="flex items-center gap-1.5">
           {/* Quick Add Project Frame */}
           <button
@@ -615,7 +582,7 @@ function FocusCanvasAppInner() {
           {/* Quick Add Task */}
           <button
             type="button"
-            title="Add Task Card (⌘N or double-click canvas)"
+            title="Add Task Card (⌘N)"
             onClick={handleCreateTask}
             className="h-7 px-2.5 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
           >
@@ -636,10 +603,10 @@ function FocusCanvasAppInner() {
             <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘K</kbd>
           </button>
 
-          {/* Toggle AI Copilot */}
+          {/* Toggle AI Assistant */}
           <button
             type="button"
-            title="Toggle AI Copilot (⌘J)"
+            title="Toggle AI Assistant (⌘J)"
             onClick={() => setCopilotOpen((v) => !v)}
             className={`h-7 px-2.5 rounded-full text-xs font-medium border transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer ${
               copilotOpen
@@ -648,23 +615,12 @@ function FocusCanvasAppInner() {
             }`}
           >
             <Sparkles className="size-3 text-blue-500" />
-            <span>Copilot</span>
+            <span>Assistant</span>
             <span
               className={`size-1.5 rounded-full ${online ? "bg-emerald-500" : "bg-zinc-400 dark:bg-zinc-600"}`}
               title={online ? "Ollama is online" : "Ollama is offline"}
             />
             <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘J</kbd>
-          </button>
-
-          {/* 1-Click Theme Toggle Button (Light / Dark) */}
-          <button
-            type="button"
-            className="size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            onClick={toggleTheme}
-          >
-            {isDark ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
           </button>
 
           {/* Settings Modal */}

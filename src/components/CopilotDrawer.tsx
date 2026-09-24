@@ -650,7 +650,7 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
         <div className="flex items-center gap-2">
           <Sparkles className="size-4 text-blue-500" />
           <span className="text-xs font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
-            Copilot
+            Assistant
           </span>
         </div>
 
@@ -983,7 +983,7 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
           <button
             type="button"
             onClick={onClose}
-            title="Collapse Copilot (⌘J)"
+            title="Collapse Assistant (⌘J)"
             className="size-7 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-white/90 dark:hover:bg-zinc-800/80 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
           >
             <PanelRightClose className="size-3.5" />
@@ -1436,8 +1436,8 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
               <>
                 <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-normal">
                   {boardItems.length > 0
-                    ? `Copilot has read ${boardItems.length} items on this board (tasks, notes, text). Click any shape on the canvas to focus on it.`
-                    : "No shapes with text found on this board. Create a task, note, or prompt Copilot to generate a plan."}
+                    ? `Assistant has read ${boardItems.length} items on this board (tasks, notes, text). Click any shape on the canvas to focus on it.`
+                    : "No shapes with text found on this board. Create a task, note, or prompt Assistant to generate a plan."}
                 </p>
 
                 {boardItems.length > 0 && (
@@ -1569,7 +1569,7 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
                   <div className="flex items-center gap-1.5">
                     <Sparkles className="size-3.5 text-blue-500" />
                     <span className="font-semibold text-zinc-700 dark:text-zinc-300">
-                      Copilot
+                      Assistant
                     </span>
                   </div>
 
@@ -1838,7 +1838,7 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
                 ? `Ask about "${singleShape.label.slice(0, 24)}${singleShape.label.length > 24 ? "..." : ""}" (Enter to send)`
                 : selectedItems.length > 1
                 ? `Ask about ${selectedItems.length} selected shapes... (Enter to send)`
-                : "Ask Copilot or run MCP tools... (Enter to send, Shift+Enter for newline)"
+                : "Ask Assistant or run MCP tools... (Enter to send, Shift+Enter for newline)"
             }
             rows={2}
             className="w-full bg-transparent border-0 outline-none resize-none text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 leading-relaxed font-sans max-h-32"

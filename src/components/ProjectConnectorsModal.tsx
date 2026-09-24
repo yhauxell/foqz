@@ -739,7 +739,7 @@ export function ProjectConnectorsModal({
                 <Sparkles className="size-3.5 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
                 <span>
                   <strong>Pervasive AI Grounding:</strong> This context is automatically injected into
-                  Copilot, Element Inline Chat, and Triage whenever you interact with this project or
+                  Assistant, Element Inline Chat, and Triage whenever you interact with this project or
                   any tasks inside its frame.
                 </span>
               </div>
