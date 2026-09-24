@@ -540,7 +540,7 @@ export function FocusEditorUi({ dockHost }: FocusEditorUiProps) {
               className="py-3 rounded-xl flex items-center justify-between"
             >
               <div className="flex items-center gap-2">
-                <Sparkles className="size-4 text-violet-500" />
+                <Sparkles className="size-4 text-blue-500" />
                 <span>Toggle AI Copilot</span>
               </div>
               <kbd className="font-mono text-[10px] opacity-60">⌘J</kbd>

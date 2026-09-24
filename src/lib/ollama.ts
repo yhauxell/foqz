@@ -51,12 +51,22 @@ export interface StreamOllamaChatOptions {
   signal?: AbortSignal
 }
 
-const OLLAMA_BASE_URL = 'http://127.0.0.1:11434'
+export const OLLAMA_BASE_URL = 'http://127.0.0.1:11434'
+
+export function getEffectiveOllamaBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('foqz_ollama_base_url')
+      if (stored && stored.trim()) return stored.trim()
+    } catch {}
+  }
+  return OLLAMA_BASE_URL
+}
 
 /**
  * Check if local Ollama daemon is reachable and return available models and capabilities.
  */
-export async function getOllamaStatus(baseUrl: string = OLLAMA_BASE_URL): Promise<{
+export async function getOllamaStatus(baseUrl: string = getEffectiveOllamaBaseUrl()): Promise<{
   online: boolean
   models: string[]
   modelDetails?: OllamaModelInfo[]
@@ -244,25 +254,61 @@ export function parseToolCallsFromContent(
  * Supports both object options and legacy positional callback signatures.
  */
 export async function streamOllamaChat(
-  opts: StreamOllamaChatOptions,
-  legacyOnChunk?: (chunk: string) => void,
-  legacySignal?: AbortSignal,
+  optsOrModel: StreamOllamaChatOptions | string,
+  legacyMessagesOrChunk?: OllamaChatMessage[] | ((chunk: string) => void),
+  legacyOnChunkOrSignal?: ((chunk: string) => void) | AbortSignal,
+  legacySignalArg?: AbortSignal,
 ): Promise<StreamOllamaChatResult> {
-  const baseUrl = opts.baseUrl || OLLAMA_BASE_URL
-  const model = opts.model
-  const onChunk = opts.onChunk || legacyOnChunk || (() => {})
-  const onDone = opts.onDone
-  const onToolCalls = opts.onToolCalls
-  const onError = opts.onError
-  const signal = opts.signal || legacySignal
+  let baseUrl = OLLAMA_BASE_URL
+  let model = ''
+  let onChunk: (chunk: string) => void = () => {}
+  let onDone: ((fullText: string, toolCalls: OllamaToolCall[]) => void) | undefined
+  let onToolCalls: ((calls: OllamaToolCall[]) => void) | undefined
+  let onError: ((err: Error) => void) | undefined
+  let signal: AbortSignal | undefined
+  let messages: OllamaChatMessage[] = []
+  let tools: OllamaToolDefinition[] | undefined
 
-  // Build messages array
-  const messages: OllamaChatMessage[] = opts.messages ? [...opts.messages] : []
-  if (messages.length === 0 && opts.prompt) {
-    if (opts.system) {
-      messages.push({ role: 'system', content: opts.system })
+  if (typeof optsOrModel === 'string') {
+    // Positional signature: streamOllamaChat(model, messages, onChunk, signal)
+    model = optsOrModel
+    if (Array.isArray(legacyMessagesOrChunk)) {
+      messages = [...legacyMessagesOrChunk]
+      if (typeof legacyOnChunkOrSignal === 'function') {
+        onChunk = legacyOnChunkOrSignal
+        signal = legacySignalArg instanceof AbortSignal ? legacySignalArg : undefined
+      } else if (legacyOnChunkOrSignal instanceof AbortSignal) {
+        signal = legacyOnChunkOrSignal
+      }
+    } else if (typeof legacyMessagesOrChunk === 'function') {
+      onChunk = legacyMessagesOrChunk
+      if (legacyOnChunkOrSignal instanceof AbortSignal) {
+        signal = legacyOnChunkOrSignal
+      }
     }
-    messages.push({ role: 'user', content: opts.prompt })
+  } else {
+    // Object signature: streamOllamaChat({ model, messages, ... })
+    const opts = optsOrModel
+    baseUrl = opts.baseUrl || getEffectiveOllamaBaseUrl()
+    model = opts.model
+    messages = opts.messages ? [...opts.messages] : []
+    if (messages.length === 0 && opts.prompt) {
+      if (opts.system) {
+        messages.push({ role: 'system', content: opts.system })
+      }
+      messages.push({ role: 'user', content: opts.prompt })
+    }
+    tools = opts.tools
+    onChunk = opts.onChunk || (typeof legacyMessagesOrChunk === 'function' ? legacyMessagesOrChunk : () => {})
+    onDone = opts.onDone
+    onToolCalls = opts.onToolCalls
+    onError = opts.onError
+    signal =
+      opts.signal instanceof AbortSignal
+        ? opts.signal
+        : legacyOnChunkOrSignal instanceof AbortSignal
+        ? legacyOnChunkOrSignal
+        : undefined
   }
 
   const payload: Record<string, any> = {
@@ -271,20 +317,24 @@ export async function streamOllamaChat(
     stream: true,
   }
 
-  if (opts.tools && opts.tools.length > 0) {
-    payload.tools = opts.tools
+  if (tools && tools.length > 0) {
+    payload.tools = tools
   }
 
   let accumulated = ''
   const toolCalls: OllamaToolCall[] = []
 
   try {
-    const res = await fetch(`${baseUrl}/api/chat`, {
+    const fetchInit: RequestInit = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      signal,
-    })
+    }
+    if (signal instanceof AbortSignal) {
+      fetchInit.signal = signal
+    }
+
+    const res = await fetch(`${baseUrl}/api/chat`, fetchInit)
 
     if (!res.ok) {
       const errText = await res.text().catch(() => res.statusText)

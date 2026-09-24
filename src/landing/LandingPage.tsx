@@ -14,7 +14,7 @@ export function LandingPage() {
   return (
     <div className="min-h-dvh bg-[#070709] text-zinc-100">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-1/4 top-0 h-[520px] w-[720px] rounded-full bg-violet-500/15 blur-[120px]" />
+        <div className="absolute -left-1/4 top-0 h-[520px] w-[720px] rounded-full bg-blue-500/15 blur-[120px]" />
         <div className="absolute -right-1/4 bottom-0 h-[480px] w-[640px] rounded-full bg-cyan-500/10 blur-[110px]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgb(255_255_255/6%),transparent_55%)]" />
       </div>
@@ -236,7 +236,7 @@ function PlatformCard(props: {
         {!primary && !disabled && fallbackUrl ? (
           <a
             href={fallbackUrl}
-            className="text-center text-xs font-medium text-violet-300/90 underline-offset-2 hover:underline"
+            className="text-center text-xs font-medium text-blue-400 underline-offset-2 hover:underline"
             target="_blank"
             rel="noreferrer"
           >

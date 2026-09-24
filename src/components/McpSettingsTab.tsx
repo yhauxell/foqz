@@ -442,7 +442,7 @@ export function McpSettingsTab() {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-foreground">Config File</span>
-            <span className="rounded bg-violet-500/10 px-1.5 py-0.5 font-mono text-[10px] text-violet-600 dark:text-violet-400">
+            <span className="rounded bg-blue-500/10 px-1.5 py-0.5 font-mono text-[10px] text-blue-600 dark:text-blue-400">
               foqz-mcp.json
             </span>
           </div>
@@ -506,7 +506,7 @@ export function McpSettingsTab() {
 
       {/* Add / Edit Form */}
       {isAdding && (
-        <div className="flex flex-col gap-4 rounded-xl border border-violet-500/40 bg-violet-500/5 p-4 shadow-sm">
+        <div className="flex flex-col gap-4 rounded-xl border border-blue-500/40 bg-blue-500/5 p-4 shadow-sm">
           <div className="flex items-center justify-between border-b border-border/60 pb-2">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-foreground">
               {editingServerName ? `Edit Server: ${editingServerName}` : "Add New MCP Server"}
@@ -537,7 +537,7 @@ export function McpSettingsTab() {
                     key={tpl.name}
                     type="button"
                     onClick={() => applyTemplate(tpl)}
-                    className="flex flex-col items-start rounded-lg border border-border/80 bg-background/80 p-2 text-left transition hover:border-violet-400 hover:bg-violet-50/50 dark:hover:bg-violet-950/30"
+                    className="flex flex-col items-start rounded-lg border border-border/80 bg-background/80 p-2 text-left transition hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/30"
                   >
                     <span className="text-xs font-semibold text-foreground">
                       {tpl.label}

@@ -1,17 +1,36 @@
 import type { Editor, TLShape } from 'tldraw'
 import type { McpTool, McpToolCallResult } from './mcpTypes'
 import {
+  findContainingProjectFrame,
   spawnShapesOnCanvas,
   spawnWorkflowForProject,
   type SpawnableShape,
 } from './canvasSpawner'
-import { getCanvasContext } from './canvasContext'
+import { getCanvasContext, extractTextFromShape, getProjectFrameContents } from './canvasContext'
+import { prioritizeDailyFocusSlot, auditPortfolioProjects } from './jev'
 import type { TLProjectFrameShape } from '@/shapes/projectFrame/ProjectFrameShapeUtil'
+import type { TLFocusTaskShape } from '@/shapes/focusTask/FocusTaskShapeUtil'
 
 /**
  * Built-in native tools exposed by the Foqz spatial canvas.
  */
 export const NATIVE_FOQZ_TOOLS: McpTool[] = [
+  {
+    serverName: 'foqz',
+    name: 'jev_audit_portfolio',
+    description:
+      'Audit and prioritize all project frames across the entire canvas using TypeSafe Jev System One intelligence to determine which project and tasks make the most sense to push for today.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dailyGoal: {
+          type: 'string',
+          description:
+            'Optional specific daily objective or constraint (e.g. "Prepare release demo", "Fix critical bugs")',
+        },
+      },
+    },
+  },
   {
     serverName: 'foqz',
     name: 'spawn_tasks',
@@ -108,6 +127,35 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
       },
     },
   },
+  {
+    serverName: 'foqz',
+    name: 'jev_triage_items',
+    description:
+      'Use TypeSafe Jev System One to triage, score, and prioritize candidate issues, tasks, or features against the active canvas context, strategic goals, actionability, and risk/blast radius.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          description: 'Candidate tasks or issues to triage and prioritize',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: 'Title or summary of the issue/task' },
+              description: { type: 'string', description: 'Details, body, or acceptance criteria' },
+              id: { type: 'string', description: 'Issue number, ID, or reference' },
+            },
+            required: ['title'],
+          },
+        },
+        criteria: {
+          type: 'string',
+          description: 'Optional triage goal or focus criteria (defaults to current canvas context)',
+        },
+      },
+      required: ['items'],
+    },
+  },
 ]
 
 /**
@@ -169,10 +217,11 @@ export function createCanvasToolExecutor(
         }))
 
         let count = 0
-        if (primaryShape && primaryShape.type === 'project-frame') {
+        const targetProject = findContainingProjectFrame(editor, primaryShape)
+        if (targetProject) {
           count = spawnWorkflowForProject(
             editor,
-            primaryShape as TLProjectFrameShape,
+            targetProject,
             spawnActions,
           )
         } else {
@@ -193,7 +242,10 @@ export function createCanvasToolExecutor(
       case 'create_timer': {
         const minutes = typeof args.minutes === 'number' ? args.minutes : 25
         const spawnActions: SpawnableShape[] = [{ type: 'timer', minutes }]
-        const count = spawnShapesOnCanvas(editor, primaryShape, spawnActions)
+        const targetProject = findContainingProjectFrame(editor, primaryShape)
+        const count = targetProject
+          ? spawnWorkflowForProject(editor, targetProject, spawnActions)
+          : spawnShapesOnCanvas(editor, primaryShape, spawnActions)
         return {
           isError: false,
           content: [
@@ -209,7 +261,10 @@ export function createCanvasToolExecutor(
         const text = String(args.text || '')
         const color = args.color || 'yellow'
         const spawnActions: SpawnableShape[] = [{ type: 'note', text, color }]
-        const count = spawnShapesOnCanvas(editor, primaryShape, spawnActions)
+        const targetProject = findContainingProjectFrame(editor, primaryShape)
+        const count = targetProject
+          ? spawnWorkflowForProject(editor, targetProject, spawnActions)
+          : spawnShapesOnCanvas(editor, primaryShape, spawnActions)
         return {
           isError: false,
           content: [
@@ -230,6 +285,152 @@ export function createCanvasToolExecutor(
         return {
           isError: false,
           content: [{ type: 'text', text: summary }],
+        }
+      }
+
+      case 'jev_triage_items': {
+        const rawItems = args.items || []
+        const candidateItems = Array.isArray(rawItems)
+          ? rawItems.map((item: any, i: number) => ({
+              id: item.id ? String(item.id) : `item_${i + 1}`,
+              title: String(item.title || item.name || 'Untitled item'),
+              notes: item.description || item.body || item.notes || '',
+            }))
+          : []
+
+        if (candidateItems.length === 0) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'No items provided to triage.' }],
+          }
+        }
+
+        const ctx = getCanvasContext(editor)
+        const currentGoal =
+          args.criteria ||
+          ctx.activeTask?.title ||
+          (primaryShape ? extractTextFromShape(primaryShape) : '') ||
+          ctx.boardSummary ||
+          'Execute core product milestones with minimal blast radius'
+
+        try {
+          const result = await prioritizeDailyFocusSlot(currentGoal, candidateItems)
+          const formatted = result.rankings
+            .map((r, rankIdx) => {
+              const priorityNumber = rankIdx === 0 ? 1 : rankIdx === 1 ? 2 : 3
+              return `• **Priority P${priorityNumber}** (#${rankIdx + 1}): **${r.title}**\n  - Strategic Alignment: ${r.alignmentScore}/2\n  - Blast Radius: \`${r.blastRadius}\`\n  - Actionable: ${r.isActionable ? 'Yes' : 'Ambiguous'}`
+            })
+            .join('\n\n')
+
+          return {
+            isError: false,
+            content: [
+              {
+                type: 'text',
+                text: `**Triage & Prioritization** (Evaluated against canvas goal: "${currentGoal}"):\n\n${formatted}\n\nTop priority to focus next: **${result.rankings[0]?.title}**`,
+              },
+            ],
+          }
+        } catch (jevErr: any) {
+          // Heuristic ranking fallback if TypeSafe key is offline or unconfigured
+          const fallback = candidateItems
+            .map((item, i) => {
+              const priorityNumber = i === 0 ? 1 : i === 1 ? 2 : 3
+              return `• **Priority P${priorityNumber}** (#${i + 1}): **${item.title}**`
+            })
+            .join('\n')
+
+          return {
+            isError: false,
+            content: [
+              {
+                type: 'text',
+                text: `**Triage & Prioritization** (${jevErr.message || 'Heuristic ranking'}):\n\n${fallback}`,
+              },
+            ],
+          }
+        }
+      }
+
+      case 'jev_audit_portfolio': {
+        const pageShapes = editor.getCurrentPageShapes()
+        const projectFrames = pageShapes.filter(
+          (s): s is TLProjectFrameShape => s.type === 'project-frame',
+        )
+
+        if (projectFrames.length === 0) {
+          return {
+            isError: false,
+            content: [
+              {
+                type: 'text',
+                text: 'No Project Frames found on the canvas. Create a project frame first (⌘⇧P or via the toolbar) to begin organizing and auditing projects.',
+              },
+            ],
+          }
+        }
+
+        // Build PortfolioProjectInput for each project frame
+        const projectsInput = projectFrames.map((pf) => {
+          const contents = getProjectFrameContents(editor, pf.id)
+          const tasksInFrame = (contents?.containedShapes || [])
+            .map((c) => c.shape)
+            .filter((s): s is TLFocusTaskShape => s.type === 'focus-task')
+
+          const doneTasks = tasksInFrame.filter((t) => t.props.status === 'done').length
+          const openTasks = tasksInFrame
+            .filter((t) => t.props.status !== 'done')
+            .map((t) => ({
+              id: t.id,
+              title: t.props.title || 'Untitled Task',
+              priority: t.props.priority || 3,
+              notes: t.props.notes,
+            }))
+
+          return {
+            id: pf.id,
+            title: pf.props.title || 'Untitled Project',
+            goal: pf.props.goal || '',
+            projectContext: pf.props.projectContext,
+            totalTasks: tasksInFrame.length,
+            doneTasks,
+            openTasks,
+            connectors: pf.props.connectors,
+          }
+        })
+
+        try {
+          const auditResult = await auditPortfolioProjects(
+            projectsInput,
+            args.dailyGoal,
+          )
+
+          return {
+            isError: false,
+            content: [
+              {
+                type: 'text',
+                text: auditResult.executiveSummary,
+              },
+            ],
+          }
+        } catch (err: any) {
+          // Fallback heuristic evaluation if Jev API key is missing
+          const fallback = projectsInput
+            .map((p, idx) => {
+              return `• **#${idx + 1}**: **${p.title}** (${p.doneTasks}/${p.totalTasks} Done) — Goal: "${p.goal || 'No goal set'}"`
+            })
+            .join('\n')
+
+          return {
+            isError: false,
+            content: [
+              {
+                type: 'text',
+                text: `### Daily Portfolio Briefing (${err.message || 'Heuristic fallback'})\n\n${fallback}`,
+              },
+            ],
+          }
         }
       }
 

@@ -20,7 +20,12 @@ import { CopilotDrawer } from "@/components/CopilotDrawer";
 import { TopbarBoardMenu } from "@/components/TopbarBoardMenu";
 import { WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { ContextualSelectionHud } from "@/components/ContextualSelectionHud";
-import { FolderPlus, Moon, PanelLeft, PanelRight, Plus, Settings, Sparkles, Sun } from "lucide-react";
+import { ElementInlineChat } from "@/components/ElementInlineChat";
+import { MonoFocusController } from "@/components/MonoFocusController";
+import { GlobalSpotlight } from "@/components/GlobalSpotlight";
+import { CanvasZoomControls } from "@/components/CanvasZoomControls";
+import { ProjectConnectorsModal } from "@/components/ProjectConnectorsModal";
+import { FolderPlus, Moon, PanelLeft, PanelRight, Plus, Search, Settings, Sparkles, Sun } from "lucide-react";
 import { useOllama } from "@/lib/ollama";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -75,11 +80,11 @@ function FocusCanvasAppInner() {
   const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<
-    "general" | "workingHours" | "mcp" | "data"
+    "general" | "workingHours" | "ai" | "mcp" | "data"
   >("general");
 
   const handleOpenSettings = useCallback(
-    (initialTab: "general" | "workingHours" | "mcp" | "data" = "general") => {
+    (initialTab: "general" | "workingHours" | "ai" | "mcp" | "data" = "general") => {
       setSettingsInitialTab(initialTab);
       setSettingsOpen(true);
     },
@@ -89,6 +94,11 @@ function FocusCanvasAppInner() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [selectedShapeId, setSelectedShapeId] = useState<TLShapeId | null>(null);
+  const [inlineChatShapeId, setInlineChatShapeId] = useState<TLShapeId | null>(null);
+  const [activeFocusShapeId, setActiveFocusShapeId] = useState<TLShapeId | null>(null);
+  const [connectorsShapeId, setConnectorsShapeId] = useState<TLShapeId | null>(null);
+  const [connectorsInitialTab, setConnectorsInitialTab] = useState<"connectors" | "context">("connectors");
+  const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [stats, setStats] = useState<{
     totalTasks: number;
     doneTasks: number;
@@ -158,8 +168,96 @@ function FocusCanvasAppInner() {
       }
       setCopilotOpen(true);
     };
+
+    const onInlineChatEvent = (e: any) => {
+      const shapeId = e.detail?.shapeId || (typeof e.detail === "string" ? e.detail : null);
+      if (shapeId) {
+        setSelectedShapeId(shapeId);
+        setInlineChatShapeId(shapeId);
+      }
+    };
+
+    const onFocusTargetEvent = (e: any) => {
+      const shapeId = e.detail?.shapeId || (typeof e.detail === "string" ? e.detail : null);
+      if (shapeId) {
+        setSelectedShapeId(shapeId);
+        setActiveFocusShapeId(shapeId);
+      }
+    };
+
+    const onOpenSpotlightEvent = () => {
+      setSpotlightOpen(true);
+    };
+
+    const onOpenConnectorsEvent = (e: any) => {
+      const shapeId = e.detail?.shapeId || (typeof e.detail === "string" ? e.detail : null);
+      const tab = e.detail?.initialTab || "connectors";
+      if (shapeId) {
+        setSelectedShapeId(shapeId);
+        setConnectorsShapeId(shapeId);
+        setConnectorsInitialTab(tab);
+      }
+    };
+
     window.addEventListener("foqz:open-copilot", onOpenCopilotEvent);
-    return () => window.removeEventListener("foqz:open-copilot", onOpenCopilotEvent);
+    window.addEventListener("foqz:open-inline-chat", onInlineChatEvent);
+    window.addEventListener("foqz:set-focus-target", onFocusTargetEvent);
+    window.addEventListener("foqz:open-spotlight", onOpenSpotlightEvent);
+    window.addEventListener("foqz:open-project-connectors", onOpenConnectorsEvent);
+
+    return () => {
+      window.removeEventListener("foqz:open-copilot", onOpenCopilotEvent);
+      window.removeEventListener("foqz:open-inline-chat", onInlineChatEvent);
+      window.removeEventListener("foqz:set-focus-target", onFocusTargetEvent);
+      window.removeEventListener("foqz:open-spotlight", onOpenSpotlightEvent);
+      window.removeEventListener("foqz:open-project-connectors", onOpenConnectorsEvent);
+    };
+  }, []);
+
+  // Global Keyboard shortcuts: Cmd+K (Spotlight), C (Inline Chat), F (Mono-Focus)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Spotlight: Cmd+K / Ctrl+K
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setSpotlightOpen((prev) => !prev);
+        return;
+      }
+
+      // Toggle AI Copilot: Cmd+J / Ctrl+J
+      if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
+        e.preventDefault();
+        setCopilotOpen((prev) => !prev);
+        return;
+      }
+
+      // Ignore single-key shortcuts if typing in an input or textarea
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const ed = editorRef.current;
+      if (!ed) return;
+      const selectedIds = ed.getSelectedShapeIds();
+      const primaryId = selectedIds.length > 0 ? selectedIds[0] : null;
+
+      if ((e.key === "c" || e.key === "C") && primaryId) {
+        e.preventDefault();
+        setInlineChatShapeId((prev) => (prev === primaryId ? null : primaryId));
+      } else if ((e.key === "f" || e.key === "F") && primaryId) {
+        e.preventDefault();
+        setActiveFocusShapeId(primaryId);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   const tldrawComponents = useMemo(
@@ -171,6 +269,10 @@ function FocusCanvasAppInner() {
       QuickActions: null,
       ActionsMenu: null,
       StylePanel: null,
+      NavigationPanel: null,
+      Minimap: null,
+      ZoomMenu: null,
+      HelpMenu: null,
     }),
     [],
   );
@@ -312,7 +414,7 @@ function FocusCanvasAppInner() {
         h: 460,
         title: "New Project",
         goal: "Goal: Launch milestone by Friday",
-        accent: "indigo",
+        accent: "blue",
       },
     });
     editor.select(id);
@@ -414,19 +516,6 @@ function FocusCanvasAppInner() {
         handleCreateTask();
         return;
       }
-
-      // Single-key shortcut on canvas: 'c' for New Task (when not typing in any input)
-      if (
-        !mod &&
-        !e.altKey &&
-        !e.shiftKey &&
-        !isInput &&
-        e.key.toLowerCase() === "c"
-      ) {
-        e.preventDefault();
-        handleCreateTask();
-        return;
-      }
     };
 
     // Custom Event Listeners for global triggers
@@ -453,18 +542,18 @@ function FocusCanvasAppInner() {
   return (
     <div className="app bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
       {/* Vercel / shadcn Topbar */}
-      <header className="topbar h-12 px-4 border-b border-zinc-200 dark:border-zinc-800/80 bg-white/95 dark:bg-zinc-950/95 backdrop-blur flex items-center justify-between select-none z-50">
+      <header className="topbar h-12 px-4 flex items-center justify-between select-none z-50">
         {/* Left section: Sidebar Toggle + Brand + Daily Clearance + Project Jump */}
         <div className="flex items-center gap-2.5">
           <button
             type="button"
             title="Toggle Workspace Sidebar (⌘B)"
             onClick={() => setSidebarOpen((v) => !v)}
-            className={`p-1.5 rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors mr-0.5 ${
-              sidebarOpen ? "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-900 dark:text-white" : ""
+            className={`size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer mr-0.5 ${
+              sidebarOpen ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white border-zinc-300 dark:border-zinc-700" : ""
             }`}
           >
-            <PanelLeft className="size-4" />
+            <PanelLeft className="size-3.5" />
           </button>
 
           <div className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-white mr-1">
@@ -483,7 +572,7 @@ function FocusCanvasAppInner() {
           </div>
 
           {/* Board / Page Switcher & Canvas Actions (replaces floating Ideas bar) */}
-          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5" />
+          <div className="h-4 w-px bg-zinc-200 dark:border-zinc-800 mx-0.5" />
           <TopbarBoardMenu editor={editor} />
 
           {/* Quick-Jump Project Dropdown */}
@@ -495,7 +584,7 @@ function FocusCanvasAppInner() {
                 handleJumpToProject(e.target.value);
                 e.target.value = "";
               }}
-              className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs rounded-md px-2 py-1 outline-none hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors cursor-pointer"
+              className="h-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 text-xs px-2.5 outline-none hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors shadow-2xs cursor-pointer"
             >
               <option value="" disabled>
                 Jump to Project...
@@ -510,15 +599,15 @@ function FocusCanvasAppInner() {
         </div>
 
         {/* Right section: Quick Create + Copilot + Ollama + Theme + Settings */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Quick Add Project Frame */}
           <button
             type="button"
             title="Add Project Frame (⌘⇧P)"
             onClick={handleCreateProject}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 hover:bg-zinc-200/80 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-colors"
+            className="h-7 px-2.5 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
           >
-            <FolderPlus className="size-3.5" />
+            <FolderPlus className="size-3" />
             <span>Project</span>
             <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘⇧P</kbd>
           </button>
@@ -528,11 +617,23 @@ function FocusCanvasAppInner() {
             type="button"
             title="Add Task Card (⌘N or double-click canvas)"
             onClick={handleCreateTask}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 hover:bg-zinc-200/80 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-colors"
+            className="h-7 px-2.5 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
           >
             <Plus className="size-3.5" />
             <span>Task</span>
             <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘N</kbd>
+          </button>
+
+          {/* Spotlight Search & Prioritization */}
+          <button
+            type="button"
+            title="Spotlight Search & Prioritize (⌘K)"
+            onClick={() => setSpotlightOpen(true)}
+            className="h-7 px-2.5 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <Search className="size-3 text-zinc-500 dark:text-zinc-400" />
+            <span>Search</span>
+            <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘K</kbd>
           </button>
 
           {/* Toggle AI Copilot */}
@@ -540,13 +641,13 @@ function FocusCanvasAppInner() {
             type="button"
             title="Toggle AI Copilot (⌘J)"
             onClick={() => setCopilotOpen((v) => !v)}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+            className={`h-7 px-2.5 rounded-full text-xs font-medium border transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer ${
               copilotOpen
-                ? "bg-violet-100 dark:bg-violet-950/70 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300"
-                : "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 hover:text-zinc-950 dark:hover:text-white"
+                ? "bg-blue-100 dark:bg-blue-950/70 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 font-semibold"
+                : "border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 hover:text-zinc-950 dark:hover:text-white"
             }`}
           >
-            <Sparkles className="size-3.5 text-violet-500" />
+            <Sparkles className="size-3 text-blue-500" />
             <span>Copilot</span>
             <span
               className={`size-1.5 rounded-full ${online ? "bg-emerald-500" : "bg-zinc-400 dark:bg-zinc-600"}`}
@@ -556,48 +657,35 @@ function FocusCanvasAppInner() {
           </button>
 
           {/* 1-Click Theme Toggle Button (Light / Dark) */}
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            className="size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
             aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
             onClick={toggleTheme}
           >
-            {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
-          </Button>
+            {isDark ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+          </button>
 
           {/* Settings Modal */}
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            className="size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
             aria-label="Settings"
             onClick={() => handleOpenSettings("general")}
           >
-            <Settings className="size-4" />
-          </Button>
+            <Settings className="size-3.5" />
+          </button>
 
           {/* Status */}
           <div className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono pl-1">{status}</div>
         </div>
       </header>
 
+
       {/* Workspace Shell: Left Sidebar + Center Infinite Canvas + Right Copilot Panel */}
       <div className="flex-1 flex overflow-hidden relative">
-        <WorkspaceSidebar
-          editor={editor}
-          open={sidebarOpen}
-          onToggle={() => setSidebarOpen((v) => !v)}
-          onOpenCopilot={(shapeId) => {
-            if (shapeId) setSelectedShapeId(shapeId);
-            setCopilotOpen(true);
-          }}
-        />
-
-        <main ref={setCanvasRef} className="canvas flex-1 relative overflow-hidden">
+        <main ref={setCanvasRef} className="canvas w-full h-full relative overflow-hidden">
           <Tldraw
             components={tldrawComponents}
             onMount={handlers.onMount}
@@ -608,13 +696,47 @@ function FocusCanvasAppInner() {
             <FocusColorSchemeSync />
             <FocusEditorUi canvasEl={canvasEl} />
             <ContextualSelectionHud />
+            <CanvasZoomControls sidebarOpen={sidebarOpen} />
+            <ElementInlineChat
+              editor={editor}
+              shapeId={inlineChatShapeId}
+              onClose={() => setInlineChatShapeId(null)}
+            />
+            <MonoFocusController
+              editor={editor}
+              activeShapeId={activeFocusShapeId}
+              onClearFocus={() => setActiveFocusShapeId(null)}
+            />
+            <GlobalSpotlight
+              editor={editor}
+              open={spotlightOpen}
+              onClose={() => setSpotlightOpen(false)}
+              onSelectFocusTarget={(id) => setActiveFocusShapeId(id)}
+            />
             <FocusSettings
               open={settingsOpen}
               onClose={() => setSettingsOpen(false)}
               initialTab={settingsInitialTab}
             />
+            <ProjectConnectorsModal
+              editor={editor}
+              shapeId={connectorsShapeId}
+              initialTab={connectorsInitialTab}
+              onClose={() => setConnectorsShapeId(null)}
+            />
           </Tldraw>
         </main>
+
+        {/* Floating Left Workspace Sidebar */}
+        <WorkspaceSidebar
+          editor={editor}
+          open={sidebarOpen}
+          onToggle={() => setSidebarOpen((v) => !v)}
+          onOpenCopilot={(shapeId) => {
+            if (shapeId) setSelectedShapeId(shapeId);
+            setCopilotOpen(true);
+          }}
+        />
 
         {/* Decoupled Copilot Side Panel (matches left WorkspaceSidebar) */}
         <CopilotDrawer

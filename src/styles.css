@@ -12,7 +12,7 @@
 @utility glass-panel {
   backdrop-filter: blur(28px) saturate(1.35);
   -webkit-backdrop-filter: blur(28px) saturate(1.35);
-  background: rgb(255 255 255 / 46%);
+  background: rgb(255 255 255 / 55%);
   border-width: 1px;
   border-style: solid;
   border-color: rgb(255 255 255 / 58%);
@@ -21,7 +21,7 @@
     0 12px 40px rgb(0 0 0 / 9%),
     0 4px 16px rgb(0 0 0 / 5%);
   @variant dark {
-    background: rgb(24 24 27 / 42%);
+    background: rgb(24 24 27 / 50%);
     border-color: rgb(255 255 255 / 12%);
     box-shadow:
       0 1px 0 rgb(255 255 255 / 8%) inset,
@@ -115,15 +115,19 @@ html.dark .app {
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
-  border-bottom: 1px solid #e4e4e7;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   -webkit-app-region: drag;
-  background: #ffffff;
+  background: rgb(255 255 255 / 65%);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 55%) inset;
 }
 
 .dark .topbar,
 html.dark .topbar {
   border-bottom: 1px solid rgb(255 255 255 / 10%);
-  background: #09090b;
+  background: rgb(24 24 27 / 65%);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 8%) inset;
 }
 
 .topbar * {
@@ -195,6 +199,11 @@ html.dark .canvas {
 /*
  * Task Markdown Rendering Styles (Title & Body)
  */
+.task-title-markdown {
+  font-family: var(--tl-font-draw), sans-serif;
+  letter-spacing: 0.01em;
+}
+
 .task-title-markdown code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
@@ -213,7 +222,8 @@ html.dark .canvas {
 }
 
 .task-markdown-body {
-  font-size: 12px;
+  font-family: var(--tl-font-draw), sans-serif;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -306,6 +316,175 @@ html.dark .canvas {
 .task-markdown-body s {
   text-decoration: line-through;
   opacity: 0.7;
+}
+
+/* AI Assistant & Copilot Markdown Output Styling */
+.ai-markdown {
+  line-height: 1.6;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.ai-markdown p {
+  margin: 0 0 6px 0;
+}
+
+.ai-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.ai-markdown strong,
+.ai-markdown b {
+  font-weight: 600;
+  color: inherit;
+}
+
+.ai-markdown em,
+.ai-markdown i {
+  font-style: italic;
+}
+
+.ai-markdown h1,
+.ai-markdown h2,
+.ai-markdown h3,
+.ai-markdown h4 {
+  font-weight: 600;
+  color: inherit;
+  margin: 10px 0 4px 0;
+  line-height: 1.35;
+}
+
+.ai-markdown h1 {
+  font-size: 14px;
+}
+
+.ai-markdown h2 {
+  font-size: 13px;
+}
+
+.ai-markdown h3 {
+  font-size: 12px;
+}
+
+.ai-markdown ul {
+  list-style-type: disc !important;
+  margin: 4px 0 8px 0;
+  padding-left: 20px !important;
+}
+
+.ai-markdown ol {
+  list-style-type: decimal !important;
+  margin: 4px 0 8px 0;
+  padding-left: 20px !important;
+}
+
+.ai-markdown li {
+  margin-bottom: 3px;
+  display: list-item;
+}
+
+.ai-markdown li > ul,
+.ai-markdown li > ol {
+  margin: 2px 0 4px 0;
+}
+
+.ai-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #7c3aed;
+}
+
+.dark .ai-markdown code {
+  background: rgba(255, 255, 255, 0.12);
+  color: #c084fc;
+}
+
+.ai-markdown pre {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+  background: #09090b;
+  color: #f4f4f5;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.ai-markdown pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  border-radius: 0;
+}
+
+.ai-markdown blockquote {
+  border-left: 3px solid #8b5cf6;
+  padding-left: 10px;
+  margin: 6px 0;
+  color: #71717a;
+  background: rgba(139, 92, 246, 0.05);
+  border-radius: 0 4px 4px 0;
+}
+
+.dark .ai-markdown blockquote {
+  color: #a1a1aa;
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.ai-markdown a {
+  color: #8b5cf6;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ai-markdown a:hover {
+  color: #7c3aed;
+}
+
+.dark .ai-markdown a {
+  color: #a78bfa;
+}
+
+.ai-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 11px;
+}
+
+.ai-markdown th,
+.ai-markdown td {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 4px 8px;
+}
+
+.dark .ai-markdown th,
+.dark .ai-markdown td {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.ai-markdown th {
+  background: rgba(0, 0, 0, 0.04);
+  font-weight: 600;
+}
+
+.dark .ai-markdown th {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ai-markdown hr {
+  border: 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin: 10px 0;
+}
+
+.dark .ai-markdown hr {
+  border-top-color: rgba(255, 255, 255, 0.12);
 }
 
 /* Bottom tool strip — same glass as .focus-floating-panel */
@@ -467,39 +646,13 @@ html.dark .canvas {
   pointer-events: auto;
 }
 
-/* Zoom row + minimap pinned to bottom right */
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-navigation-panel {
-  position: absolute;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  right: 12px;
-  top: auto;
-  left: auto;
-  width: auto;
-  max-width: 240px;
-  z-index: 100;
-  pointer-events: auto;
+/* Hide legacy tldraw minimap and navigation panel to prevent overlay collisions */
+.tlui-navigation-panel,
+.tlui-minimap {
+  display: none !important;
+  pointer-events: none !important;
 }
 
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-navigation-panel
-  .tlui-buttons__horizontal {
-  width: auto;
-  max-width: 240px;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-minimap {
-  width: 100%;
-  max-width: 200px;
-}
 
 /* Task list drawer: same glass language as `glass-panel` + .focus-board-tracked-row */
 .focus-sidebar {
@@ -644,9 +797,20 @@ html.dark .canvas {
   border-radius: 14px;
   background: rgb(255 255 255 / 42%);
   border: 1px solid rgb(255 255 255 / 52%);
+  backdrop-filter: blur(16px) saturate(1.35);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 58%),
     0 1px 3px rgb(0 0 0 / 5%);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.focus-quick-field:focus-within {
+  border-color: rgb(59 130 246 / 50%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 65%),
+    0 0 0 2px rgb(59 130 246 / 20%),
+    0 1px 4px rgb(0 0 0 / 6%);
 }
 
 .dark .focus-quick-field {
@@ -655,6 +819,14 @@ html.dark .canvas {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 8%),
     0 1px 3px rgb(0 0 0 / 25%);
+}
+
+.dark .focus-quick-field:focus-within {
+  border-color: rgb(59 130 246 / 60%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 12%),
+    0 0 0 2px rgb(59 130 246 / 25%),
+    0 1px 4px rgb(0 0 0 / 30%);
 }
 
 .focus-quick-field .focus-quick-add {

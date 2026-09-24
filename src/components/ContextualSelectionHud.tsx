@@ -20,8 +20,19 @@ import {
   ChevronUp,
   SlidersHorizontal,
   Check,
+  Plug,
+  MessageSquare,
+  Crosshair,
+  SquareCheck,
+  Blend,
 } from "lucide-react";
 import type { TLFocusTaskShape } from "@/shapes/focusTask/FocusTaskShapeUtil";
+import {
+  ALL_PROJECT_ACCENTS,
+  ACCENT_STYLES,
+  type ProjectAccent,
+  type TLProjectFrameShape,
+} from "@/shapes/projectFrame/ProjectFrameShapeUtil";
 
 const TLDRAW_COLOR_MAP: Record<
   string,
@@ -44,8 +55,6 @@ const TLDRAW_COLOR_MAP: Record<
 const COLOR_ORDER: TLDefaultColorStyle[] = [
   "black",
   "grey",
-  "light-violet",
-  "violet",
   "blue",
   "light-blue",
   "yellow",
@@ -159,9 +168,74 @@ const PRIORITY_OPTIONS = [
   { id: 4, label: "P4", name: "Low" },
 ];
 
+const TASK_PRIORITY_META: Record<
+  number,
+  { label: string; name: string; badge: string; text: string; dotHex: string }
+> = {
+  1: {
+    label: "P1",
+    name: "Urgent",
+    badge: "bg-red-500/10 dark:bg-red-500/20 text-red-700 dark:text-red-300 border-red-200 dark:border-red-900/60",
+    text: "text-red-600 dark:text-red-400",
+    dotHex: "#ef4444",
+  },
+  2: {
+    label: "P2",
+    name: "High",
+    badge: "bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900/60",
+    text: "text-amber-600 dark:text-amber-400",
+    dotHex: "#f59e0b",
+  },
+  3: {
+    label: "P3",
+    name: "Normal",
+    badge: "bg-blue-500/10 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900/60",
+    text: "text-blue-600 dark:text-blue-400",
+    dotHex: "#3b82f6",
+  },
+  4: {
+    label: "P4",
+    name: "Low",
+    badge: "bg-zinc-500/10 dark:bg-zinc-500/20 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800",
+    text: "text-zinc-500 dark:text-zinc-400",
+    dotHex: "#71717a",
+  },
+};
+
+function ProjectFrameConnectorsButton({
+  shape,
+}: {
+  editor: any;
+  shape: TLProjectFrameShape;
+}) {
+  const hasRepo = Boolean(shape.props.connectors?.githubRepo);
+
+  return (
+    <button
+      type="button"
+      title="Configure Project Connectors & GitHub Repo"
+      onClick={() => {
+        window.dispatchEvent(
+          new CustomEvent("foqz:open-project-connectors", {
+            detail: { shapeId: shape.id },
+          }),
+        );
+      }}
+      className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer ${
+        hasRepo
+          ? "bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60"
+          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+      }`}
+    >
+      <Plug className="size-3" />
+      <span>{hasRepo ? `GH: ${shape.props.connectors?.githubRepo}` : "360° Connectors"}</span>
+    </button>
+  );
+}
+
 export function ContextualSelectionHud() {
   const editor = useEditor();
-  const [activeMenu, setActiveMenu] = useState<"color" | "fill" | "dash" | "size" | "opacity" | "priority" | null>(null);
+  const [activeMenu, setActiveMenu] = useState<"color" | "fill" | "dash" | "size" | "opacity" | "priority" | "project-theme" | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
   const [isForceCollapsed, setIsForceCollapsed] = useState(false);
@@ -284,6 +358,21 @@ export function ContextualSelectionHud() {
   const isSingleTask = selectedShapes.length === 1 && selectedShapes[0].type === "focus-task";
   const singleTask = isSingleTask ? (selectedShapes[0] as TLFocusTaskShape) : null;
 
+  const isSingleProjectFrame = selectedShapes.length === 1 && selectedShapes[0].type === "project-frame";
+  const singleProjectFrame = isSingleProjectFrame ? (selectedShapes[0] as TLProjectFrameShape) : null;
+  const projectAccent: ProjectAccent = (singleProjectFrame?.props?.accent as ProjectAccent) || "blue";
+  const projectTheme = ACCENT_STYLES[projectAccent] || ACCENT_STYLES.blue;
+
+  const handleProjectAccentChange = (accent: ProjectAccent) => {
+    if (!singleProjectFrame) return;
+    editor.updateShape({
+      id: singleProjectFrame.id,
+      type: "project-frame",
+      props: { accent },
+    });
+    setActiveMenu(null);
+  };
+
   // Change styles helper
   const handleColorChange = (color: TLDefaultColorStyle) => {
     editor.run(() => {
@@ -384,7 +473,7 @@ export function ContextualSelectionHud() {
     : Math.round(Math.min(viewportBounds.h - BOTTOM_RESERVE, relMaxY + GAP));
 
   // Stable horizontal clamping so the pill NEVER shifts horizontally when expanding or collapsing
-  const maxContentHalfWidth = isSingleTask ? 195 : 135;
+  const maxContentHalfWidth = isSingleTask ? 195 : isSingleProjectFrame ? 180 : 135;
   const minLeft = maxContentHalfWidth + 16;
   const maxLeft = Math.max(minLeft, viewportBounds.w - maxContentHalfWidth - 16);
   const leftPos = Math.round(Math.max(minLeft, Math.min(maxLeft, relMidX)));
@@ -437,12 +526,75 @@ export function ContextualSelectionHud() {
                 style={{ backgroundColor: activeColorMeta.dotHex }}
               />
             </button>
+          ) : isSingleProjectFrame && singleProjectFrame ? (
+            <button
+              type="button"
+              title={isExpanded ? `Project Theme: ${projectTheme.name}` : "Format selection (hover to expand)"}
+              onClick={() => {
+                if (!isExpanded) {
+                  setIsManuallyExpanded(true);
+                } else {
+                  setActiveMenu(activeMenu === "project-theme" ? null : "project-theme");
+                }
+              }}
+              className="flex items-center p-0.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition-colors"
+            >
+              <span
+                className="size-3.5 rounded-full border border-black/10 dark:border-white/20 shrink-0 shadow-xs transition-transform hover:scale-110"
+                style={{ backgroundColor: projectTheme.dotHex }}
+              />
+            </button>
+          ) : isSingleTask && singleTask ? (
+            <div className="relative flex items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isExpanded) {
+                    setIsManuallyExpanded(true);
+                  } else {
+                    setActiveMenu(activeMenu === "priority" ? null : "priority");
+                  }
+                }}
+                title={isExpanded ? "Change Priority" : `Priority: P${singleTask.props.priority || 3} (hover to expand)`}
+                className={`flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border transition-all cursor-pointer ${
+                  (TASK_PRIORITY_META[singleTask.props.priority] || TASK_PRIORITY_META[3]).badge
+                } hover:scale-105`}
+              >
+                <span>P{singleTask.props.priority || 3}</span>
+                {isExpanded && <ChevronDown className="size-2.5 opacity-60" />}
+              </button>
+
+              {/* Priority Menu Popover */}
+              {activeMenu === "priority" && (
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 p-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col gap-1 w-28 z-50 animate-in fade-in zoom-in-95 duration-75">
+                  {PRIORITY_OPTIONS.map((p) => {
+                    const meta = TASK_PRIORITY_META[p.id] || TASK_PRIORITY_META[3];
+                    const isSelected = singleTask.props.priority === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleTaskPriority(p.id)}
+                        className={`flex items-center justify-between px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                          isSelected
+                            ? "bg-zinc-100 dark:bg-zinc-800 font-semibold " + meta.text
+                            : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400"
+                        }`}
+                      >
+                        <span className="font-mono font-bold">{p.label}</span>
+                        <span className="text-[10px] opacity-70">{p.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           ) : (
             <button
               type="button"
               onClick={() => setIsManuallyExpanded((v) => !v)}
               title="Format selection (hover to expand)"
-              className="p-1 rounded-md text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors"
+              className="p-1 rounded-full text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
             >
               <SlidersHorizontal className="size-3.5" />
             </button>
@@ -466,7 +618,7 @@ export function ContextualSelectionHud() {
                       onClick={() => handleColorChange(c)}
                       className={`size-6 rounded-full flex items-center justify-center border transition-transform hover:scale-110 ${
                         isSelected
-                          ? "border-zinc-900 dark:border-white ring-2 ring-violet-500/40 scale-105"
+                          ? "border-zinc-900 dark:border-white ring-2 ring-blue-500/40 scale-105"
                           : "border-black/10 dark:border-white/10"
                       }`}
                       style={{ backgroundColor: meta.dotHex }}
@@ -488,6 +640,37 @@ export function ContextualSelectionHud() {
               </div>
             </div>
           )}
+
+          {/* Project Theme Popover */}
+          {activeMenu === "project-theme" && isSingleProjectFrame && singleProjectFrame && (
+            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="text-[10px] uppercase font-mono tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5 px-0.5">
+                Project Theme
+              </div>
+              <div className="grid grid-cols-4 gap-1.5 w-40">
+                {ALL_PROJECT_ACCENTS.map((acc) => {
+                  const theme = ACCENT_STYLES[acc];
+                  const isSelected = projectAccent === acc;
+                  return (
+                    <button
+                      key={acc}
+                      type="button"
+                      title={theme.name}
+                      onClick={() => handleProjectAccentChange(acc)}
+                      className={`size-6 rounded-full flex items-center justify-center border transition-transform hover:scale-110 ${
+                        isSelected
+                          ? "border-zinc-900 dark:border-white ring-2 ring-blue-500/40 scale-105"
+                          : "border-black/10 dark:border-white/10"
+                      }`}
+                      style={{ backgroundColor: theme.dotHex }}
+                    >
+                      {isSelected && <Check className="size-3 text-white" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Expandable Tools Section with Fluid Spring Reveal */}
@@ -496,11 +679,14 @@ export function ContextualSelectionHud() {
             isExpanded
               ? isSingleTask
                 ? "max-w-[390px] opacity-100 overflow-visible"
+                : isSingleProjectFrame
+                ? "max-w-[360px] opacity-100 overflow-visible"
                 : "max-w-[270px] opacity-100 overflow-visible"
               : "max-w-0 opacity-0 overflow-hidden pointer-events-none"
           }`}
         >
           <div className="flex items-center gap-1 shrink-0 whitespace-nowrap px-0.5">
+
           {/* Fill Mode */}
           {hasFill && (
             <div className="relative">
@@ -508,7 +694,7 @@ export function ContextualSelectionHud() {
                 type="button"
                 title={`Fill: ${currentFill}`}
                 onClick={() => setActiveMenu(activeMenu === "fill" ? null : "fill")}
-                className="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors"
+                className="p-1 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
               >
                 {FILL_OPTIONS.find((f) => f.id === currentFill)?.icon || FILL_OPTIONS[0].icon}
               </button>
@@ -543,7 +729,7 @@ export function ContextualSelectionHud() {
                 type="button"
                 title={`Stroke Dash: ${currentDash}`}
                 onClick={() => setActiveMenu(activeMenu === "dash" ? null : "dash")}
-                className="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors"
+                className="p-1 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
               >
                 {DASH_OPTIONS.find((d) => d.id === currentDash)?.icon || DASH_OPTIONS[0].icon}
               </button>
@@ -595,42 +781,6 @@ export function ContextualSelectionHud() {
           {/* Focus Task Card Controls */}
           {isSingleTask && singleTask && (
             <>
-              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5" />
-
-              {/* Task Priority Chip */}
-              <div className="relative">
-                <button
-                  type="button"
-                  title="Change Priority"
-                  onClick={() => setActiveMenu(activeMenu === "priority" ? null : "priority")}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium border transition-colors bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700"
-                >
-                  <span>P{singleTask.props.priority || 3}</span>
-                  <ChevronDown className="size-2.5 opacity-50" />
-                </button>
-
-                {/* Priority Menu */}
-                {activeMenu === "priority" && (
-                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 p-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col gap-1 w-28 z-50 animate-in fade-in zoom-in-95 duration-75">
-                    {PRIORITY_OPTIONS.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => handleTaskPriority(p.id)}
-                        className={`flex items-center justify-between px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
-                          singleTask.props.priority === p.id
-                            ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white font-semibold"
-                            : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400"
-                        }`}
-                      >
-                        <span className="font-mono">{p.label}</span>
-                        <span className="text-[10px] opacity-70">{p.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
               {/* Task Status Toggle */}
               <button
                 type="button"
@@ -644,7 +794,7 @@ export function ContextualSelectionHud() {
                       : "open";
                   handleTaskStatus(nextStatus);
                 }}
-                className="capitalize px-1.5 py-0.5 rounded text-[10px] font-medium border bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                className="capitalize px-2 py-0.5 rounded-full text-[10px] font-medium border bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors cursor-pointer"
               >
                 {singleTask.props.status}
               </button>
@@ -654,11 +804,52 @@ export function ContextualSelectionHud() {
                 type="button"
                 title="Focus in Copilot (⌘J)"
                 onClick={handleOpenCopilot}
-                className="p-1 rounded-md hover:bg-violet-50 dark:hover:bg-violet-950/40 text-violet-600 dark:text-violet-400 transition-colors"
+                className="p-1 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-colors cursor-pointer"
               >
                 <Sparkles className="size-3.5" />
               </button>
             </>
+          )}
+
+          {/* Universal Element Inline Chat (C) & Mono-Focus (F) */}
+          {selectedShapes.length === 1 && (
+            <>
+              <button
+                type="button"
+                title="Chat with Element (C)"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("foqz:open-inline-chat", {
+                      detail: { shapeId: selectedShapes[0].id },
+                    })
+                  );
+                }}
+                className="px-2 py-0.5 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-colors flex items-center gap-1 text-[11px] font-medium cursor-pointer"
+              >
+                <MessageSquare className="size-3.5" />
+                <span className="hidden sm:inline">Chat</span>
+              </button>
+              <button
+                type="button"
+                title="Lock into Focus (F)"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("foqz:set-focus-target", {
+                      detail: { shapeId: selectedShapes[0].id },
+                    })
+                  );
+                }}
+                className="px-2 py-0.5 rounded-full hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-600 dark:text-amber-400 transition-colors flex items-center gap-1 text-[11px] font-medium cursor-pointer"
+              >
+                <Crosshair className="size-3.5" />
+                <span className="hidden sm:inline">Focus</span>
+              </button>
+            </>
+          )}
+
+          {/* Project Frame 360° Connectors */}
+          {isSingleProjectFrame && singleProjectFrame && (
+            <ProjectFrameConnectorsButton editor={editor} shape={singleProjectFrame} />
           )}
 
           {/* Opacity Slider Popover */}
@@ -668,9 +859,9 @@ export function ContextualSelectionHud() {
                 type="button"
                 title={`Opacity: ${Math.round(currentOpacityVal * 100)}%`}
                 onClick={() => setActiveMenu(activeMenu === "opacity" ? null : "opacity")}
-                className="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors"
+                className="p-1 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
               >
-                <SlidersHorizontal className="size-3.5" />
+                <Blend className="size-3.5" />
               </button>
 
               {/* Opacity Popover */}
@@ -717,7 +908,7 @@ export function ContextualSelectionHud() {
             type="button"
             title="Duplicate (⌘D)"
             onClick={handleDuplicate}
-            className="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors"
+            className="p-1 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
           >
             <Copy className="size-3.5" />
           </button>
@@ -727,7 +918,7 @@ export function ContextualSelectionHud() {
             type="button"
             title="Delete (⌫)"
             onClick={handleDelete}
-            className="p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 text-zinc-500 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+            className="p-1 rounded-full hover:bg-red-50 dark:hover:bg-red-950/30 text-zinc-500 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors cursor-pointer"
           >
             <Trash2 className="size-3.5" />
           </button>

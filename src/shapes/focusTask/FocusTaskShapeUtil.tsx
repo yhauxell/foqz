@@ -19,6 +19,7 @@ import {
   BaseBoxShapeUtil,
   createShapeId,
   HTMLContainer,
+  PathBuilder,
   resizeBox,
   T,
   TLBaseShape,
@@ -253,6 +254,65 @@ export function getFocusTaskPriorityLabel(priority: number): string {
   return PRIORITY_LABEL[priority] ?? "Normal";
 }
 
+type CachedTaskPaths = {
+  strokeD: string;
+  fillD: string;
+  indicatorD: string;
+};
+
+const taskPathCache = new Map<string, CachedTaskPaths>();
+
+function getCachedTaskPaths(id: string, w: number, h: number): CachedTaskPaths {
+  const roundedW = Math.max(10, Math.round(w));
+  const roundedH = Math.max(10, Math.round(h));
+  const key = `${id}:${roundedW}:${roundedH}`;
+  const existing = taskPathCache.get(key);
+  if (existing) return existing;
+
+  const inset = 2;
+  const p = new PathBuilder()
+    .moveTo(inset, inset, { geometry: { isFilled: true } })
+    .lineTo(roundedW - inset, inset)
+    .lineTo(roundedW - inset, roundedH - inset)
+    .lineTo(inset, roundedH - inset)
+    .close();
+
+  const strokeD = p.toDrawD({
+    strokeWidth: 2,
+    randomSeed: id,
+    passes: 2,
+  });
+
+  const fillD = p.toDrawD({
+    strokeWidth: 2,
+    randomSeed: id,
+    passes: 1,
+    offset: 0,
+    onlyFilled: true,
+  });
+
+  const indicatorP = new PathBuilder()
+    .moveTo(inset, inset)
+    .lineTo(roundedW - inset, inset)
+    .lineTo(roundedW - inset, roundedH - inset)
+    .lineTo(inset, roundedH - inset)
+    .close();
+
+  const indicatorD = indicatorP.toDrawD({
+    strokeWidth: 1,
+    randomSeed: id,
+    passes: 1,
+  });
+
+  const res: CachedTaskPaths = { strokeD, fillD, indicatorD };
+
+  if (taskPathCache.size > 500) {
+    taskPathCache.clear();
+  }
+  taskPathCache.set(key, res);
+  return res;
+}
+
 export class FocusTaskShapeUtil extends BaseBoxShapeUtil<TLFocusTaskShape> {
   static override type = "focus-task" as const;
   static override migrations = focusTaskMigrations;
@@ -347,11 +407,16 @@ export class FocusTaskShapeUtil extends BaseBoxShapeUtil<TLFocusTaskShape> {
   }
 
   override indicator(shape: TLFocusTaskShape) {
-    return <rect width={shape.props.w} height={shape.props.h} rx={6} ry={6} />;
+    const paths = getCachedTaskPaths(shape.id, shape.props.w, shape.props.h);
+    return <path d={paths.indicatorD} />;
   }
 }
 
-function FocusTaskBody({ shape }: { shape: TLFocusTaskShape }) {
+const FocusTaskBody = React.memo(function FocusTaskBody({
+  shape,
+}: {
+  shape: TLFocusTaskShape;
+}) {
   const editor = useEditor();
   const isSelected = useValue(
     "task selected",
@@ -517,6 +582,31 @@ function FocusTaskBody({ shape }: { shape: TLFocusTaskShape }) {
   const isDone = shape.props.status === "done";
   const isDoing = shape.props.status === "doing";
 
+  const { strokeD, fillD } = useMemo(
+    () => getCachedTaskPaths(shape.id, shape.props.w, shape.props.h),
+    [shape.id, shape.props.w, shape.props.h],
+  );
+
+  const strokeColor = isDone
+    ? isDark
+      ? "#71717a"
+      : "#a1a1aa"
+    : isSelected
+      ? isDark
+        ? "#60a5fa"
+        : "#2563eb"
+      : isDark
+        ? "#e4e4e7"
+        : "#18181b";
+
+  const fillColor = isDone
+    ? isDark
+      ? "#18181b"
+      : "#f4f4f5"
+    : isDark
+      ? "#18181b"
+      : "#ffffff";
+
   const renderedTitle = useMemo(
     () => renderMarkdownInline(shape.props.title || ""),
     [shape.props.title],
@@ -534,26 +624,51 @@ function FocusTaskBody({ shape }: { shape: TLFocusTaskShape }) {
         width: shape.props.w,
         height: shape.props.h,
         pointerEvents: "all",
+        contain: "layout style paint",
       }}
     >
       <div
-        className={`w-full h-full rounded-lg border-2 p-3 flex flex-col justify-between transition-all select-none group relative ${
-          isDark
-            ? isDone
-              ? "border-zinc-500 bg-zinc-900/80 opacity-75"
-              : isSelected
-                ? "border-white bg-zinc-900 shadow-sm ring-1 ring-white/20"
-                : "border-white/90 bg-zinc-900 hover:border-white shadow-xs"
-            : isDone
-              ? "border-black/50 bg-zinc-50 opacity-75"
-              : isSelected
-                ? "border-black bg-white shadow-sm ring-1 ring-black/20"
-                : "border-black bg-white hover:border-black shadow-xs"
+        className={`w-full h-full p-3 flex flex-col justify-between select-none group relative transition-opacity ${
+          isDone ? "opacity-75" : ""
         }`}
         style={{
           boxSizing: "border-box",
+          fontFamily: "var(--tl-font-draw), sans-serif",
         }}
       >
+        {/* Hand-drawn SVG Card Background & Outline */}
+        <svg
+          className="absolute inset-0 pointer-events-none overflow-visible w-full h-full -z-10"
+          style={{
+            filter: isSelected
+              ? isDark
+                ? "drop-shadow(0 0 6px rgba(96, 165, 250, 0.35))"
+                : "drop-shadow(0 0 6px rgba(37, 99, 235, 0.25))"
+              : isDark
+                ? "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5))"
+                : "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.06))",
+          }}
+        >
+          <path
+            d={fillD}
+            fill={fillColor}
+            opacity={isDone ? 0.8 : 1}
+          />
+          <path
+            d={strokeD}
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth={isSelected ? 2.5 : 2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={
+              !isSelected && !isDone
+                ? "transition-colors group-hover:stroke-zinc-950 dark:group-hover:stroke-white"
+                : "transition-colors"
+            }
+            opacity={isDone ? 0.65 : 1}
+          />
+        </svg>
         {/* Title row */}
         <div className="flex items-start justify-between gap-2 min-w-0 shrink-0">
           {isEditingTitle ? (
@@ -579,6 +694,7 @@ function FocusTaskBody({ shape }: { shape: TLFocusTaskShape }) {
                     ? "line-through text-zinc-400"
                     : "text-zinc-900 placeholder:text-zinc-400 focus:text-zinc-950"
               }`}
+              style={{ fontFamily: "var(--tl-font-draw), sans-serif" }}
             />
           ) : (
             <div
@@ -591,6 +707,7 @@ function FocusTaskBody({ shape }: { shape: TLFocusTaskShape }) {
                     ? "line-through text-zinc-400"
                     : "text-zinc-900"
               }`}
+              style={{ fontFamily: "var(--tl-font-draw), sans-serif" }}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
@@ -606,7 +723,7 @@ function FocusTaskBody({ shape }: { shape: TLFocusTaskShape }) {
           )}
 
           {/* Action buttons on hover */}
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          <div className="font-sans flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
             <button
               type="button"
               title={
@@ -635,7 +752,7 @@ function FocusTaskBody({ shape }: { shape: TLFocusTaskShape }) {
                   : "text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100"
               }`}
             >
-              <Sparkles className="size-3 text-violet-500" />
+              <Sparkles className="size-3 text-blue-500" />
             </button>
             <button
               type="button"
@@ -696,6 +813,7 @@ function FocusTaskBody({ shape }: { shape: TLFocusTaskShape }) {
         ) : shape.props.h >= 110 ? (
           <div
             className="flex-1 my-1.5 flex items-center justify-center border border-dashed border-zinc-200 dark:border-zinc-800/80 rounded-md text-[11px] text-zinc-400 dark:text-zinc-600 cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+            style={{ fontFamily: "var(--tl-font-draw), sans-serif" }}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setIsEditingNotes(true)}
           >
@@ -715,7 +833,7 @@ function FocusTaskBody({ shape }: { shape: TLFocusTaskShape }) {
             title="Click to cycle status (Todo → In Progress → Done)"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={cycleStatus}
-            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium transition-all ${
+            className={`font-sans inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium transition-all ${
               isDone
                 ? isDark
                   ? "bg-emerald-950/40 border border-emerald-800/60 text-emerald-300"
@@ -756,7 +874,7 @@ function FocusTaskBody({ shape }: { shape: TLFocusTaskShape }) {
             title="Add connected task (→)"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={onSpawnNextTask}
-            className={`size-5 rounded-full border flex items-center justify-center transition-all ${
+            className={`font-sans size-5 rounded-full border flex items-center justify-center transition-all ${
               isDark
                 ? "bg-zinc-800/80 hover:bg-zinc-700 border-zinc-700 text-zinc-400 hover:text-white"
                 : "bg-zinc-100 hover:bg-zinc-200 border-zinc-200 text-zinc-500 hover:text-zinc-900"
@@ -768,4 +886,4 @@ function FocusTaskBody({ shape }: { shape: TLFocusTaskShape }) {
       </div>
     </HTMLContainer>
   );
-}
+});

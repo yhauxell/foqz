@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('focusStore', {
       ipcRenderer.invoke('mcp:callTool', { serverName, toolName, args }),
     restartServer: (serverName) => ipcRenderer.invoke('mcp:restartServer', serverName),
   },
+  jev: {
+    evaluate: (req, options) => ipcRenderer.invoke('jev:evaluate', { req, options }),
+  },
   /**
    * Register cleanup before the app process exits (Electron `before-quit`).
    * Invoke `handler` (may be async), then notify main so `app.quit()` can finish.

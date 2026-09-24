@@ -8,6 +8,7 @@ const {
   ipcMain,
   globalShortcut,
   dialog,
+  session,
 } = require('electron')
 const fs = require('node:fs/promises')
 const fsSync = require('node:fs')
@@ -70,6 +71,19 @@ const DEFAULT_SETTINGS = {
   colorScheme: 'system',
   // 9am..5pm
   workingHours: { startMin: 9 * 60, endMin: 17 * 60 },
+  typesafeEnabled: true,
+  typesafeApiKey: '',
+  typesafeBaseUrl: 'https://api.typesafe.ai',
+  ollamaEnabled: true,
+  ollamaBaseUrl: 'http://127.0.0.1:11434',
+  ollamaDefaultModel: '',
+  openaiEnabled: false,
+  openaiApiKey: '',
+  openaiBaseUrl: 'https://api.openai.com/v1',
+  openaiDefaultModel: 'gpt-4o-mini',
+  geminiEnabled: false,
+  geminiApiKey: '',
+  geminiDefaultModel: 'gemini-1.5-flash',
 }
 
 /** @type {typeof DEFAULT_SETTINGS & { windowBounds: null | { x: number; y: number; width: number; height: number } }} */
@@ -144,6 +158,48 @@ function mergeSettings(parsed) {
       typeof parsed.playSoundOnTimerEnd === 'boolean' ? parsed.playSoundOnTimerEnd : d.playSoundOnTimerEnd,
     colorScheme,
     workingHours,
+    typesafeEnabled:
+      typeof parsed.typesafeEnabled === 'boolean' ? parsed.typesafeEnabled : d.typesafeEnabled,
+    typesafeApiKey:
+      typeof parsed.typesafeApiKey === 'string' ? parsed.typesafeApiKey.trim() : d.typesafeApiKey,
+    typesafeBaseUrl:
+      typeof parsed.typesafeBaseUrl === 'string' && parsed.typesafeBaseUrl.trim()
+        ? parsed.typesafeBaseUrl.trim().replace(/\/+$/, '')
+        : d.typesafeBaseUrl,
+    ollamaEnabled:
+      typeof parsed.ollamaEnabled === 'boolean' ? parsed.ollamaEnabled : d.ollamaEnabled,
+    ollamaBaseUrl:
+      typeof parsed.ollamaBaseUrl === 'string' && parsed.ollamaBaseUrl.trim()
+        ? parsed.ollamaBaseUrl.trim().replace(/\/+$/, '')
+        : d.ollamaBaseUrl,
+    ollamaDefaultModel:
+      typeof parsed.ollamaDefaultModel === 'string'
+        ? parsed.ollamaDefaultModel.trim()
+        : d.ollamaDefaultModel,
+    openaiEnabled:
+      typeof parsed.openaiEnabled === 'boolean' ? parsed.openaiEnabled : d.openaiEnabled,
+    openaiApiKey:
+      typeof parsed.openaiApiKey === 'string' ? parsed.openaiApiKey.trim() : d.openaiApiKey,
+    openaiBaseUrl:
+      typeof parsed.openaiBaseUrl === 'string' && parsed.openaiBaseUrl.trim()
+        ? parsed.openaiBaseUrl.trim().replace(/\/+$/, '')
+        : d.openaiBaseUrl,
+    openaiDefaultModel:
+      typeof parsed.openaiDefaultModel === 'string'
+        ? parsed.openaiDefaultModel.trim()
+        : d.openaiDefaultModel,
+    geminiEnabled:
+      typeof parsed.geminiEnabled === 'boolean' ? parsed.geminiEnabled : d.geminiEnabled,
+    geminiApiKey:
+      typeof parsed.geminiApiKey === 'string' ? parsed.geminiApiKey.trim() : d.geminiApiKey,
+    geminiDefaultModel:
+      typeof parsed.geminiDefaultModel === 'string'
+        ? parsed.geminiDefaultModel.trim()
+        : d.geminiDefaultModel,
+    activeAiProvider:
+      ['ollama', 'openai', 'gemini'].includes(parsed.activeAiProvider)
+        ? parsed.activeAiProvider
+        : d.activeAiProvider,
   }
 }
 
@@ -531,6 +587,54 @@ ipcMain.handle('mcp:restartServer', async (_event, serverName) => {
   return mcpManager.restartServer(serverName)
 })
 
+ipcMain.handle('jev:evaluate', async (_event, { req, options }) => {
+  const apiKey = (
+    options?.apiKey ||
+    appSettings.typesafeApiKey ||
+    process.env.TYPESAFE_API_KEY ||
+    ''
+  ).trim()
+  const baseUrl = (
+    options?.baseUrl ||
+    appSettings.typesafeBaseUrl ||
+    'https://api.typesafe.ai'
+  ).trim()
+  const endpoint = `${baseUrl.replace(/\/+$/, '')}/v1/systemone`
+
+  if (!apiKey) {
+    throw new Error('TypeSafe API Key is missing. Please configure it in Foqz Settings.')
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      state: req.state,
+      model: req.model || 'jev-latest',
+      questions: req.questions,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '')
+    let message = errorText
+    try {
+      const parsed = JSON.parse(errorText)
+      if (parsed?.detail?.message) message = parsed.detail.message
+      else if (parsed?.message) message = parsed.message
+      else if (Array.isArray(parsed?.detail)) {
+        message = parsed.detail.map((d) => d.msg || JSON.stringify(d)).join(', ')
+      }
+    } catch {}
+    throw new Error(`TypeSafe API error (${response.status}): ${message || response.statusText}`)
+  }
+
+  return response.json()
+})
+
 app.on('before-quit', (e) => {
   mcpManager.disconnectAll().catch(() => {})
   if (appQuitting) return
@@ -614,6 +718,30 @@ function setupAppMenu() {
 }
 
 app.whenReady().then(async () => {
+  if (session && session.defaultSession) {
+    session.defaultSession.webRequest.onBeforeSendHeaders(
+      { urls: ['https://api.typesafe.ai/*'] },
+      (details, callback) => {
+        delete details.requestHeaders['Origin']
+        delete details.requestHeaders['origin']
+        delete details.requestHeaders['Referer']
+        delete details.requestHeaders['referer']
+        callback({ cancel: false, requestHeaders: details.requestHeaders })
+      },
+    )
+
+    session.defaultSession.webRequest.onHeadersReceived(
+      { urls: ['https://api.typesafe.ai/*'] },
+      (details, callback) => {
+        const responseHeaders = { ...details.responseHeaders }
+        responseHeaders['access-control-allow-origin'] = ['*']
+        responseHeaders['access-control-allow-methods'] = ['GET, POST, OPTIONS, PUT, PATCH, DELETE']
+        responseHeaders['access-control-allow-headers'] = ['*']
+        callback({ cancel: false, responseHeaders })
+      },
+    )
+  }
+
   setupAppMenu()
   await loadSettingsFromDisk()
   applyDockIcon()

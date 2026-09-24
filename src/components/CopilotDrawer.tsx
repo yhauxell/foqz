@@ -4,6 +4,8 @@ import {
   PanelRightClose,
   X,
   Send,
+  ArrowUp,
+  Plus,
   Square,
   Copy,
   Check,
@@ -30,10 +32,16 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { type Editor, type TLShapeId, useValue } from "tldraw";
 import { useOllama, type OllamaChatMessage } from "@/lib/ollama";
 import { runAgentLoop, type AgentToolCallEvent } from "@/lib/mcpAgentLoop";
+import { useFocusAppSettingsOptional } from "@/context/FocusAppSettingsContext";
+import { getCachedAppSettings, patchCachedAppSettings } from "@/lib/appSettingsCache";
+import { resolveActiveAiConfig } from "@/lib/appSettings";
+import { OPENAI_DEFAULT_MODELS, GEMINI_DEFAULT_MODELS } from "@/lib/aiConnectors";
+import type { AiProviderName } from "@/lib/aiProvider";
 import { NATIVE_FOQZ_TOOLS, createCanvasToolExecutor } from "@/lib/canvasTools";
 import type { McpTool } from "@/lib/mcpTypes";
 import {
   FOQZ_SYSTEM_PROMPT,
+  findContainingProjectFrame,
   parseCanvasActions,
   parseOutputSegments,
   spawnShapesOnCanvas,
@@ -43,12 +51,17 @@ import {
 } from "@/lib/canvasSpawner";
 import { CanvasActionList } from "@/components/CanvasActionList";
 import { renderMarkdownBlock } from "@/lib/markdown";
+import { MarkdownView } from "@/components/MarkdownView";
 import {
   extractShapeContext,
   getCanvasContext,
   type ShapeContextItem,
 } from "@/lib/canvasContext";
-import type { TLProjectFrameShape } from "@/shapes/projectFrame/ProjectFrameShapeUtil";
+import {
+  ACCENT_STYLES,
+  type ProjectAccent,
+  type TLProjectFrameShape,
+} from "@/shapes/projectFrame/ProjectFrameShapeUtil";
 import type { TLFocusTaskShape } from "@/shapes/focusTask/FocusTaskShapeUtil";
 
 export interface CopilotChatMessage {
@@ -67,7 +80,7 @@ interface CopilotDrawerProps {
   open: boolean;
   onClose: () => void;
   selectedShapeId: TLShapeId | null;
-  onOpenSettings?: (tab?: "general" | "workingHours" | "mcp" | "data") => void;
+  onOpenSettings?: (tab?: "general" | "workingHours" | "ai" | "mcp" | "data") => void;
 }
 
 export function CopilotDrawer({
@@ -77,8 +90,82 @@ export function CopilotDrawer({
   selectedShapeId,
   onOpenSettings,
 }: CopilotDrawerProps) {
-  const { online, models, modelDetails, selectedModel, setSelectedModel, refresh } =
-    useOllama();
+  const {
+    online: ollamaOnline,
+    models: ollamaModels,
+    modelDetails: ollamaModelDetails,
+    selectedModel: selectedOllamaModel,
+    setSelectedModel: setSelectedOllamaModel,
+    refresh: refreshOllama,
+  } = useOllama();
+
+  const appSettingsCtx = useFocusAppSettingsOptional();
+  const settings = appSettingsCtx?.settings || getCachedAppSettings();
+  const activeConfig = useMemo(() => resolveActiveAiConfig(settings), [settings]);
+  const isAiReady =
+    activeConfig.isConfigured &&
+    (activeConfig.provider !== "ollama" || ollamaOnline);
+
+  const activeModelLabel = useMemo(() => {
+    if (activeConfig.provider === "openai") {
+      return activeConfig.model || "gpt-4o-mini";
+    }
+    if (activeConfig.provider === "gemini") {
+      return activeConfig.model || "gemini-1.5-flash";
+    }
+    return selectedOllamaModel || (ollamaOnline ? "Select" : "offline");
+  }, [activeConfig, selectedOllamaModel, ollamaOnline]);
+
+  const handleSelectProvider = useCallback(
+    (prov: AiProviderName) => {
+      const updates: any = { activeAiProvider: prov };
+      if (prov === "openai") updates.openaiEnabled = true;
+      if (prov === "gemini") updates.geminiEnabled = true;
+      if (prov === "ollama") updates.ollamaEnabled = true;
+
+      if (appSettingsCtx?.update) {
+        appSettingsCtx.update(updates);
+      }
+      patchCachedAppSettings(updates);
+      try {
+        localStorage.setItem("foqz_active_ai_provider", prov);
+      } catch {}
+    },
+    [appSettingsCtx],
+  );
+
+  const handleSelectModel = useCallback(
+    (prov: AiProviderName, modelName: string) => {
+      if (prov === "openai") {
+        if (appSettingsCtx?.update) {
+          appSettingsCtx.update({ activeAiProvider: "openai", openaiDefaultModel: modelName });
+        }
+        patchCachedAppSettings({ activeAiProvider: "openai", openaiDefaultModel: modelName });
+        try {
+          localStorage.setItem("foqz_openai_model", modelName);
+        } catch {}
+      } else if (prov === "gemini") {
+        if (appSettingsCtx?.update) {
+          appSettingsCtx.update({ activeAiProvider: "gemini", geminiDefaultModel: modelName });
+        }
+        patchCachedAppSettings({ activeAiProvider: "gemini", geminiDefaultModel: modelName });
+        try {
+          localStorage.setItem("foqz_gemini_model", modelName);
+        } catch {}
+      } else if (prov === "ollama") {
+        setSelectedOllamaModel(modelName);
+        if (appSettingsCtx?.update) {
+          appSettingsCtx.update({ activeAiProvider: "ollama", ollamaDefaultModel: modelName });
+        }
+        patchCachedAppSettings({ activeAiProvider: "ollama", ollamaDefaultModel: modelName });
+        try {
+          localStorage.setItem("foqz_ollama_model", modelName);
+        } catch {}
+      }
+    },
+    [appSettingsCtx, setSelectedOllamaModel],
+  );
+
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<CopilotChatMessage[]>([]);
@@ -148,23 +235,34 @@ export function CopilotDrawer({
     }
   }, [messages]);
 
-  // Synchronize store mutations & selection changes immediately
+  // Synchronize store mutations only when drawer is open and actual document shapes change
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || !open) return;
 
-    const unlistenStore = editor.store.listen(() => {
-      setStoreTick((t) => t + 1);
-    });
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unlistenStore = editor.store.listen(
+      (entry) => {
+        const changes = entry.changes;
+        const hasShapeChange =
+          Object.keys(changes.added || {}).length > 0 ||
+          Object.keys(changes.removed || {}).length > 0 ||
+          Object.keys(changes.updated || {}).length > 0;
 
-    const offChange = editor.on("change", () => {
-      setStoreTick((t) => t + 1);
-    });
+        if (hasShapeChange) {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => {
+            setStoreTick((t) => t + 1);
+          }, 300);
+        }
+      },
+      { scope: "document" },
+    );
 
     return () => {
+      if (timer) clearTimeout(timer);
       unlistenStore();
-      offChange();
     };
-  }, [editor]);
+  }, [editor, open]);
 
   // Ensure external selectedShapeId is selected in the editor
   useEffect(() => {
@@ -220,13 +318,94 @@ export function CopilotDrawer({
     setMessages([]);
   }, [handleStop]);
 
-  // Send prompt to Ollama with full canvas context & MCP tool calling
+  // Send prompt to Copilot with full canvas context & MCP tool calling
   const handleSend = useCallback(
     async (customPrompt?: string) => {
       const userText = (customPrompt ?? prompt).trim();
       if (!userText && selectedItems.length === 0 && boardItems.length === 0)
         return;
-      if (!online) return;
+
+      let runProvider = activeConfig.provider;
+      let runModel =
+        activeConfig.provider === "ollama"
+          ? selectedOllamaModel || "qwen2.5-coder:7b"
+          : activeConfig.model;
+      let runApiKey = activeConfig.apiKey;
+      let runBaseUrl = activeConfig.baseUrl;
+
+      const hasConfiguredOpenAi = Boolean(settings.openaiApiKey?.trim() && settings.openaiEnabled !== false);
+      const hasConfiguredGemini = Boolean(settings.geminiApiKey?.trim() && settings.geminiEnabled !== false);
+
+      // Graceful automatic fallback if Ollama is selected but offline
+      if (runProvider === "ollama" && !ollamaOnline) {
+        if (hasConfiguredOpenAi) {
+          runProvider = "openai";
+          runModel = settings.openaiDefaultModel || "gpt-4o-mini";
+          runApiKey = settings.openaiApiKey;
+          runBaseUrl = settings.openaiBaseUrl || "https://api.openai.com/v1";
+          handleSelectProvider("openai");
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg_${Date.now()}_notice`,
+              role: "assistant",
+              content: `> **Notice**: Local AI (Ollama) is offline on \`127.0.0.1:11434\`. Automatically switched to your configured **OpenAI** provider (\`${runModel}\`).\n\n*(To use local Ollama, start it in terminal with \`ollama serve\`)*`,
+              timestamp: Date.now(),
+            },
+          ]);
+        } else if (hasConfiguredGemini) {
+          runProvider = "gemini";
+          runModel = settings.geminiDefaultModel || "gemini-1.5-flash";
+          runApiKey = settings.geminiApiKey;
+          handleSelectProvider("gemini");
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg_${Date.now()}_notice`,
+              role: "assistant",
+              content: `> **Notice**: Local AI (Ollama) is offline on \`127.0.0.1:11434\`. Automatically switched to your configured **Google Gemini** provider (\`${runModel}\`).\n\n*(To use local Ollama, start it in terminal with \`ollama serve\`)*`,
+              timestamp: Date.now(),
+            },
+          ]);
+        } else {
+          setPrompt("");
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg_${Date.now()}_user`,
+              role: "user",
+              content: userText || "Canvas analysis",
+              timestamp: Date.now(),
+            },
+            {
+              id: `msg_${Date.now()}_err`,
+              role: "assistant",
+              content: `**Local AI (Ollama) is Offline**\n\nFoqz cannot connect to Ollama at \`${activeConfig.baseUrl || "http://127.0.0.1:11434"}\`.\n\n• Start Ollama by running \`ollama serve\` in your terminal.\n• Or configure **OpenAI** or **Google Gemini** in **Settings → AI**.`,
+              timestamp: Date.now(),
+            },
+          ]);
+          return;
+        }
+      } else if (!activeConfig.isConfigured) {
+        const name = activeConfig.provider === "openai" ? "OpenAI" : "Google Gemini";
+        setPrompt("");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg_${Date.now()}_user`,
+            role: "user",
+            content: userText || "Canvas analysis",
+            timestamp: Date.now(),
+          },
+          {
+            id: `msg_${Date.now()}_err`,
+            role: "assistant",
+            content: `**${name} API Key Missing**\n\nPlease add your ${name} API key in **Settings → AI** to use this provider.`,
+            timestamp: Date.now(),
+          },
+        ]);
+        return;
+      }
 
       const promptToRun =
         userText ||
@@ -301,9 +480,22 @@ export function CopilotDrawer({
 
       try {
         const result = await runAgentLoop({
-          model: selectedModel || "qwen2.5-coder:7b",
+          provider: runProvider,
+          model: runModel,
+          apiKey: runApiKey,
+          baseUrl: runBaseUrl,
           userPrompt: promptToRun,
-          systemPrompt: FOQZ_SYSTEM_PROMPT,
+          systemPrompt: `${FOQZ_SYSTEM_PROMPT}
+
+PORTFOLIO AUDIT:
+You have access to the \`jev_audit_portfolio\` native tool.
+- When the user asks to plan their day, audit projects, prioritize across the canvas, or ask "what project makes the most sense to push for today?":
+  1. ALWAYS invoke the \`jev_audit_portfolio\` tool.
+  2. Evaluates all project frames across the canvas on Strategic Leverage, Operational Urgency, and Execution Readiness.
+  3. Present the resulting executive briefing clearly in markdown, highlighting the winning project, why it won, and its top focus tasks!
+
+ITEM TRIAGE:
+You also have access to \`jev_triage_items\` to prioritize individual candidate tasks or issues against canvas goals.`,
           canvasContext: contextMsg,
           conversationHistory: previousHistory,
           tools: allTools,
@@ -372,7 +564,7 @@ export function CopilotDrawer({
                     ...m,
                     isStreaming: false,
                     activeTool: null,
-                    error: err.message || "Failed to communicate with Ollama",
+                    error: err.message || `Failed to communicate with ${activeConfig.provider}`,
                   }
                 : m,
             ),
@@ -397,9 +589,10 @@ export function CopilotDrawer({
       selectedSummary,
       boardItems,
       boardSummary,
-      online,
+      isAiReady,
+      activeConfig,
       handleStop,
-      selectedModel,
+      selectedOllamaModel,
       editor,
       primaryShape,
       mcpTools,
@@ -412,10 +605,11 @@ export function CopilotDrawer({
     (actions: SpawnableShape[]) => {
       if (!editor || !actions.length) return;
 
-      if (primaryShape && primaryShape.type === "project-frame") {
+      const targetProject = findContainingProjectFrame(editor, primaryShape);
+      if (targetProject) {
         const count = spawnWorkflowForProject(
           editor,
-          primaryShape as TLProjectFrameShape,
+          targetProject,
           actions,
         );
         setSpawnedCount(count);
@@ -433,7 +627,12 @@ export function CopilotDrawer({
   const handleSpawnSingle = useCallback(
     (action: SpawnableShape, index: number) => {
       if (!editor) return;
-      spawnSingleShapeOnCanvas(editor, action, primaryShape, index);
+      const targetProject = findContainingProjectFrame(editor, primaryShape);
+      if (targetProject) {
+        spawnWorkflowForProject(editor, targetProject, [action]);
+      } else {
+        spawnSingleShapeOnCanvas(editor, action, primaryShape, index);
+      }
     },
     [editor, primaryShape],
   );
@@ -444,16 +643,12 @@ export function CopilotDrawer({
 
   return (
     <aside
-      className="w-96 bg-white dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800/80 flex flex-col text-zinc-900 dark:text-zinc-100 font-sans select-none shrink-0 z-40 animate-in slide-in-from-right duration-200"
-      style={{
-        height: "100%",
-        boxSizing: "border-box",
-      }}
+      className="glass-panel absolute top-3 bottom-3 right-3 w-96 max-w-[calc(100vw-2rem)] rounded-[24px] flex flex-col text-zinc-900 dark:text-zinc-100 font-sans select-none z-40 animate-in slide-in-from-right-4 duration-200 overflow-hidden"
     >
       {/* Header */}
-      <div className="h-12 px-3 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between bg-zinc-50/80 dark:bg-zinc-900/40 shrink-0">
+      <div className="h-12 px-3 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between bg-white/20 dark:bg-white/[0.02] shrink-0">
         <div className="flex items-center gap-2">
-          <Sparkles className="size-4 text-violet-500" />
+          <Sparkles className="size-4 text-blue-500" />
           <span className="text-xs font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
             Copilot
           </span>
@@ -473,42 +668,49 @@ export function CopilotDrawer({
                   .catch(() => {});
               }
             }}
-            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors ${
+            className={`h-7 px-2.5 rounded-full border text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs ${
               showToolsHud
-                ? "bg-violet-100 dark:bg-violet-950/70 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300"
-                : "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-950 dark:hover:text-white"
+                ? "bg-blue-500/15 border-blue-500/40 text-blue-700 dark:text-blue-300"
+                : "border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 text-zinc-700 dark:text-zinc-300 hover:border-black/20 dark:hover:border-white/20 hover:text-zinc-950 dark:hover:text-white"
             }`}
           >
-            <Wrench className="size-3 text-violet-500" />
+            <Wrench className="size-3 text-blue-500" />
             <span>{NATIVE_FOQZ_TOOLS.length + mcpTools.length}</span>
           </button>
 
-          {/* Model Selector Dropdown */}
+          {/* AI Provider & Model Selector Dropdown */}
           <Popover open={modelMenuOpen} onOpenChange={setModelMenuOpen}>
             <PopoverTrigger
               render={
                 <button
                   type="button"
                   title={
-                    online
-                      ? `Selected Model: ${selectedModel || "Auto"} (click to change)`
-                      : "Ollama is offline (start localhost:11434)"
+                    isAiReady
+                      ? `Active AI: ${activeConfig.provider.toUpperCase()} (${activeModelLabel})`
+                      : activeConfig.provider === "ollama"
+                      ? "Ollama is offline (start localhost:11434)"
+                      : `${activeConfig.provider === "openai" ? "OpenAI" : "Gemini"} API key missing`
                   }
-                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors ${
-                    online
-                      ? "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-950 dark:hover:text-white"
-                      : "bg-zinc-100/60 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-500"
+                  className={`h-7 px-2.5 rounded-full border text-[11px] font-medium transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer ${
+                    isAiReady
+                      ? "border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 text-zinc-700 dark:text-zinc-200 hover:border-black/20 dark:hover:border-white/20 hover:text-zinc-950 dark:hover:text-white"
+                      : "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300"
                   }`}
                 />
               }
             >
               <span
                 className={`size-1.5 rounded-full shrink-0 ${
-                  online ? "bg-emerald-500" : "bg-zinc-400 dark:bg-zinc-600"
+                  isAiReady ? "bg-emerald-500" : "bg-amber-500"
                 }`}
               />
-              <span className="truncate max-w-[85px]">
-                {selectedModel || (online ? "Select" : "offline")}
+              <span className="truncate max-w-[95px] font-mono text-[10px]">
+                {activeConfig.provider === "openai"
+                  ? "OpenAI"
+                  : activeConfig.provider === "gemini"
+                  ? "Gemini"
+                  : "Ollama"}
+                : {activeModelLabel}
               </span>
               <ChevronDown className="size-3 text-zinc-400 shrink-0" />
             </PopoverTrigger>
@@ -516,103 +718,254 @@ export function CopilotDrawer({
             <PopoverContent
               align="end"
               sideOffset={6}
-              className="w-64 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-xl text-zinc-900 dark:text-zinc-100 z-50 font-sans"
+              className="w-72 p-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-xl text-zinc-900 dark:text-zinc-100 z-50 font-sans space-y-2"
             >
               {/* Dropdown Header */}
-              <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider border-b border-zinc-100 dark:border-zinc-800/80 pb-1.5 mb-1">
+              <div className="flex items-center justify-between px-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider border-b border-zinc-100 dark:border-zinc-800 pb-1.5">
                 <span className="flex items-center gap-1.5">
-                  <Cpu className="size-3 text-violet-500" />
-                  <span>Ollama Models</span>
+                  <Cpu className="size-3 text-blue-500" />
+                  <span>AI Provider & Model</span>
                 </span>
-                <span className="font-mono">
-                  {online ? `${models.length} installed` : "offline"}
-                </span>
-              </div>
-
-              {/* Model Options List */}
-              <div className="flex flex-col gap-0.5 max-h-56 overflow-y-auto py-0.5">
-                {!online ? (
-                  <div className="p-3 text-center space-y-1 text-zinc-500 dark:text-zinc-400">
-                    <p className="text-xs font-medium text-rose-600 dark:text-rose-400">
-                      Ollama is unreachable
-                    </p>
-                    <p className="text-[10px] leading-tight">
-                      Ensure Ollama is running on port 11434 (<code className="font-mono">ollama serve</code>).
-                    </p>
-                  </div>
-                ) : models.length === 0 ? (
-                  <div className="p-3 text-center space-y-1 text-zinc-500 dark:text-zinc-400">
-                    <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                      No models installed
-                    </p>
-                    <p className="text-[10px] leading-tight">
-                      Run <code className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded">ollama pull qwen2.5-coder:7b</code> in terminal.
-                    </p>
-                  </div>
-                ) : (
-                  models.map((modelName) => {
-                    const isSelected = modelName === selectedModel;
-                    const detail = modelDetails?.find((d) => d.name === modelName);
-                    const sizeLabel =
-                      detail?.parameterSize ||
-                      (detail?.size ? `${(detail.size / 1e9).toFixed(1)} GB` : null);
-
-                    return (
-                      <button
-                        key={modelName}
-                        type="button"
-                        onClick={() => {
-                          setSelectedModel(modelName);
-                          setModelMenuOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors ${
-                          isSelected
-                            ? "bg-violet-50 dark:bg-violet-950/60 text-violet-900 dark:text-violet-100 font-medium"
-                            : "hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span
-                            className={`size-1.5 rounded-full shrink-0 ${
-                              isSelected
-                                ? "bg-violet-600 dark:bg-violet-400"
-                                : "bg-zinc-300 dark:bg-zinc-700"
-                            }`}
-                          />
-                          <span className="truncate font-mono text-[11px]">
-                            {modelName}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0 pl-2">
-                          {sizeLabel && (
-                            <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 px-1 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800">
-                              {sizeLabel}
-                            </span>
-                          )}
-                          {isSelected ? (
-                            <Check className="size-3.5 text-violet-600 dark:text-violet-400" />
-                          ) : (
-                            <div className="size-3.5" />
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })
+                {onOpenSettings && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModelMenuOpen(false);
+                      onOpenSettings("ai");
+                    }}
+                    className="text-[10px] lowercase text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5"
+                  >
+                    <SettingsIcon className="size-2.5" />
+                    <span>settings</span>
+                  </button>
                 )}
               </div>
 
-              {/* Footer Refresh Action */}
-              <div className="border-t border-zinc-100 dark:border-zinc-800/80 pt-1 mt-1">
+              {/* Provider Selection Tabs */}
+              <div className="grid grid-cols-3 gap-1 bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-0.5 rounded-full text-xs">
                 <button
                   type="button"
-                  onClick={() => refresh()}
-                  className="w-full flex items-center justify-center gap-1.5 py-1 text-[10px] text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                  onClick={() => handleSelectProvider("ollama")}
+                  className={`py-1 px-1.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer ${
+                    activeConfig.provider === "ollama"
+                      ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs"
+                      : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                  }`}
                 >
-                  <RefreshCw className="size-2.5" />
-                  <span>Refresh installed models</span>
+                  Ollama
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectProvider("openai")}
+                  className={`py-1 px-1.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer ${
+                    activeConfig.provider === "openai"
+                      ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs"
+                      : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  OpenAI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectProvider("gemini")}
+                  className={`py-1 px-1.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer ${
+                    activeConfig.provider === "gemini"
+                      ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs"
+                      : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  Gemini
                 </button>
               </div>
+
+              {/* Provider Details & Models */}
+              {activeConfig.provider === "openai" && (
+                <div className="space-y-1.5 pt-0.5">
+                  {!settings.openaiApiKey?.trim() ? (
+                    <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-[11px] text-amber-800 dark:text-amber-300 space-y-1.5">
+                      <p className="font-semibold">OpenAI API Key Missing</p>
+                      <p className="text-[10px] text-amber-700 dark:text-amber-400 leading-tight">
+                        Add your API key or custom endpoint in Settings to use OpenAI models with tools.
+                      </p>
+                      {onOpenSettings && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModelMenuOpen(false);
+                            onOpenSettings("ai");
+                          }}
+                          className="text-[10px] font-semibold text-amber-900 dark:text-amber-200 underline"
+                        >
+                          Configure in Settings &rarr;
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+                      {OPENAI_DEFAULT_MODELS.map((m) => {
+                        const isSelected = activeConfig.model === m;
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              handleSelectModel("openai", m);
+                              setModelMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-left text-xs transition-colors ${
+                              isSelected
+                                ? "bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-100 font-medium"
+                                : "hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300"
+                            }`}
+                          >
+                            <span className="font-mono text-[11px]">{m}</span>
+                            {isSelected && <Check className="size-3 text-blue-600 dark:text-blue-400" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeConfig.provider === "gemini" && (
+                <div className="space-y-1.5 pt-0.5">
+                  {!settings.geminiApiKey?.trim() ? (
+                    <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-[11px] text-amber-800 dark:text-amber-300 space-y-1.5">
+                      <p className="font-semibold">Gemini API Key Missing</p>
+                      <p className="text-[10px] text-amber-700 dark:text-amber-400 leading-tight">
+                        Add your Google Gemini API key in Settings to use Gemini Flash or Pro with tools.
+                      </p>
+                      {onOpenSettings && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModelMenuOpen(false);
+                            onOpenSettings("ai");
+                          }}
+                          className="text-[10px] font-semibold text-amber-900 dark:text-amber-200 underline"
+                        >
+                          Configure in Settings &rarr;
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+                      {GEMINI_DEFAULT_MODELS.map((m) => {
+                        const isSelected = activeConfig.model === m;
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              handleSelectModel("gemini", m);
+                              setModelMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-left text-xs transition-colors ${
+                              isSelected
+                                ? "bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-100 font-medium"
+                                : "hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300"
+                            }`}
+                          >
+                            <span className="font-mono text-[11px]">{m}</span>
+                            {isSelected && <Check className="size-3 text-blue-600 dark:text-blue-400" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeConfig.provider === "ollama" && (
+                <div className="space-y-1 pt-0.5">
+                  {!ollamaOnline ? (
+                    <div className="p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/60 text-[11px] text-zinc-600 dark:text-zinc-300 space-y-1.5 text-center">
+                      <p className="font-semibold text-rose-600 dark:text-rose-400">Ollama Offline</p>
+                      <p className="text-[10px] leading-tight text-zinc-500 dark:text-zinc-400">
+                        Start Ollama with <code className="font-mono bg-zinc-200/60 dark:bg-zinc-700 px-1 py-0.5 rounded">ollama serve</code>
+                      </p>
+                      <div className="flex items-center justify-center gap-2 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => refreshOllama()}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                        >
+                          <RefreshCw className="size-2.5" />
+                          <span>Retry</span>
+                        </button>
+                      </div>
+                      {settings.openaiApiKey?.trim() ? (
+                        <div className="pt-1 border-t border-zinc-200/60 dark:border-zinc-700/60">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSelectProvider("openai");
+                              setModelMenuOpen(false);
+                            }}
+                            className="w-full px-2 py-1 rounded bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-[10px] font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
+                          >
+                            Switch to OpenAI (Configured)
+                          </button>
+                        </div>
+                      ) : settings.geminiApiKey?.trim() ? (
+                        <div className="pt-1 border-t border-zinc-200/60 dark:border-zinc-700/60">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSelectProvider("gemini");
+                              setModelMenuOpen(false);
+                            }}
+                            className="w-full px-2 py-1 rounded bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-[10px] font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
+                          >
+                            Switch to Gemini (Configured)
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : ollamaModels.length === 0 ? (
+                    <div className="p-2 text-center text-xs text-zinc-500">No Ollama models installed</div>
+                  ) : (
+                    <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+                      {ollamaModels.map((m) => {
+                        const isSelected = selectedOllamaModel === m;
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              setSelectedOllamaModel(m);
+                              handleSelectModel("ollama", m);
+                              setModelMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-left text-xs transition-colors ${
+                              isSelected
+                                ? "bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-100 font-medium"
+                                : "hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300"
+                            }`}
+                          >
+                            <span className="font-mono text-[11px] truncate max-w-[170px]">{m}</span>
+                            {isSelected && <Check className="size-3 text-blue-600 dark:text-blue-400 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {ollamaOnline && (
+                    <div className="border-t border-zinc-100 dark:border-zinc-800/80 pt-1 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => refreshOllama()}
+                        className="w-full flex items-center justify-center gap-1.5 py-1 text-[10px] text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                      >
+                        <RefreshCw className="size-2.5" />
+                        <span>Refresh Ollama Models</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </PopoverContent>
           </Popover>
 
@@ -621,9 +974,9 @@ export function CopilotDrawer({
             type="button"
             onClick={handleNewChat}
             title="New Chat (clear conversation)"
-            className="p-1 rounded-md text-zinc-400 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            className="size-7 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-white/90 dark:hover:bg-zinc-800/80 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
           >
-            <RotateCcw className="size-3.5" />
+            <RotateCcw className="size-3" />
           </button>
 
           {/* Close button */}
@@ -631,19 +984,19 @@ export function CopilotDrawer({
             type="button"
             onClick={onClose}
             title="Collapse Copilot (⌘J)"
-            className="p-1 rounded-md text-zinc-400 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            className="size-7 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-white/90 dark:hover:bg-zinc-800/80 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
           >
-            <PanelRightClose className="size-4" />
+            <PanelRightClose className="size-3.5" />
           </button>
         </div>
       </div>
 
       {/* Live Tools HUD Panel */}
       {showToolsHud && (
-        <div className="border-b border-zinc-200 dark:border-zinc-800/80 bg-zinc-100/80 dark:bg-zinc-950/80 p-3 space-y-3 font-sans shrink-0 max-h-72 overflow-y-auto animate-in slide-in-from-top-2 duration-150">
+        <div className="border-b border-black/[0.06] dark:border-white/[0.08] bg-white/30 dark:bg-black/30 backdrop-blur-md p-3 space-y-3 font-sans shrink-0 max-h-72 overflow-y-auto animate-in slide-in-from-top-2 duration-150">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <Wrench className="size-3.5 text-violet-500" />
+              <Wrench className="size-3.5 text-blue-500" />
               <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
                 Active Tools HUD ({NATIVE_FOQZ_TOOLS.length + mcpTools.length})
               </span>
@@ -652,7 +1005,7 @@ export function CopilotDrawer({
               <button
                 type="button"
                 onClick={() => onOpenSettings("mcp")}
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-violet-600 dark:text-violet-400 hover:underline"
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline"
               >
                 <SettingsIcon className="size-3" />
                 <span>Configure MCP</span>
@@ -669,10 +1022,10 @@ export function CopilotDrawer({
               {NATIVE_FOQZ_TOOLS.map((tool) => (
                 <div
                   key={tool.name}
-                  className="px-2 py-1.5 rounded bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 text-[11px] shadow-2xs"
+                  className="px-2 py-1.5 rounded-lg bg-white/50 dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.08] text-[11px] shadow-2xs backdrop-blur-sm"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-semibold text-violet-600 dark:text-violet-400">
+                    <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">
                       foqz:{tool.name}
                     </span>
                     <span className="text-[10px] text-zinc-400 font-mono">built-in</span>
@@ -723,7 +1076,7 @@ export function CopilotDrawer({
       )}
 
       {/* Context Card: Displays any selected shape(s) or board context */}
-      <div className="p-3 border-b border-zinc-200 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/30 shrink-0">
+      <div className="p-3 border-b border-black/[0.06] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.02] shrink-0">
         {singleShape ? (
           /* Single shape selected */
           <div className="space-y-2.5">
@@ -741,7 +1094,7 @@ export function CopilotDrawer({
                 ) : singleShape.rawType === "focus-timer" ? (
                   <Timer className="size-3.5 text-orange-500" />
                 ) : singleShape.rawType === "arrow" ? (
-                  <ArrowRight className="size-3.5 text-violet-500" />
+                  <ArrowRight className="size-3.5 text-blue-500" />
                 ) : (
                   <Box className="size-3.5 text-zinc-400" />
                 )}
@@ -762,7 +1115,8 @@ export function CopilotDrawer({
                       className="size-2 rounded-full border border-black/10 dark:border-white/10"
                       style={{
                         backgroundColor:
-                          singleShape.color === "yellow"
+                          ACCENT_STYLES[singleShape.color as ProjectAccent]?.dotHex ||
+                          (singleShape.color === "yellow"
                             ? "#facc15"
                             : singleShape.color === "blue"
                             ? "#3b82f6"
@@ -770,15 +1124,13 @@ export function CopilotDrawer({
                             ? "#10b981"
                             : singleShape.color === "red"
                             ? "#ef4444"
-                            : singleShape.color === "violet"
-                            ? "#8b5cf6"
                             : singleShape.color === "orange"
                             ? "#f97316"
                             : singleShape.color === "grey"
                             ? "#a1a1aa"
                             : singleShape.color === "black"
                             ? "#18181b"
-                            : "#a1a1aa",
+                            : "#3b82f6"),
                       }}
                     />
                     {singleShape.color}
@@ -793,7 +1145,7 @@ export function CopilotDrawer({
                   type="button"
                   onClick={() => setContextCardCollapsed((c) => !c)}
                   title={contextCardCollapsed ? "Expand context card" : "Collapse context card"}
-                  className="p-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+                  className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors cursor-pointer"
                 >
                   {contextCardCollapsed ? (
                     <ChevronDown className="size-3" />
@@ -805,7 +1157,7 @@ export function CopilotDrawer({
                   type="button"
                   onClick={() => editor?.selectNone()}
                   title="Deselect shape (Escape)"
-                  className="p-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+                  className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors cursor-pointer"
                 >
                   <X className="size-3" />
                 </button>
@@ -815,7 +1167,7 @@ export function CopilotDrawer({
             {!contextCardCollapsed && (
               <>
                 {/* Selected Item Content Preview Card */}
-                <div className="p-2.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800 text-xs shadow-xs">
+                <div className="p-2.5 rounded-xl bg-white/50 dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.08] text-xs shadow-2xs backdrop-blur-sm">
                   {singleShape.hasText ? (
                     <div className="space-y-1">
                       <p className="text-zinc-900 dark:text-zinc-100 font-medium leading-relaxed select-text line-clamp-4 whitespace-pre-wrap">
@@ -845,7 +1197,7 @@ export function CopilotDrawer({
                             `Break down the task "${singleShape.label}" into 3-4 actionable sequential subtasks. Output them in a \`\`\`canvas block so they can be placed on the board.`,
                           )
                         }
-                        className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                       >
                         Break into subtasks
                       </button>
@@ -856,7 +1208,7 @@ export function CopilotDrawer({
                             `Write the technical specs and implementation steps for: "${singleShape.label}".`,
                           )
                         }
-                        className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                       >
                         Generate specs
                       </button>
@@ -870,9 +1222,9 @@ export function CopilotDrawer({
                             `Break down the goal "${(singleShape.shape as TLProjectFrameShape).props.goal || singleShape.label}" into a 4-5 step sequential task workflow. Output them in a \`\`\`canvas block.`,
                           )
                         }
-                        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-950 font-medium text-xs shadow transition-colors"
+                        className="w-full flex items-center justify-center gap-1.5 h-8 rounded-full bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-950 font-medium text-xs shadow-2xs transition-all cursor-pointer"
                       >
-                        <Sparkles className="size-3.5 text-violet-400 dark:text-violet-600" />
+                        <Sparkles className="size-3.5 text-blue-400 dark:text-blue-500" />
                         <span>Generate Workflow on Canvas</span>
                       </button>
                       <button
@@ -882,7 +1234,7 @@ export function CopilotDrawer({
                             `List the key milestones and deliverables for project: "${singleShape.label}".`,
                           )
                         }
-                        className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                       >
                         List milestones
                       </button>
@@ -896,7 +1248,7 @@ export function CopilotDrawer({
                             `Plan a focused, distraction-free roadmap for a ${(singleShape.shape.props as any).durationPreset || 25}-minute focus session.`,
                           )
                         }
-                        className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                       >
                         Plan focus session
                       </button>
@@ -907,7 +1259,7 @@ export function CopilotDrawer({
                             `Suggest 3 quick micro-tasks that can be accomplished in ${(singleShape.shape.props as any).durationPreset || 25} minutes. Output them in a \`\`\`canvas block.`,
                           )
                         }
-                        className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                       >
                         Quick tasks
                       </button>
@@ -922,7 +1274,7 @@ export function CopilotDrawer({
                             `Turn this ${singleShape.type}: "${singleShape.label}" into 2-3 structured task cards. Output them in a \`\`\`canvas block.`,
                           )
                         }
-                        className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                       >
                         Convert into Tasks
                       </button>
@@ -933,7 +1285,7 @@ export function CopilotDrawer({
                             `Expand on this idea and give constructive feedback or execution advice: "${singleShape.label}".`,
                           )
                         }
-                        className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                       >
                         Expand idea
                       </button>
@@ -944,7 +1296,7 @@ export function CopilotDrawer({
                             `Summarize the key takeaways and next steps for: "${singleShape.label}".`,
                           )
                         }
-                        className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                       >
                         Summarize
                       </button>
@@ -959,7 +1311,7 @@ export function CopilotDrawer({
                             `Generate 3-4 structured task cards to organize inside this ${singleShape.type}. Output them in a \`\`\`canvas block.`,
                           )
                         }
-                        className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                       >
                         Generate tasks inside
                       </button>
@@ -970,7 +1322,7 @@ export function CopilotDrawer({
                             `Brainstorm a plan and purpose for this ${singleShape.type} section on my board. Output structured items in a \`\`\`canvas block.`,
                           )
                         }
-                        className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                       >
                         Brainstorm section plan
                       </button>
@@ -1020,7 +1372,7 @@ export function CopilotDrawer({
                       key={item.id}
                       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 truncate max-w-[160px]"
                     >
-                      <span className="size-1.5 rounded-full bg-violet-500" />
+                      <span className="size-1.5 rounded-full bg-blue-500" />
                       {item.label}
                     </span>
                   ))}
@@ -1034,7 +1386,7 @@ export function CopilotDrawer({
                         `Synthesize and organize these selected canvas items into a clear sequential workflow:\n${selectedSummary}\nOutput new or connected tasks in a \`\`\`canvas block.`,
                       )
                     }
-                    className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                    className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                   >
                     Synthesize into workflow
                   </button>
@@ -1045,7 +1397,7 @@ export function CopilotDrawer({
                         `Summarize the relationship and priority between these selected items:\n${selectedSummary}`,
                       )
                     }
-                    className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                    className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                   >
                     Summarize selection
                   </button>
@@ -1065,7 +1417,7 @@ export function CopilotDrawer({
                   type="button"
                   onClick={() => setContextCardCollapsed((c) => !c)}
                   title={contextCardCollapsed ? "Expand context card" : "Collapse context card"}
-                  className="p-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+                  className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors cursor-pointer"
                 >
                   {contextCardCollapsed ? (
                     <ChevronDown className="size-3" />
@@ -1094,10 +1446,22 @@ export function CopilotDrawer({
                       type="button"
                       onClick={() =>
                         handleSend(
+                          `Audit all projects across the canvas and recommend which project makes the most sense to push for today.`,
+                        )
+                      }
+                      className="h-6.5 px-3 rounded-full border border-blue-500/30 dark:border-blue-500/40 bg-blue-500/10 dark:bg-blue-500/20 hover:bg-blue-500/20 dark:hover:bg-blue-500/30 text-blue-700 dark:text-blue-300 text-[11px] font-medium transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
+                    >
+                      <Target className="size-3 text-blue-600 dark:text-blue-400" />
+                      <span>Plan My Day</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSend(
                           `Review all items currently on my canvas board and give me a clear daily execution plan:\n${boardSummary}`,
                         )
                       }
-                      className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                      className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                     >
                       Plan daily execution
                     </button>
@@ -1108,7 +1472,7 @@ export function CopilotDrawer({
                           `Analyze what is on my canvas board and point out what is missing or should be tackled next:\n${boardSummary}`,
                         )
                       }
-                      className="text-[11px] px-2 py-1 rounded bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
+                      className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                     >
                       Analyze board gaps
                     </button>
@@ -1127,17 +1491,57 @@ export function CopilotDrawer({
         className="flex-1 overflow-y-auto p-4 space-y-4 text-xs leading-relaxed select-text"
       >
         {messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center text-zinc-400 dark:text-zinc-600 font-sans space-y-3 py-12">
-            <div className="size-10 rounded-full bg-violet-50 dark:bg-violet-950/40 border border-violet-200/60 dark:border-violet-800/60 flex items-center justify-center text-violet-500">
-              <Sparkles className="size-5" />
+          <div className="h-full flex flex-col items-center justify-center text-center font-sans space-y-4 py-12 px-4">
+            <div className="size-12 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-center text-zinc-800 dark:text-zinc-200 shadow-xs">
+              <Sparkles className="size-5 text-blue-500" />
             </div>
-            <div className="space-y-1 max-w-[260px]">
-              <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                Foqz Copilot Agent
+            <div className="space-y-1.5 max-w-[280px]">
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">
+                How can I help you today?
               </p>
-              <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-normal">
-                Ask Copilot to plan tasks, convert notes, invoke MCP tools, or break down goals into connected canvas workflows.
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                Break down projects, summon canvas cards, plan execution, or query MCP tools.
               </p>
+            </div>
+
+            {/* Quick Action Suggestion Chips */}
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2 max-w-sm">
+              <button
+                type="button"
+                onClick={() =>
+                  handleSend(
+                    `Audit all elements and workflows on this canvas. Provide prioritized next steps.`
+                  )
+                }
+                className="h-7 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] px-3 hover:bg-white/95 dark:hover:bg-white/[0.15] text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
+              >
+                <Sparkles className="size-3 text-blue-500" />
+                <span>Audit Canvas</span>
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  handleSend(
+                    `Review all items currently on my canvas board and give me a clear daily execution plan:\n${boardSummary}`
+                  )
+                }
+                className="h-7 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] px-3 hover:bg-white/95 dark:hover:bg-white/[0.15] text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
+              >
+                <Target className="size-3 text-emerald-500" />
+                <span>Plan My Day</span>
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  handleSend(
+                    `Analyze what is on my canvas board and point out what is missing or should be tackled next:\n${boardSummary}`
+                  )
+                }
+                className="h-7 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] px-3 hover:bg-white/95 dark:hover:bg-white/[0.15] text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
+              >
+                <Layers className="size-3 text-blue-500" />
+                <span>Analyze Gaps</span>
+              </button>
             </div>
           </div>
         ) : (
@@ -1145,7 +1549,7 @@ export function CopilotDrawer({
             if (msg.role === "user") {
               return (
                 <div key={msg.id} className="flex justify-end animate-in fade-in duration-150">
-                  <div className="max-w-[88%] rounded-2xl rounded-tr-xs bg-zinc-100 dark:bg-zinc-800/90 text-zinc-900 dark:text-zinc-100 border border-zinc-200/80 dark:border-zinc-700/60 px-3.5 py-2.5 text-xs shadow-2xs select-text whitespace-pre-wrap leading-relaxed font-sans">
+                  <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950 px-3.5 py-2.5 text-xs shadow-xs select-text whitespace-pre-wrap leading-relaxed font-sans">
                     {msg.content}
                   </div>
                 </div>
@@ -1158,12 +1562,12 @@ export function CopilotDrawer({
             return (
               <div
                 key={msg.id}
-                className="space-y-2.5 font-sans animate-in fade-in duration-150"
+                className="rounded-2xl rounded-tl-sm bg-white/50 dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.08] p-3.5 space-y-2.5 shadow-2xs backdrop-blur-sm font-sans animate-in fade-in duration-150"
               >
                 {/* Assistant Message Header */}
                 <div className="flex items-center justify-between text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">
                   <div className="flex items-center gap-1.5">
-                    <Sparkles className="size-3.5 text-violet-500" />
+                    <Sparkles className="size-3.5 text-blue-500" />
                     <span className="font-semibold text-zinc-700 dark:text-zinc-300">
                       Copilot
                     </span>
@@ -1193,8 +1597,8 @@ export function CopilotDrawer({
 
                 {/* Active Tool Execution Indicator */}
                 {msg.activeTool && (
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800/60 text-xs text-violet-700 dark:text-violet-300 animate-pulse font-mono shadow-2xs">
-                    <Wrench className="size-3.5 animate-spin text-violet-500" />
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 text-xs text-blue-700 dark:text-blue-300 animate-pulse font-mono shadow-2xs">
+                    <Wrench className="size-3.5 animate-spin text-blue-500" />
                     <span className="font-semibold">Calling {msg.activeTool}...</span>
                   </div>
                 )}
@@ -1243,7 +1647,7 @@ export function CopilotDrawer({
                                 {t.isError ? (
                                   <AlertTriangle className="size-3 text-rose-500 shrink-0" />
                                 ) : (
-                                  <Wrench className="size-3 text-violet-500 shrink-0" />
+                                  <Wrench className="size-3 text-blue-500 shrink-0" />
                                 )}
                                 <span className="font-semibold font-mono text-zinc-900 dark:text-zinc-100 truncate">
                                   {t.serverName || "foqz"}:{t.toolName}
@@ -1357,12 +1761,10 @@ export function CopilotDrawer({
                     {segments.map((seg, sIdx) => {
                       if (seg.type === "text") {
                         return (
-                          <div
+                          <MarkdownView
                             key={sIdx}
-                            className="prose prose-xs dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 leading-relaxed break-words [&_p]:my-1.5 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_code]:text-[11px] [&_code]:font-mono [&_code]:bg-zinc-100 dark:[&_code]:bg-zinc-900 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded"
-                            dangerouslySetInnerHTML={{
-                              __html: renderMarkdownBlock(seg.content),
-                            }}
+                            content={seg.content}
+                            className="text-zinc-800 dark:text-zinc-200"
                           />
                         );
                       }
@@ -1383,7 +1785,7 @@ export function CopilotDrawer({
                         return (
                           <div
                             key={sIdx}
-                            className="p-3 rounded-xl border border-dashed border-violet-300 dark:border-violet-800/60 bg-violet-50/40 dark:bg-violet-950/20 text-xs text-violet-700 dark:text-violet-300 flex items-center gap-2 animate-pulse"
+                            className="p-3 rounded-xl border border-dashed border-blue-300 dark:border-blue-800/60 bg-blue-50/40 dark:bg-blue-950/20 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2 animate-pulse"
                           >
                             <Sparkles className="size-3.5" />
                             <span>Structuring canvas cards & tasks...</span>
@@ -1396,8 +1798,14 @@ export function CopilotDrawer({
                   </div>
                 ) : msg.isStreaming && !msg.activeTool ? (
                   <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 py-2 font-sans text-xs">
-                    <span className="size-2 rounded-full bg-violet-500 animate-pulse" />
-                    <span>Thinking with {selectedModel}...</span>
+                    <span className="size-2 rounded-full bg-blue-500 animate-pulse" />
+                    <span>
+                      Thinking with{" "}
+                      {activeConfig.provider === "ollama"
+                        ? selectedOllamaModel || "Ollama"
+                        : activeConfig.model}
+                      ...
+                    </span>
                   </div>
                 ) : null}
               </div>
@@ -1407,8 +1815,8 @@ export function CopilotDrawer({
       </div>
 
       {/* Bottom Prompt Input */}
-      <div className="p-3 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 shrink-0">
-        <div className="relative flex flex-col gap-2">
+      <div className="p-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-white/20 dark:bg-white/[0.02] shrink-0">
+        <div className="rounded-[22px] bg-white/60 dark:bg-white/[0.05] border border-black/[0.08] dark:border-white/[0.1] p-3 shadow-xs backdrop-blur-sm transition-all focus-within:border-blue-500/50 dark:focus-within:border-blue-400/50">
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -1422,40 +1830,61 @@ export function CopilotDrawer({
               }
             }}
             placeholder={
-              singleShape
+              !isAiReady && !settings.openaiApiKey?.trim() && !settings.geminiApiKey?.trim()
+                ? activeConfig.provider === "ollama"
+                  ? "Ollama offline. Start 'ollama serve' in terminal..."
+                  : `${activeConfig.provider === "openai" ? "OpenAI" : "Gemini"} API key required in Settings...`
+                : singleShape
                 ? `Ask about "${singleShape.label.slice(0, 24)}${singleShape.label.length > 24 ? "..." : ""}" (Enter to send)`
                 : selectedItems.length > 1
                 ? `Ask about ${selectedItems.length} selected shapes... (Enter to send)`
-                : "Ask Copilot... (Enter to send, Shift+Enter for newline)"
+                : "Ask Copilot or run MCP tools... (Enter to send, Shift+Enter for newline)"
             }
             rows={2}
-            className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600 rounded-lg p-2.5 text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 outline-none resize-none transition-colors shadow-xs"
+            className="w-full bg-transparent border-0 outline-none resize-none text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 leading-relaxed font-sans max-h-32"
           />
 
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
-              Enter to send • Shift+Enter for newline
-            </span>
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={handleStop}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-medium transition-colors"
-              >
-                <Square className="size-3" />
-                <span>Stop</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => handleSend()}
-                disabled={!online || (!prompt.trim() && selectedItems.length === 0 && boardItems.length === 0)}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white disabled:opacity-40 disabled:hover:bg-zinc-900 dark:disabled:hover:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-medium transition-colors shadow-sm"
-              >
-                <Send className="size-3" />
-                <span>Send</span>
-              </button>
-            )}
+          <div className="flex items-center justify-between pt-1 mt-1 border-t border-zinc-200/50 dark:border-zinc-800/50">
+            <div className="flex items-center gap-1.5">
+              {singleShape ? (
+                <span className="inline-flex items-center gap-1 font-mono text-[10px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-full border border-blue-200/60 dark:border-blue-800/60">
+                  <span className="size-1.5 rounded-full bg-blue-500" />
+                  {singleShape.type}
+                </span>
+              ) : selectedItems.length > 1 ? (
+                <span className="inline-flex items-center gap-1 font-mono text-[10px] text-zinc-600 dark:text-zinc-400 bg-zinc-200/60 dark:bg-zinc-800 px-2 py-0.5 rounded-full">
+                  {selectedItems.length} shapes
+                </span>
+              ) : (
+                <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                  Foqz Agent
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-zinc-400 font-mono">⌘↵</span>
+              {isStreaming ? (
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  className="size-7 rounded-full bg-zinc-800 hover:bg-zinc-700 text-white flex items-center justify-center transition-transform active:scale-95 cursor-pointer shadow-xs"
+                  title="Stop generating"
+                >
+                  <Square className="size-3 fill-current" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleSend()}
+                  disabled={isStreaming || (!prompt.trim() && selectedItems.length === 0 && boardItems.length === 0)}
+                  className="size-7 rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white disabled:opacity-30 disabled:hover:bg-blue-600 flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-xs disabled:cursor-not-allowed"
+                  title="Send message (Enter)"
+                >
+                  <ArrowUp className="size-3.5 stroke-[2.5]" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
