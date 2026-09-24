@@ -650,28 +650,28 @@ function FocusCanvasAppInner() {
               initialTab={connectorsInitialTab}
               onClose={() => setConnectorsShapeId(null)}
             />
+
+            {/* Floating Left Workspace Sidebar */}
+            <WorkspaceSidebar
+              editor={editor}
+              open={sidebarOpen}
+              onToggle={() => setSidebarOpen((v) => !v)}
+              onOpenCopilot={(shapeId) => {
+                if (shapeId) setSelectedShapeId(shapeId);
+                setCopilotOpen(true);
+              }}
+            />
+
+            {/* Decoupled Copilot Side Panel (matches left WorkspaceSidebar) */}
+            <CopilotDrawer
+              editor={editor}
+              open={copilotOpen}
+              onClose={() => setCopilotOpen(false)}
+              selectedShapeId={selectedShapeId}
+              onOpenSettings={handleOpenSettings}
+            />
           </Tldraw>
         </main>
-
-        {/* Floating Left Workspace Sidebar */}
-        <WorkspaceSidebar
-          editor={editor}
-          open={sidebarOpen}
-          onToggle={() => setSidebarOpen((v) => !v)}
-          onOpenCopilot={(shapeId) => {
-            if (shapeId) setSelectedShapeId(shapeId);
-            setCopilotOpen(true);
-          }}
-        />
-
-        {/* Decoupled Copilot Side Panel (matches left WorkspaceSidebar) */}
-        <CopilotDrawer
-          editor={editor}
-          open={copilotOpen}
-          onClose={() => setCopilotOpen(false)}
-          selectedShapeId={selectedShapeId}
-          onOpenSettings={handleOpenSettings}
-        />
       </div>
     </div>
   );

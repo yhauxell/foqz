@@ -9,25 +9,58 @@
  * Frosted glass panel chrome (matches tldraw menu/toolbar + `.focus-floating-panel`).
  * Compose with radius/spacing: `className="glass-panel rounded-2xl p-3 …"`.
  */
-@utility glass-panel {
-  backdrop-filter: blur(28px) saturate(1.35);
-  -webkit-backdrop-filter: blur(28px) saturate(1.35);
-  background: rgb(255 255 255 / 88%);
+.glass-panel {
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: rgb(255 255 255 / 85%);
   border-width: 1px;
   border-style: solid;
   border-color: rgb(255 255 255 / 75%);
   box-shadow:
-    0 1px 0 rgb(255 255 255 / 65%) inset,
-    0 12px 40px rgb(0 0 0 / 9%),
-    0 4px 16px rgb(0 0 0 / 5%);
+    0 1px 0 rgb(255 255 255 / 80%) inset,
+    0 16px 40px rgb(0 0 0 / 8%),
+    0 4px 16px rgb(0 0 0 / 4%);
+}
+
+.dark .glass-panel,
+html.dark .glass-panel {
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: rgb(24 24 27 / 85%);
+  border-color: rgb(255 255 255 / 12%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 8%) inset,
+    0 16px 40px rgb(0 0 0 / 40%),
+    0 4px 16px rgb(0 0 0 / 20%);
+}
+
+@utility glass-panel {
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: rgb(255 255 255 / 85%);
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgb(255 255 255 / 75%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 80%) inset,
+    0 16px 40px rgb(0 0 0 / 8%),
+    0 4px 16px rgb(0 0 0 / 4%);
   @variant dark {
-    background: rgb(24 24 27 / 88%);
+    background: rgb(24 24 27 / 85%);
     border-color: rgb(255 255 255 / 12%);
     box-shadow:
       0 1px 0 rgb(255 255 255 / 8%) inset,
-      0 12px 40px rgb(0 0 0 / 35%);
+      0 16px 40px rgb(0 0 0 / 40%),
+      0 4px 16px rgb(0 0 0 / 20%);
   }
 }
+
+/* Allow floating UI panels (sidebars, zoom controls, HUDs) to sample and blur canvas shapes */
+.tl-canvas,
+.tl-overlays {
+  contain: layout size !important;
+}
+
 
 /* ⌘K command palette: inset search strip + list (pairs with `glass-panel` on the shell) */
 .focus-command-input-shell {
@@ -656,7 +689,10 @@ html.dark .canvas {
 
 /* Task list drawer: same glass language as `glass-panel` + .focus-board-tracked-row */
 .focus-sidebar {
-  @apply glass-panel;
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: rgb(255 255 255 / 85%);
+  border: 1px solid rgb(255 255 255 / 75%);
   position: absolute;
   left: 0;
   top: 0;
@@ -669,6 +705,8 @@ html.dark .canvas {
 }
 
 .dark .focus-sidebar {
+  background: rgb(24 24 27 / 85%);
+  border-color: rgb(255 255 255 / 12%);
   border-left-color: rgb(0 0 0 / 35%);
 }
 
@@ -731,13 +769,21 @@ html.dark .canvas {
 
 /* Unified Focus dock: chrome + quick capture + try bar (single frosted shell) */
 .focus-floating-panel {
-  @apply glass-panel;
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: rgb(255 255 255 / 85%);
+  border: 1px solid rgb(255 255 255 / 75%);
   z-index: var(--z-focus-floating);
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 8px 12px 12px;
   border-radius: 20px;
+}
+
+.dark .focus-floating-panel {
+  background: rgb(24 24 27 / 85%);
+  border-color: rgb(255 255 255 / 12%);
 }
 
 .focus-timer-dim {

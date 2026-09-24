@@ -643,7 +643,9 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
 
   return (
     <aside
-      className="glass-panel absolute top-3 bottom-3 right-3 w-96 max-w-[calc(100vw-2rem)] rounded-[24px] flex flex-col text-zinc-900 dark:text-zinc-100 font-sans select-none z-40 animate-in slide-in-from-right-4 duration-200 overflow-hidden"
+      className="glass-panel pointer-events-auto backdrop-blur-xl backdrop-saturate-150 absolute top-3 bottom-3 right-3 w-96 max-w-[calc(100vw-2rem)] rounded-[24px] flex flex-col text-zinc-900 dark:text-zinc-100 font-sans select-none z-[5900] animate-in slide-in-from-right-4 duration-200 overflow-hidden"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
       <div className="h-12 px-3 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between bg-white/20 dark:bg-white/[0.02] shrink-0">
