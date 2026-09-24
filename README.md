@@ -89,6 +89,25 @@ Pre-built binaries are available on the [GitHub Releases](https://github.com/yha
 | **Windows** | `.exe` (NSIS Installer) | x64 |
 | **Linux** | `.AppImage` | x64 |
 
+### 🍎 macOS Installation Note (Gatekeeper Quarantine)
+
+Because Foqz is an independent open-source project and builds are not yet signed with a paid Apple Developer ID certificate, macOS Gatekeeper may flag downloaded binaries with:
+> *"Foqz is damaged and can’t be opened. You should move it to the Trash."*
+
+This is standard macOS security behavior for unsigned software downloaded from the web (macOS attaches a `com.apple.quarantine` extended attribute). The app is completely intact and safe.
+
+**To launch Foqz on macOS:**
+
+1. Drag `Foqz.app` into your `/Applications` folder.
+2. Open your **Terminal** and run this one-time command to clear the quarantine attribute:
+   ```bash
+   xattr -cr /Applications/Foqz.app
+   ```
+3. *Alternative via GUI*: Go to **System Settings ➔ Privacy & Security**, scroll to **Security**, and click **"Open Anyway"**.
+
+> [!TIP]
+> **Windows Users**: On first launch, Windows SmartScreen may display an *"Unknown Publisher"* prompt. Click **More info ➔ Run anyway**.
+
 ---
 
 ## Development Setup
