@@ -432,6 +432,14 @@ function createWindow() {
     mainWindow.loadFile(path.join(app.getAppPath(), 'dist/index.html'))
   }
 
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (typeof event === 'object' && event && 'message' in event) {
+      console.log(`[RENDERER:${event.level}] ${event.message} (${event.sourceId}:${event.lineNumber})`)
+    } else {
+      console.log(`[RENDERER:${level}] ${message} (${sourceId}:${line})`)
+    }
+  })
+
   attachBlurHandler()
   attachWindowBoundsListeners()
 }

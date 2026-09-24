@@ -413,8 +413,8 @@ export async function streamOllamaChat(
     }
 
     // Check if model emitted JSON tool call in content
-    if (toolCalls.length === 0 && opts.tools && opts.tools.length > 0 && accumulated.trim()) {
-      const extracted = parseToolCallsFromContent(accumulated, opts.tools)
+    if (toolCalls.length === 0 && tools && tools.length > 0 && accumulated.trim()) {
+      const extracted = parseToolCallsFromContent(accumulated, tools)
       if (extracted.length > 0) {
         toolCalls.push(...extracted)
       }

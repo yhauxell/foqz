@@ -24,6 +24,8 @@ import { ElementInlineChat } from "@/components/ElementInlineChat";
 import { MonoFocusController } from "@/components/MonoFocusController";
 import { GlobalSpotlight } from "@/components/GlobalSpotlight";
 import { CanvasZoomControls } from "@/components/CanvasZoomControls";
+import { ProjectConnectorsModal } from "@/components/ProjectConnectorsModal";
+import { useOllama } from "@/lib/ollama";
 import { FolderPlus, PanelLeft, Plus, Search, Settings, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
