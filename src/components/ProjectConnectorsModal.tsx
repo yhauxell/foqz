@@ -15,6 +15,10 @@ import {
   RefreshCw,
   Loader2,
   FileText,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
+  Plus,
 } from "lucide-react";
 import {
   ALL_PROJECT_ACCENTS,
@@ -232,7 +236,9 @@ export function ProjectConnectorsModal({
   const [notionDraft, setNotionDraft] = useState("");
   const [selectedMcpServers, setSelectedMcpServers] = useState<string[]>([]);
   const [availableMcpServers, setAvailableMcpServers] = useState<string[]>([]);
+  const [serverStatuses, setServerStatuses] = useState<any[]>([]);
   const [hasGithubMcp, setHasGithubMcp] = useState<boolean>(false);
+  const [expandedConnector, setExpandedConnector] = useState<string | null>("github");
 
   // Project context state
   const [projectContextDraft, setProjectContextDraft] = useState("");
@@ -263,6 +269,7 @@ export function ProjectConnectorsModal({
       window.focusStore.mcp
         .listServers()
         .then((servers) => {
+          setServerStatuses(servers || []);
           const names = (servers || []).map((s: any) => s.name || s);
           setAvailableMcpServers(names);
           setHasGithubMcp(names.includes("github"));
@@ -293,6 +300,25 @@ export function ProjectConnectorsModal({
     }
     return Array.from(set);
   }, [editor]);
+
+  const customMcpServers = useMemo(() => {
+    return serverStatuses.filter(
+      (s) => s.name !== "github" && (s.status === "connected" || s.enabled)
+    );
+  }, [serverStatuses]);
+
+  const configuredConnectorsCount = useMemo(() => {
+    let count = 0;
+    if (githubRepoDraft.trim()) count++;
+    if (notionDraft.trim()) count++;
+    if (sentryDraft.trim()) count++;
+    count += selectedMcpServers.length;
+    return count;
+  }, [githubRepoDraft, notionDraft, sentryDraft, selectedMcpServers]);
+
+  const toggleExpand = (id: string) => {
+    setExpandedConnector((prev) => (prev === id ? null : id));
+  };
 
   // Close on Escape, Save on Enter (when not inside textarea)
   useEffect(() => {
@@ -410,7 +436,7 @@ export function ProjectConnectorsModal({
             </div>
             <div>
               <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                Project Settings & Context
+                Project settings
               </h2>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-[320px]">
                 {projectTitle}
@@ -426,238 +452,380 @@ export function ProjectConnectorsModal({
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-900/50 px-5 pt-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab("connectors")}
-            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer ${
-              activeTab === "connectors"
-                ? "border-blue-600 text-blue-600 dark:text-blue-400 font-semibold"
-                : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-            }`}
-          >
-            <Plug className="size-3.5" />
-            <span>Connectors & Repos</span>
-            {githubRepoDraft && (
-              <span className="size-1.5 rounded-full bg-blue-500" />
-            )}
-          </button>
+        {/* Global Theme Selector (Top of Modal, above tabs) */}
+        <div className="px-5 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">Theme</span>
+            <div className="flex items-center gap-1.5">
+              {ALL_PROJECT_ACCENTS.map((acc) => {
+                const theme = ACCENT_STYLES[acc];
+                const isSelected = accentDraft === acc;
+                return (
+                  <button
+                    key={acc}
+                    type="button"
+                    onClick={() => setAccentDraft(acc)}
+                    title={theme.name}
+                    className={`size-6 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                      isSelected
+                        ? "ring-2 ring-blue-500 scale-110 shadow-sm"
+                        : "hover:scale-105 opacity-80 hover:opacity-100 border border-black/10 dark:border-white/10"
+                    }`}
+                    style={{ backgroundColor: theme.dotHex }}
+                  >
+                    {isSelected && <Check className="size-3 text-white drop-shadow" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <span className="text-[11px] font-mono text-zinc-400 capitalize">
+            {ACCENT_STYLES[accentDraft]?.name || accentDraft}
+          </span>
+        </div>
 
+        {/* Tab Navigation: context & rules | Connectors */}
+        <div className="flex items-center border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/30 px-5 pt-1">
           <button
             type="button"
             onClick={() => setActiveTab("context")}
-            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer ${
               activeTab === "context"
                 ? "border-blue-600 text-blue-600 dark:text-blue-400 font-semibold"
                 : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
             }`}
           >
-            <BookOpen className="size-3.5" />
-            <span>Context & Guidelines</span>
+            <span>context & rules</span>
             {projectContextDraft.trim() && (
-              <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
-                Active
+              <span className="size-1.5 rounded-full bg-emerald-500" />
+            )}
+          </button>
+
+          <span className="text-zinc-300 dark:text-zinc-700 mx-2 select-none">|</span>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("connectors")}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer ${
+              activeTab === "connectors"
+                ? "border-blue-600 text-blue-600 dark:text-blue-400 font-semibold"
+                : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+            }`}
+          >
+            <span>Connectors</span>
+            {configuredConnectorsCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                {configuredConnectorsCount}
               </span>
             )}
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-5 space-y-4 max-h-[72vh] overflow-y-auto">
+        <div className="p-5 space-y-4 max-h-[64vh] overflow-y-auto">
           {activeTab === "connectors" ? (
-            <>
-              {/* Project Color Theme Section */}
-              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 bg-zinc-50/50 dark:bg-zinc-950/20 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                    <span
-                      className="size-3.5 rounded-full shrink-0 border border-black/10 dark:border-white/20"
-                      style={{ backgroundColor: ACCENT_STYLES[accentDraft]?.dotHex }}
-                    />
-                    <span>Project Theme</span>
-                  </label>
-                  <span className="text-[11px] font-mono text-zinc-500 capitalize">
-                    {ACCENT_STYLES[accentDraft]?.name || accentDraft}
-                  </span>
-                </div>
-                <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                  {ALL_PROJECT_ACCENTS.map((acc) => {
-                    const theme = ACCENT_STYLES[acc];
-                    const isSelected = accentDraft === acc;
-                    return (
-                      <button
-                        key={acc}
-                        type="button"
-                        onClick={() => setAccentDraft(acc)}
-                        title={theme.name}
-                        className={`h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-                          isSelected
-                            ? "ring-2 ring-blue-500 scale-105 shadow-sm"
-                            : "hover:scale-105 opacity-85 hover:opacity-100 border border-black/5 dark:border-white/10"
-                        }`}
-                        style={{ backgroundColor: theme.dotHex }}
-                      >
-                        {isSelected && <Check className="size-3.5 text-white drop-shadow" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* GitHub Repository Section */}
-              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 bg-zinc-50/50 dark:bg-zinc-950/20 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                    <GitBranch className="size-3.5 text-blue-600 dark:text-blue-400" />
-                    <span>GitHub Repository</span>
-                  </label>
-
-                  {hasGithubMcp ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
-                      <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      GitHub MCP Connected
+            <div className="space-y-3">
+              {/* Row 1: GitHub */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2.5">
+                    <GitBranch className="size-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
+                      Github
                     </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
-                      GitHub MCP Offline
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="relative flex items-center">
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      placeholder="owner/repo (or paste https://github.com/owner/repo)"
-                      value={githubRepoDraft}
-                      onChange={(e) => setGithubRepoDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSave();
-                      }}
-                      className="w-full pl-3 pr-20 py-2 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-xs font-mono text-zinc-900 dark:text-zinc-100 placeholder:font-sans placeholder:text-zinc-400 dark:placeholder:text-zinc-600 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-2xs"
-                    />
                     {githubRepoDraft.trim() && (
-                      <button
-                        type="button"
-                        onClick={handleDisconnectRepo}
-                        title="Clear repository"
-                        className="absolute right-2 px-2 py-1 rounded text-[10px] text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
-                      >
-                        Clear
-                      </button>
+                      <span className="text-[10px] font-mono text-zinc-400 truncate max-w-[180px]">
+                        ({normalizeGithubRepo(githubRepoDraft)})
+                      </span>
                     )}
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400">
-                    <span>Associates tasks with this repo for tool-calling (issues, commits, PRs).</span>
-                    {githubRepoDraft.trim() && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab("context");
-                          handleSyncReadme();
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand("github")}
+                    className={`px-3.5 py-1 rounded-full text-xs font-medium transition-all cursor-pointer shadow-2xs ${
+                      githubRepoDraft.trim()
+                        ? "border border-rose-300 dark:border-rose-800 bg-rose-100/90 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200"
+                        : "border border-rose-200/90 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 hover:bg-rose-100/60"
+                    }`}
+                  >
+                    {githubRepoDraft.trim() ? "configured" : "configure"}
+                  </button>
+                </div>
+
+                {/* Expanded GitHub Card */}
+                {expandedConnector === "github" && (
+                  <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 bg-zinc-50/50 dark:bg-zinc-950/30 space-y-3 animate-in fade-in-50 duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                        GitHub Repository
+                      </span>
+                      {hasGithubMcp ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                          <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          GitHub MCP Connected
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+                          GitHub MCP Offline
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="relative flex items-center">
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        placeholder="owner/repo (or paste https://github.com/owner/repo)"
+                        value={githubRepoDraft}
+                        onChange={(e) => setGithubRepoDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleSave();
                         }}
-                        className="text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer"
-                      >
-                        Sync README →
-                      </button>
-                    )}
-                  </div>
-                </div>
+                        className="w-full pl-3 pr-16 py-2 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-xs font-mono text-zinc-900 dark:text-zinc-100 placeholder:font-sans placeholder:text-zinc-400 dark:placeholder:text-zinc-600 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-2xs"
+                      />
+                      {githubRepoDraft.trim() && (
+                        <button
+                          type="button"
+                          onClick={handleDisconnectRepo}
+                          title="Clear repository"
+                          className="absolute right-2 px-2 py-1 rounded text-[10px] text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
 
-                {/* Quick Suggestions */}
-                {suggestedRepos.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[10px] uppercase font-bold text-zinc-400 dark:text-zinc-500 mr-1">
-                      Quick Pick:
-                    </span>
-                    {suggestedRepos.map((repo) => (
+                    <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                      <span>Associates tasks with this repo for tool-calling (issues, commits, PRs).</span>
                       <button
-                        key={repo}
                         type="button"
-                        onClick={() => setGithubRepoDraft(repo)}
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono border transition-colors cursor-pointer ${
-                          normalizeGithubRepo(githubRepoDraft) === repo
-                            ? "bg-blue-600 text-white border-blue-600"
-                            : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-blue-400"
-                        }`}
+                        onClick={handleSyncReadme}
+                        disabled={isSyncingReadme}
+                        className="text-blue-600 dark:text-blue-400 font-medium hover:underline flex items-center gap-1 shrink-0 ml-2 cursor-pointer disabled:opacity-50"
                       >
-                        {repo}
+                        {isSyncingReadme ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : null}
+                        <span>Sync README &rarr;</span>
                       </button>
-                    ))}
+                    </div>
+
+                    {suggestedRepos.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                        <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                          Quick Pick:
+                        </span>
+                        {suggestedRepos.map((repo) => (
+                          <button
+                            key={repo}
+                            type="button"
+                            onClick={() => setGithubRepoDraft(repo)}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-mono border transition-colors cursor-pointer ${
+                              normalizeGithubRepo(githubRepoDraft) === repo
+                                ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                                : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-blue-400"
+                            }`}
+                          >
+                            {repo}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Secondary Connectors: Sentry & Notion */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300 block mb-1">
-                    Sentry Project Slug
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. foqz-desktop"
-                    value={sentryDraft}
-                    onChange={(e) => setSentryDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSave();
-                    }}
-                    className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 outline-none focus:border-blue-500 transition-all shadow-2xs"
-                  />
+              <div className="border-t border-zinc-200 dark:border-zinc-800" />
+
+              {/* Row 2: Notion */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2.5">
+                    <BookOpen className="size-4 text-violet-600 dark:text-violet-400" />
+                    <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
+                      Notion
+                    </span>
+                    {notionDraft.trim() && (
+                      <span className="text-[10px] font-mono text-zinc-400 truncate max-w-[180px]">
+                        ({notionDraft.trim()})
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand("notion")}
+                    className={`px-3.5 py-1 rounded-full text-xs font-medium transition-all cursor-pointer shadow-2xs ${
+                      notionDraft.trim()
+                        ? "border border-rose-300 dark:border-rose-800 bg-rose-100/90 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200"
+                        : "border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    {notionDraft.trim() ? "configured" : "configure"}
+                  </button>
                 </div>
 
-                <div>
-                  <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300 block mb-1">
-                    Notion Workspace / Doc
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Workspace or Page URL"
-                    value={notionDraft}
-                    onChange={(e) => setNotionDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSave();
-                    }}
-                    className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 outline-none focus:border-blue-500 transition-all shadow-2xs"
-                  />
-                </div>
+                {expandedConnector === "notion" && (
+                  <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 bg-zinc-50/50 dark:bg-zinc-950/30 space-y-2.5 animate-in fade-in-50 duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                        Notion Integration
+                      </span>
+                      {notionDraft.trim() && (
+                        <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                          <Check className="size-3" /> Connected
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. Workspace, Page URL, or Database ID"
+                      value={notionDraft}
+                      onChange={(e) => setNotionDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSave();
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 outline-none focus:border-blue-500 transition-all shadow-2xs"
+                    />
+                    <p className="text-[11px] text-zinc-500">
+                      Link your Notion project roadmap, documentation, or task database for AI context.
+                    </p>
+                  </div>
+                )}
               </div>
 
-              {/* Connected MCP Servers */}
-              {availableMcpServers.length > 0 && (
-                <div>
-                  <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300 block mb-1.5">
-                    Active MCP Tool Servers
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {availableMcpServers.map((srv) => {
-                      const isSelected = selectedMcpServers.includes(srv);
-                      return (
-                        <button
-                          key={srv}
-                          type="button"
-                          onClick={() => {
-                            setSelectedMcpServers((prev) =>
-                              isSelected ? prev.filter((s) => s !== srv) : [...prev, srv],
-                            );
-                          }}
-                          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-mono border transition-all cursor-pointer ${
-                            isSelected
-                              ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
-                              : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400"
-                          }`}
-                        >
-                          {isSelected && <Check className="size-3" />}
-                          <span>{srv}</span>
-                        </button>
-                      );
-                    })}
+              <div className="border-t border-zinc-200 dark:border-zinc-800" />
+
+              {/* Row 3: Sentry */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2.5">
+                    <AlertCircle className="size-4 text-rose-600 dark:text-rose-400" />
+                    <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
+                      Sentry
+                    </span>
+                    {sentryDraft.trim() && (
+                      <span className="text-[10px] font-mono text-zinc-400 truncate max-w-[180px]">
+                        ({sentryDraft.trim()})
+                      </span>
+                    )}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand("sentry")}
+                    className={`px-3.5 py-1 rounded-full text-xs font-medium transition-all cursor-pointer shadow-2xs ${
+                      sentryDraft.trim()
+                        ? "border border-rose-300 dark:border-rose-800 bg-rose-100/90 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200"
+                        : "border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    {sentryDraft.trim() ? "configured" : "configure"}
+                  </button>
                 </div>
+
+                {expandedConnector === "sentry" && (
+                  <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 bg-zinc-50/50 dark:bg-zinc-950/30 space-y-2.5 animate-in fade-in-50 duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                        Sentry Error Tracking
+                      </span>
+                      {sentryDraft.trim() && (
+                        <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                          <Check className="size-3" /> Connected
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. foqz-desktop (project slug)"
+                      value={sentryDraft}
+                      onChange={(e) => setSentryDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSave();
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 outline-none focus:border-blue-500 transition-all shadow-2xs"
+                    />
+                    <p className="text-[11px] text-zinc-500">
+                      Correlate runtime crashes and production error tracking directly with project tasks.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Additional MCP Servers Configured in Settings */}
+              {customMcpServers.length > 0 && (
+                <>
+                  <div className="border-t border-zinc-200 dark:border-zinc-800" />
+                  {customMcpServers.map((srv) => {
+                    const isSelected = selectedMcpServers.includes(srv.name);
+                    const isExpanded = expandedConnector === srv.name;
+                    return (
+                      <div key={srv.name} className="space-y-2">
+                        <div className="flex items-center justify-between py-1">
+                          <div className="flex items-center gap-2.5">
+                            <Terminal className="size-4 text-cyan-600 dark:text-cyan-400" />
+                            <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100 capitalize">
+                              {srv.name}
+                            </span>
+                            <span className="text-[10px] font-mono text-zinc-400">
+                              ({srv.toolCount || 0} tools)
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleExpand(srv.name)}
+                            className={`px-3.5 py-1 rounded-full text-xs font-medium transition-all cursor-pointer shadow-2xs ${
+                              isSelected
+                                ? "border border-rose-300 dark:border-rose-800 bg-rose-100/90 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200"
+                                : "border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                            }`}
+                          >
+                            {isSelected ? "configured" : "configure"}
+                          </button>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 bg-zinc-50/50 dark:bg-zinc-950/30 space-y-3 animate-in fade-in-50 duration-150">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                                Attach {srv.name} to Project
+                              </span>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+                                Transport: {srv.transport}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-zinc-500">
+                              Enable tools from this MCP server for AI Assistant interactions within this project frame.
+                            </p>
+                            <div className="flex items-center justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedMcpServers((prev) =>
+                                    isSelected ? prev.filter((s) => s !== srv.name) : [...prev, srv.name]
+                                  );
+                                }}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                                  isSelected
+                                    ? "bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800"
+                                    : "bg-blue-600 text-white hover:bg-blue-700"
+                                }`}
+                              >
+                                {isSelected ? "Detach from Project" : "Attach to Project"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        <div className="border-t border-zinc-200 dark:border-zinc-800" />
+                      </div>
+                    );
+                  })}
+                </>
               )}
-            </>
+
+              <p className="text-[10px] text-zinc-400 pt-1 text-center">
+                Need more tools? Configure additional MCP servers in Settings (Cmd+,).
+              </p>
+            </div>
           ) : (
             /* Context & Guidelines Tab */
             <div className="space-y-3 animate-in fade-in duration-100">

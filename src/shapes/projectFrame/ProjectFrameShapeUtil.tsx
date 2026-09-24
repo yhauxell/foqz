@@ -530,7 +530,17 @@ function ProjectFrameBody({ shape }: { shape: TLProjectFrameShape }) {
               >
                 {shape.props.connectors.mcpServers.length} MCP
               </button>
-            ) : null}
+            ) : (
+              <button
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={onOpenConnectors}
+                className="h-7 px-2.5 rounded-full text-[10px] font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-800 border border-dashed border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                title="Connect MCP tools & services"
+              >
+                <span>+ Add MCP</span>
+              </button>
+            )}
 
             {shape.props.projectContext && shape.props.projectContext.trim().length > 0 ? (
               <button
