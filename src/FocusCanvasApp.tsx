@@ -222,13 +222,6 @@ function FocusCanvasAppInner() {
         return;
       }
 
-      // Toggle AI Copilot: Cmd+J / Ctrl+J
-      if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
-        e.preventDefault();
-        setCopilotOpen((prev) => !prev);
-        return;
-      }
-
       // Ignore single-key shortcuts if typing in an input or textarea
       const target = e.target as HTMLElement | null;
       if (
@@ -429,10 +422,7 @@ function FocusCanvasAppInner() {
         target?.isContentEditable ||
         Boolean(target?.closest?.("[contenteditable='true']"));
 
-      const isMac =
-        typeof navigator !== "undefined" &&
-        /Mac|iPhone|iPod|iPad/i.test(navigator.platform);
-      const mod = isMac ? e.metaKey : e.ctrlKey;
+      const mod = e.metaKey || e.ctrlKey;
 
       // 1. Toggle Workspace Sidebar (Cmd+B or Cmd+\)
       if (
@@ -441,24 +431,20 @@ function FocusCanvasAppInner() {
         !e.altKey &&
         (e.key.toLowerCase() === "b" || e.key === "\\")
       ) {
-        if (!isInput) {
-          e.preventDefault();
-          setSidebarOpen((v) => !v);
-          return;
-        }
+        e.preventDefault();
+        setSidebarOpen((v) => !v);
+        return;
       }
 
-      // 2. Toggle Copilot Sidebar (Cmd+J or Cmd+Shift+B or Cmd+/)
+      // 2. Toggle Assistant Sidebar (Cmd+J or Cmd+Shift+B or Cmd+/)
       if (
         (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") ||
         (mod && e.shiftKey && e.key.toLowerCase() === "b") ||
         (mod && !e.shiftKey && e.key === "/")
       ) {
-        if (!isInput) {
-          e.preventDefault();
-          setCopilotOpen((v) => !v);
-          return;
-        }
+        e.preventDefault();
+        setCopilotOpen((v) => !v);
+        return;
       }
 
       // 3. New Project Frame (Cmd+Shift+P, Option+Cmd+N, or Option+P)
