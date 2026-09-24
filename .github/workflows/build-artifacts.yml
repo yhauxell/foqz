@@ -1,0 +1,57 @@
+# Build Foqz installers on pull requests and main pushes, and save them as GitHub Actions artifacts.
+#
+# Artifacts are stored on GitHub Actions for 30 days and can be downloaded from the Action Run summary.
+name: Build Artifacts
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # @electron/rebuild (via electron-builder) requires Node >=22.12
+          node-version: "22"
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build renderer and package installers
+        shell: bash
+        env:
+          # Ad-hoc / unsigned packaging for test artifacts
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: yarn dist
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: foqz-${{ matrix.os }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+          if-no-files-found: warn
+          retention-days: 30
