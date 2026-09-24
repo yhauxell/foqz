@@ -756,7 +756,10 @@ export function ElementInlineChat({ editor, shapeId, onClose }: ElementInlineCha
 
 You are an AI thinking partner and autonomous agent embedded inside Foqz, focused on a specific canvas element.
 Current Element: "${currentShapeText}" (type: ${shape.type})
-${connectedRepo ? `Connected GitHub Repository: "${connectedRepo}". When asked about issues, pull requests, files, or commits, ALWAYS invoke the appropriate GitHub MCP tool (e.g. github__search_issues, github__list_issues, github__get_issue, etc.) with owner="${repoOwner}" and repo="${repoName}".` : ''}
+${connectedRepo ? `Connected GitHub Repository: "${connectedRepo}".
+IMPORTANT: You are focused on the CURRENT ELEMENT ("${currentShapeText}").
+- Do NOT query GitHub or invoke GitHub MCP tools unless the user EXPLICITLY asks to check, fetch, or import GitHub issues, PRs, commits, or files from the repository.
+- If the user asks to triage, prioritize, break down, or plan without explicitly asking for GitHub repo queries, prioritize and break down THIS CURRENT ELEMENT and its subtasks, NOT external GitHub issues!` : ''}
 ${projectContext ? `
 PROJECT CONTEXT & REPOSITORY ARCHITECTURE:
 Project: "${projectTitle}"${projectGoal ? ` (Goal: "${projectGoal}")` : ''}
@@ -786,14 +789,14 @@ The inline chat interface will automatically parse the JSON and display an inter
 
 TYPESAFE JEV SYSTEM ONE TRIAGE & PRIORITIZATION:
 You have access to the \`jev_triage_items\` native tool:
-- When the user asks to triage, prioritize, or rank issues, PRs, bugs, or feature ideas against board priorities:
-  1. ALWAYS invoke \`jev_triage_items\` with the candidate items ({ title, description, id }) and optional criteria. Jev evaluates strategic alignment with the canvas, blast radius/risk, and actionability.
-  2. Present the triaged rankings clearly with their priority (P1 for urgent blockers / high leverage, P2 for medium, P3 for supporting tasks).
-  3. Proactively provide a \`\`\`canvas block containing the prioritized task cards (P1, P2, P3).
-- This completes the recommended end-to-end workflow:
-  Get Issues (GitHub MCP) -> Triage & Prioritize (Jev System One) -> Propose Tasks (Canvas block) -> Spawn All to Canvas -> Focus on Top Item!
+- When the user asks to triage or prioritize:
+  1. If the user asks to triage/prioritize this current task, break down this task into candidate subtasks first, then prioritize them (P1 urgent/core, P2 high leverage, P3 supporting).
+  2. If evaluating candidate items/issues already in context, invoke \`jev_triage_items\` with the candidate items ({ title, description, id }) and optional criteria.
+  3. Present the triaged rankings clearly with their priority (P1 for urgent blockers / high leverage, P2 for medium, P3 for supporting tasks).
+  4. Proactively provide a \`\`\`canvas block containing the prioritized task cards (P1, P2, P3).
+- NEVER automatically query GitHub issues when the user simply asks to triage or prioritize this canvas element.
 
-CRITICAL: When the user asks to check issues, list PRs, search code, or inspect repository data, YOU MUST INVOKE THE RELEVANT MCP TOOL instead of giving generic hypothetical instructions!
+CRITICAL: When the user explicitly asks to check issues, list PRs, search code, or inspect repository data, YOU MUST INVOKE THE RELEVANT MCP TOOL instead of giving generic hypothetical instructions!
 When you receive tool execution results, summarize the real issues or data clearly and concisely for the user.`
 
     let canvasContext = `[Target Element Context]\nElement Text: "${currentShapeText}"\nShape Type: ${shape.type}`
@@ -1181,11 +1184,16 @@ When you receive tool execution results, summarize the real issues or data clear
               )}
               <button
                 type="button"
-                onClick={() =>
-                  handleSend(
-                    'Triage and prioritize the issues based on current canvas priorities, and propose prioritized task cards for them.'
+                onClick={() => {
+                  const hasFetchedIssues = messages.some((m) =>
+                    m.content.toLowerCase().includes('open issues') || m.content.toLowerCase().includes('github issue')
                   )
-                }
+                  handleSend(
+                    hasFetchedIssues
+                      ? 'Triage and prioritize the fetched issues based on current canvas priorities, and propose prioritized task cards for them.'
+                      : 'Triage and prioritize this task into concrete subtasks (P1, P2, P3) based on canvas priorities, and propose prioritized task cards for it.'
+                  )
+                }}
                 className="px-3 py-1.5 rounded-full bg-zinc-50 dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
               >
                 <Target className="size-3 text-blue-600 dark:text-blue-400" />
@@ -1464,8 +1472,13 @@ When you receive tool execution results, summarize the real issues or data clear
                     type="button"
                     onClick={() => {
                       setShowActionMenu(false)
+                      const hasFetchedIssues = messages.some((m) =>
+                        m.content.toLowerCase().includes('open issues') || m.content.toLowerCase().includes('github issue')
+                      )
                       handleSend(
-                        'Triage and prioritize the issues based on current canvas priorities, and propose prioritized task cards for them.'
+                        hasFetchedIssues
+                          ? 'Triage and prioritize the fetched issues based on current canvas priorities, and propose prioritized task cards for them.'
+                          : 'Triage and prioritize this task into concrete subtasks (P1, P2, P3) based on canvas priorities, and propose prioritized task cards for it.'
                       )
                     }}
                     className="w-full px-2.5 py-1.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-left text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-2 cursor-pointer transition-colors"
