@@ -493,7 +493,14 @@ function FocusCanvasAppInner() {
   }, [handleCreateProject, handleCreateTask]);
 
   return (
-    <div className="app bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+    <div
+      className={`app bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 ${
+        copilotOpen ? "app--copilot-open" : ""
+      }`}
+      style={{
+        ["--tools-bar-right" as any]: copilotOpen ? "412px" : "18px",
+      }}
+    >
       {/* Vercel / shadcn Topbar */}
       <header className="topbar h-12 px-4 flex items-center justify-between select-none z-50">
         {/* Left section: Sidebar Toggle + Brand + Page Switcher */}
