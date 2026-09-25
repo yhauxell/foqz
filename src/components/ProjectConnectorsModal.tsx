@@ -26,6 +26,7 @@ import {
   type ProjectAccent,
   type TLProjectFrameShape,
 } from "@/shapes/projectFrame/ProjectFrameShapeUtil";
+import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 
 interface ProjectConnectorsModalProps {
   editor: Editor | null;
@@ -216,18 +217,38 @@ export function ProjectConnectorsModal({
 }: ProjectConnectorsModalProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const flowNodes = useFlowCanvasStore((s) => s.nodes);
+  const flowNode = !editor && shapeId ? flowNodes.find((n) => n.id === shapeId) : null;
+
   const shape = useMemo(() => {
-    if (!editor || !shapeId) return null;
-    try {
-      const s = editor.getShape(shapeId);
-      if (s && s.type === "project-frame") {
-        return s as TLProjectFrameShape;
+    if (editor && shapeId) {
+      try {
+        const s = editor.getShape(shapeId);
+        if (s && s.type === "project-frame") {
+          return s as TLProjectFrameShape;
+        }
+      } catch {
+        // Shape may have been deleted
       }
-    } catch {
-      // Shape may have been deleted
+      return null;
+    }
+    if (!editor && shapeId && flowNode && flowNode.type === "projectFrame") {
+      const data = flowNode.data || {};
+      return {
+        id: flowNode.id as TLShapeId,
+        type: "project-frame",
+        props: {
+          title: (data.title as string) || "Project",
+          goal: (data.goal as string) || "",
+          accent: (data.accent as ProjectAccent) || "blue",
+          connectors: (data.connectors as any) || {},
+          projectContext: (data.projectContext as string) || "",
+          readmeCachedAt: data.readmeCachedAt as number | undefined,
+        },
+      } as unknown as TLProjectFrameShape;
     }
     return null;
-  }, [editor, shapeId]);
+  }, [editor, shapeId, flowNode]);
 
   const [activeTab, setActiveTab] = useState<"connectors" | "context">(initialTab);
   const [accentDraft, setAccentDraft] = useState<ProjectAccent>("blue");
@@ -287,7 +308,19 @@ export function ProjectConnectorsModal({
 
   // Suggested repos from canvas or default workspace
   const suggestedRepos = useMemo(() => {
-    if (!editor) return ["yhauxell/foqz"];
+    if (!editor) {
+      const set = new Set<string>();
+      set.add("yhauxell/foqz");
+      for (const n of flowNodes) {
+        if (n.type === "projectFrame") {
+          const repo = (n.data as any)?.connectors?.githubRepo;
+          if (repo && typeof repo === "string" && repo.trim()) {
+            set.add(repo.trim());
+          }
+        }
+      }
+      return Array.from(set);
+    }
     const set = new Set<string>();
     set.add("yhauxell/foqz");
     for (const s of editor.getCurrentPageShapes()) {
@@ -299,7 +332,7 @@ export function ProjectConnectorsModal({
       }
     }
     return Array.from(set);
-  }, [editor]);
+  }, [editor, flowNodes]);
 
   const customMcpServers = useMemo(() => {
     return serverStatuses.filter(
@@ -335,22 +368,37 @@ export function ProjectConnectorsModal({
   if (!shape) return null;
 
   const handleSave = () => {
-    if (!editor || !shapeId) return;
+    if (!shapeId) return;
     const normalizedRepo = normalizeGithubRepo(githubRepoDraft);
+    const connectorsData = {
+      githubRepo: normalizedRepo || undefined,
+      sentryProject: sentryDraft.trim() || undefined,
+      notionWorkspace: notionDraft.trim() || undefined,
+      mcpServers: selectedMcpServers.length > 0 ? selectedMcpServers : undefined,
+    };
+    const projectContextData = projectContextDraft.trim() || undefined;
+    const readmeCachedAtData = lastSyncedAtDraft || shape.props.readmeCachedAt;
+
+    if (!editor) {
+      useFlowCanvasStore.getState().updateNodeData(shapeId, {
+        accent: accentDraft,
+        connectors: connectorsData,
+        projectContext: projectContextData,
+        readmeCachedAt: readmeCachedAtData,
+      });
+      onClose();
+      return;
+    }
+
     editor.updateShape({
       id: shapeId,
       type: "project-frame",
       props: {
         ...shape.props,
         accent: accentDraft,
-        connectors: {
-          githubRepo: normalizedRepo || undefined,
-          sentryProject: sentryDraft.trim() || undefined,
-          notionWorkspace: notionDraft.trim() || undefined,
-          mcpServers: selectedMcpServers.length > 0 ? selectedMcpServers : undefined,
-        },
-        projectContext: projectContextDraft.trim() || undefined,
-        readmeCachedAt: lastSyncedAtDraft || shape.props.readmeCachedAt,
+        connectors: connectorsData,
+        projectContext: projectContextData,
+        readmeCachedAt: readmeCachedAtData,
       },
     });
     onClose();
@@ -358,7 +406,16 @@ export function ProjectConnectorsModal({
 
   const handleDisconnectRepo = () => {
     setGithubRepoDraft("");
-    if (!editor || !shapeId) return;
+    if (!shapeId) return;
+    if (!editor) {
+      useFlowCanvasStore.getState().updateNodeData(shapeId, {
+        connectors: {
+          ...(shape.props.connectors || {}),
+          githubRepo: undefined,
+        },
+      });
+      return;
+    }
     editor.updateShape({
       id: shapeId,
       type: "project-frame",

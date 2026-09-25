@@ -20,12 +20,13 @@ import type { TLFocusTaskShape } from "@/shapes/focusTask/FocusTaskShapeUtil";
 import type { TLProjectFrameShape } from "@/shapes/projectFrame/ProjectFrameShapeUtil";
 import { renderMarkdownInline } from "@/lib/markdown";
 import { Button } from "@/components/ui/button";
+import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 
 interface WorkspaceSidebarProps {
   editor: Editor | null;
   open: boolean;
   onToggle: () => void;
-  onOpenCopilot: (shapeId?: TLShapeId) => void;
+  onOpenCopilot: (shapeId?: string) => void;
 }
 
 type TaskFilter = "all" | "active" | "todo" | "done";
@@ -39,22 +40,60 @@ export function WorkspaceSidebar({
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [quickTitle, setQuickTitle] = useState("");
 
-  // Read all shapes from canvas
-  const { tasks, projects } = useMemo(() => {
-    if (!editor) return { tasks: [], projects: [] };
-    const shapes = editor.getCurrentPageShapes();
-    const t: TLFocusTaskShape[] = [];
-    const p: TLProjectFrameShape[] = [];
+  const flowNodes = useFlowCanvasStore((s) => s.nodes);
+  const flowCreateTask = useFlowCanvasStore((s) => s.createTask);
+  const flowCreateProject = useFlowCanvasStore((s) => s.createProject);
+  const flowSelectNode = useFlowCanvasStore((s) => s.setSelectedNodeId);
 
-    for (const s of shapes) {
-      if (s.type === "focus-task") {
-        t.push(s as TLFocusTaskShape);
-      } else if (s.type === "project-frame") {
-        p.push(s as TLProjectFrameShape);
+  // Read all shapes from canvas (tldraw or React Flow)
+  const { tasks, projects } = useMemo(() => {
+    if (editor) {
+      const shapes = editor.getCurrentPageShapes();
+      const t: TLFocusTaskShape[] = [];
+      const p: TLProjectFrameShape[] = [];
+
+      for (const s of shapes) {
+        if (s.type === "focus-task") {
+          t.push(s as TLFocusTaskShape);
+        } else if (s.type === "project-frame") {
+          p.push(s as TLProjectFrameShape);
+        }
+      }
+      return { tasks: t, projects: p };
+    }
+
+    // React Flow Fallback
+    const t: any[] = [];
+    const p: any[] = [];
+    for (const n of flowNodes) {
+      const d = (n.data || {}) as Record<string, any>;
+      if (n.type === "focusTask") {
+        t.push({
+          id: n.id,
+          type: "focus-task",
+          parentId: n.parentId,
+          props: {
+            title: d.title || "Untitled Task",
+            status: d.status || "open",
+            priority: d.priority || 3,
+            notes: d.notes || "",
+            paper: d.paper || "cream",
+          },
+        });
+      } else if (n.type === "projectFrame") {
+        p.push({
+          id: n.id,
+          type: "project-frame",
+          props: {
+            title: d.title || "Untitled Project",
+            goal: d.goal || "",
+            accent: d.accent || "blue",
+          },
+        });
       }
     }
     return { tasks: t, projects: p };
-  }, [editor, editor?.getCurrentPageShapes()]);
+  }, [editor, editor?.getCurrentPageShapes(), flowNodes]);
 
   const doneCount = tasks.filter((t) => t.props.status === "done").length;
   const doingCount = tasks.filter((t) => t.props.status === "doing").length;
@@ -72,69 +111,90 @@ export function WorkspaceSidebar({
 
   // Jump to shape on infinite canvas
   const handleJumpToShape = useCallback(
-    (shapeId: TLShapeId) => {
-      if (!editor) return;
-      editor.select(shapeId);
-      editor.zoomToSelection({ animation: { duration: 260 } });
+    (shapeId: string) => {
+      if (editor) {
+        editor.select(shapeId as TLShapeId);
+        editor.zoomToSelection({ animation: { duration: 260 } });
+      } else {
+        flowSelectNode(shapeId);
+        window.dispatchEvent(
+          new CustomEvent("foqz:flow-center-on", { detail: { id: shapeId } })
+        );
+      }
     },
-    [editor],
+    [editor, flowSelectNode]
   );
 
   // Jump to project frame
   const handleJumpToProject = useCallback(
-    (projectId: TLShapeId) => {
-      if (!editor) return;
-      const bounds = editor.getShapePageBounds(projectId);
-      if (bounds) {
-        editor.select(projectId);
-        editor.zoomToBounds(bounds, { animation: { duration: 300 }, inset: 80 });
+    (projectId: string) => {
+      if (editor) {
+        const bounds = editor.getShapePageBounds(projectId as TLShapeId);
+        if (bounds) {
+          editor.select(projectId as TLShapeId);
+          editor.zoomToBounds(bounds, { animation: { duration: 300 }, inset: 80 });
+        }
+      } else {
+        flowSelectNode(projectId);
+        window.dispatchEvent(
+          new CustomEvent("foqz:flow-center-on", { detail: { id: projectId } })
+        );
       }
     },
-    [editor],
+    [editor, flowSelectNode]
   );
 
   // Quick add project
   const handleAddProject = useCallback(() => {
-    if (!editor) return;
-    const center = editor.getViewportPageBounds().center;
-    const id = createShapeId();
-    editor.createShape({
-      id,
-      type: "project-frame",
-      x: center.x - 360,
-      y: center.y - 230,
-      props: {
-        w: 720,
-        h: 460,
+    if (editor) {
+      const center = editor.getViewportPageBounds().center;
+      const id = createShapeId();
+      editor.createShape({
+        id,
+        type: "project-frame",
+        x: center.x - 360,
+        y: center.y - 230,
+        props: {
+          w: 720,
+          h: 460,
+          title: "New Project",
+          goal: "Goal: Launch milestone by Friday",
+          accent: "blue",
+        },
+      });
+      editor.select(id);
+    } else {
+      flowCreateProject({
         title: "New Project",
-        goal: "Goal: Launch milestone by Friday",
-        accent: "blue",
-      },
-    });
-    editor.select(id);
-  }, [editor]);
+        goal: "Goal: Define new workspace milestone",
+      });
+    }
+  }, [editor, flowCreateProject]);
 
   // Quick add task
   const handleAddTask = useCallback(() => {
-    if (!editor) return;
     const title = quickTitle.trim() || "New task";
-    const center = editor.getViewportPageBounds().center;
-    const id = createShapeId();
-    editor.createShape({
-      id,
-      type: "focus-task",
-      x: center.x - 130,
-      y: center.y - 42,
-      props: {
-        w: 260,
-        h: 84,
-        title,
-        status: "open",
-      },
-    });
-    editor.select(id);
+    if (editor) {
+      const center = editor.getViewportPageBounds().center;
+      const id = createShapeId();
+      editor.createShape({
+        id,
+        type: "focus-task",
+        x: center.x - 130,
+        y: center.y - 42,
+        props: {
+          w: 260,
+          h: 84,
+          title,
+          status: "open",
+        },
+      });
+      editor.select(id);
+    } else {
+      flowCreateTask({ title });
+    }
     setQuickTitle("");
-  }, [editor, quickTitle]);
+  }, [editor, quickTitle, flowCreateTask]);
 
   if (!open) return null;
 

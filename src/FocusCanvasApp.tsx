@@ -40,6 +40,7 @@ import {
 import "tldraw/tldraw.css";
 import { Button } from "./components/ui/button";
 import { FlowCanvasAppWrapper } from "./poc/FlowCanvasAppWrapper";
+import { useFlowCanvasStore } from "./poc/store/flowCanvasStore";
 
 const SAVE_DELAY_MS = 500;
 
@@ -104,6 +105,7 @@ function FocusCanvasAppInner() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [selectedShapeId, setSelectedShapeId] = useState<TLShapeId | null>(null);
+  const flowSelectedNodeId = useFlowCanvasStore((s) => s.selectedNodeId);
   const [inlineChatShapeId, setInlineChatShapeId] = useState<TLShapeId | null>(null);
   const [activeFocusShapeId, setActiveFocusShapeId] = useState<TLShapeId | null>(null);
   const [connectorsShapeId, setConnectorsShapeId] = useState<TLShapeId | null>(null);
@@ -383,6 +385,15 @@ function FocusCanvasAppInner() {
 
   // Quick Action: Create new Project Frame at viewport center
   const handleCreateProject = useCallback(() => {
+    if (engineMode === "reactflow") {
+      const id = useFlowCanvasStore.getState().createProject({
+        title: "New Project",
+        goal: "Goal: Launch milestone by Friday",
+        accent: "blue",
+      });
+      window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
+      return;
+    }
     if (!editor) return;
     const center = editor.getViewportPageBounds().center;
     const id = createShapeId();
@@ -400,10 +411,19 @@ function FocusCanvasAppInner() {
       },
     });
     editor.select(id);
-  }, [editor]);
+  }, [editor, engineMode]);
 
   // Quick Action: Create new Task at viewport center
   const handleCreateTask = useCallback(() => {
+    if (engineMode === "reactflow") {
+      const id = useFlowCanvasStore.getState().createTask({
+        title: "New Task",
+        status: "open",
+        priority: 3,
+      });
+      window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
+      return;
+    }
     if (!editor) return;
     const center = editor.getViewportPageBounds().center;
     const id = createShapeId();
@@ -420,7 +440,7 @@ function FocusCanvasAppInner() {
       },
     });
     editor.select(id);
-  }, [editor]);
+  }, [editor, engineMode]);
 
 
   // Global Keyboard Shortcuts: Sidebars, New Project, New Task
@@ -651,40 +671,59 @@ function FocusCanvasAppInner() {
                 activeShapeId={activeFocusShapeId}
                 onClearFocus={() => setActiveFocusShapeId(null)}
               />
-              <GlobalSpotlight
-                editor={editor}
-                open={spotlightOpen}
-                onClose={() => setSpotlightOpen(false)}
-                onSelectFocusTarget={(id) => setActiveFocusShapeId(id)}
-              />
-              <ProjectConnectorsModal
-                editor={editor}
-                shapeId={connectorsShapeId}
-                initialTab={connectorsInitialTab}
-                onClose={() => setConnectorsShapeId(null)}
-              />
-
-              {/* Floating Left Workspace Sidebar */}
-              <WorkspaceSidebar
-                editor={editor}
-                open={sidebarOpen}
-                onToggle={() => setSidebarOpen((v) => !v)}
-                onOpenCopilot={(shapeId) => {
-                  if (shapeId) setSelectedShapeId(shapeId);
-                  setCopilotOpen(true);
-                }}
-              />
-
-              {/* Decoupled Copilot Side Panel (matches left WorkspaceSidebar) */}
-              <CopilotDrawer
-                editor={editor}
-                open={copilotOpen}
-                onClose={() => setCopilotOpen(false)}
-                selectedShapeId={selectedShapeId}
-                onOpenSettings={handleOpenSettings}
-              />
             </Tldraw>
           )}
+
+          {/* Universal Shell Overlays (Active in both tldraw & React Flow engines) */}
+          <GlobalSpotlight
+            editor={engineMode === "tldraw" ? editor : null}
+            open={spotlightOpen}
+            onClose={() => setSpotlightOpen(false)}
+            onSelectFocusTarget={(id) => {
+              if (engineMode === "tldraw") {
+                setActiveFocusShapeId(id);
+              } else {
+                window.dispatchEvent(
+                  new CustomEvent("foqz:flow-center-on", { detail: { id } })
+                );
+              }
+            }}
+          />
+
+          <ProjectConnectorsModal
+            editor={engineMode === "tldraw" ? editor : null}
+            shapeId={connectorsShapeId}
+            initialTab={connectorsInitialTab}
+            onClose={() => setConnectorsShapeId(null)}
+          />
+
+          {/* Floating Left Workspace Sidebar */}
+          <WorkspaceSidebar
+            editor={engineMode === "tldraw" ? editor : null}
+            open={sidebarOpen}
+            onToggle={() => setSidebarOpen((v) => !v)}
+            onOpenCopilot={(shapeId) => {
+              if (shapeId) {
+                if (engineMode === "tldraw") {
+                  setSelectedShapeId(shapeId as TLShapeId);
+                } else {
+                  useFlowCanvasStore.getState().setSelectedNodeId(shapeId);
+                }
+              }
+              setCopilotOpen(true);
+            }}
+          />
+
+          {/* Decoupled Copilot Side Panel (matches left WorkspaceSidebar) */}
+          <CopilotDrawer
+            editor={engineMode === "tldraw" ? editor : null}
+            open={copilotOpen}
+            onClose={() => setCopilotOpen(false)}
+            selectedShapeId={
+              engineMode === "tldraw" ? selectedShapeId : (flowSelectedNodeId as any)
+            }
+            onOpenSettings={handleOpenSettings}
+          />
 
           <FocusSettings
             open={settingsOpen}

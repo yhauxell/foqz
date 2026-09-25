@@ -55,8 +55,10 @@ import { MarkdownView } from "@/components/MarkdownView";
 import {
   extractShapeContext,
   getCanvasContext,
+  getFlowCanvasContext,
   type ShapeContextItem,
 } from "@/lib/canvasContext";
+import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 import {
   ACCENT_STYLES,
   type ProjectAccent,
@@ -264,14 +266,22 @@ export function CopilotDrawer({
     };
   }, [editor, open]);
 
-  // Ensure external selectedShapeId is selected in the editor
+  const flowNodes = useFlowCanvasStore((s) => s.nodes);
+  const flowSelectedId = useFlowCanvasStore((s) => s.selectedNodeId);
+  const flowCreateTask = useFlowCanvasStore((s) => s.createTask);
+  const flowCreateProject = useFlowCanvasStore((s) => s.createProject);
+  const flowSelectNode = useFlowCanvasStore((s) => s.setSelectedNodeId);
+
+  // Ensure external selectedShapeId is selected in the editor or flow
   useEffect(() => {
     if (editor && selectedShapeId) {
       if (!editor.getSelectedShapeIds().includes(selectedShapeId)) {
         editor.select(selectedShapeId);
       }
+    } else if (!editor && selectedShapeId) {
+      flowSelectNode(selectedShapeId);
     }
-  }, [editor, selectedShapeId]);
+  }, [editor, selectedShapeId, flowSelectNode]);
 
   // Reactively track selected shapes and all shapes on the current page
   const selectedShapes = useValue(
@@ -286,11 +296,21 @@ export function CopilotDrawer({
     [editor],
   );
 
-  // Extract human-readable text and context from all canvas shapes
-  const canvasCtx = useMemo(
-    () => getCanvasContext(editor),
-    [editor, selectedShapes, allPageShapes, selectedShapeId, storeTick],
-  );
+  // Extract human-readable text and context from all canvas shapes (tldraw or React Flow)
+  const canvasCtx = useMemo(() => {
+    if (editor) {
+      return getCanvasContext(editor);
+    }
+    return getFlowCanvasContext(flowNodes, flowSelectedId);
+  }, [
+    editor,
+    selectedShapes,
+    allPageShapes,
+    selectedShapeId,
+    storeTick,
+    flowNodes,
+    flowSelectedId,
+  ]);
 
   const { selectedItems, selectedSummary, boardItems, boardSummary, primaryShape } =
     canvasCtx;
@@ -603,38 +623,84 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
   // Spawn items on canvas
   const handleSpawn = useCallback(
     (actions: SpawnableShape[]) => {
-      if (!editor || !actions.length) return;
+      if (!actions.length) return;
 
-      const targetProject = findContainingProjectFrame(editor, primaryShape);
-      if (targetProject) {
-        const count = spawnWorkflowForProject(
-          editor,
-          targetProject,
-          actions,
-        );
-        setSpawnedCount(count);
+      if (editor) {
+        const targetProject = findContainingProjectFrame(editor, primaryShape);
+        if (targetProject) {
+          const count = spawnWorkflowForProject(
+            editor,
+            targetProject,
+            actions,
+          );
+          setSpawnedCount(count);
+        } else {
+          const count = spawnShapesOnCanvas(editor, primaryShape, actions);
+          setSpawnedCount(count);
+        }
       } else {
-        const count = spawnShapesOnCanvas(editor, primaryShape, actions);
-        setSpawnedCount(count);
+        // React Flow Spawning
+        let spawned = 0;
+        const currentNodes = useFlowCanvasStore.getState().nodes;
+        const targetFrame = currentNodes.find(
+          (n) => n.id === flowSelectedId && n.type === "projectFrame"
+        );
+        for (const act of actions) {
+          if (act.type === "task") {
+            flowCreateTask({
+              title: act.title,
+              priority: (act.priority as any) ?? 3,
+              notes: act.notes,
+              parentId: targetFrame?.id,
+            });
+            spawned++;
+          } else if (act.type === "project") {
+            flowCreateProject({
+              title: act.title,
+              goal: act.notes,
+            });
+            spawned++;
+          }
+        }
+        setSpawnedCount(spawned);
       }
 
       setTimeout(() => setSpawnedCount(null), 3000);
     },
-    [editor, primaryShape],
+    [editor, primaryShape, flowSelectedId, flowCreateTask, flowCreateProject],
   );
 
   // Spawn single item on canvas
   const handleSpawnSingle = useCallback(
     (action: SpawnableShape, index: number) => {
-      if (!editor) return;
-      const targetProject = findContainingProjectFrame(editor, primaryShape);
-      if (targetProject) {
-        spawnWorkflowForProject(editor, targetProject, [action]);
+      if (editor) {
+        const targetProject = findContainingProjectFrame(editor, primaryShape);
+        if (targetProject) {
+          spawnWorkflowForProject(editor, targetProject, [action]);
+        } else {
+          spawnSingleShapeOnCanvas(editor, action, primaryShape, index);
+        }
       } else {
-        spawnSingleShapeOnCanvas(editor, action, primaryShape, index);
+        const currentNodes = useFlowCanvasStore.getState().nodes;
+        const targetFrame = currentNodes.find(
+          (n) => n.id === flowSelectedId && n.type === "projectFrame"
+        );
+        if (action.type === "task") {
+          flowCreateTask({
+            title: action.title,
+            priority: (action.priority as any) ?? 3,
+            notes: action.notes,
+            parentId: targetFrame?.id,
+          });
+        } else if (action.type === "project") {
+          flowCreateProject({
+            title: action.title,
+            goal: action.notes,
+          });
+        }
       }
     },
-    [editor, primaryShape],
+    [editor, primaryShape, flowSelectedId, flowCreateTask, flowCreateProject],
   );
 
   if (!open) return null;

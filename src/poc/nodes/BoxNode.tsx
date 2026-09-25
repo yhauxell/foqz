@@ -1,6 +1,7 @@
 import React, { memo, useState } from "react";
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
+import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 export interface BoxNodeData {
   label?: string;
@@ -14,6 +15,7 @@ export interface BoxNodeData {
 export type BoxNodeType = Node<BoxNodeData, "box">;
 
 export const BoxNode = memo(function BoxNode({
+  id,
   data,
   selected,
   width = 220,
@@ -90,11 +92,13 @@ export const BoxNode = memo(function BoxNode({
             onBlur={() => {
               setIsEditing(false);
               data.label = val;
+              useFlowCanvasStore.getState().updateNodeData(id, { label: val });
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 setIsEditing(false);
                 data.label = val;
+                useFlowCanvasStore.getState().updateNodeData(id, { label: val });
               }
             }}
             className="w-full bg-transparent border-b border-blue-500 outline-none text-center text-sm font-medium text-zinc-900 dark:text-zinc-100"

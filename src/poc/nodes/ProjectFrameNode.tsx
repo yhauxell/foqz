@@ -6,6 +6,7 @@ import {
   ACCENT_STYLES,
   type ProjectAccent,
 } from "@/shapes/projectFrame/ProjectFrameShapeUtil";
+import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 export interface ProjectFrameNodeData {
   title: string;
@@ -34,6 +35,7 @@ const ACCENT_GLASS_BG: Record<ProjectAccent, string> = {
 };
 
 export const ProjectFrameNode = memo(function ProjectFrameNode({
+  id,
   data,
   selected,
   width = 640,
@@ -122,11 +124,13 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
               onBlur={() => {
                 setIsEditingTitle(false);
                 data.title = titleVal;
+                useFlowCanvasStore.getState().updateNodeData(id, { title: titleVal });
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   setIsEditingTitle(false);
                   data.title = titleVal;
+                  useFlowCanvasStore.getState().updateNodeData(id, { title: titleVal });
                 }
               }}
               className="bg-transparent border-b border-blue-500 outline-none font-bold text-base text-zinc-900 dark:text-zinc-100 flex-1 min-w-[120px]"
@@ -147,17 +151,25 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
           )}
         </div>
 
-        {data.connectors?.githubRepo && (
-          <div
-            className="flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 text-zinc-700 dark:text-zinc-300 font-mono shadow-2xs backdrop-blur-xs ml-2 shrink-0"
-            style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
-          >
-            <GitBranch className="size-3" />
-            <span className="truncate max-w-[140px]">
-              {data.connectors.githubRepo}
-            </span>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            window.dispatchEvent(
+              new CustomEvent("foqz:open-project-connectors", {
+                detail: { shapeId: id },
+              })
+            );
+          }}
+          className="flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-mono shadow-2xs backdrop-blur-xs ml-2 shrink-0 cursor-pointer transition-colors"
+          style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+          title="Configure project connectors & AI context"
+        >
+          <GitBranch className="size-3" />
+          <span className="truncate max-w-[140px]">
+            {data.connectors?.githubRepo || "Connect repo"}
+          </span>
+        </button>
       </div>
 
       {/* Goal Sub-header */}
@@ -172,11 +184,13 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
             onBlur={() => {
               setIsEditingGoal(false);
               data.goal = goalVal;
+              useFlowCanvasStore.getState().updateNodeData(id, { goal: goalVal });
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 setIsEditingGoal(false);
                 data.goal = goalVal;
+                useFlowCanvasStore.getState().updateNodeData(id, { goal: goalVal });
               }
             }}
             placeholder="Add a milestone goal..."

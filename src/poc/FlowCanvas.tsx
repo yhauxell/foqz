@@ -36,114 +36,28 @@ import { Button } from "@/components/ui/button";
 
 type ActiveTool = "select" | "box" | "text" | "pencil";
 
-const INITIAL_NODES: Node[] = [
-  {
-    id: "proj-1",
-    type: "projectFrame",
-    position: { x: 80, y: 80 },
-    style: { width: 720, height: 440 },
-    data: {
-      title: "React Flow Migration Milestone",
-      goal: "Goal: Validate sketchy style, themes & connections",
-      accent: "blue",
-      connectors: { githubRepo: "yhauxell/foqz" },
-    },
-  },
-  {
-    id: "task-1",
-    type: "focusTask",
-    parentId: "proj-1",
-    extent: "parent",
-    position: { x: 40, y: 100 },
-    style: { width: 280, height: 82 },
-    data: {
-      title: "Setup `@xyflow/react` and sketch engine",
-      status: "done",
-      priority: 1,
-      paper: "sage",
-      notes: "Double click me to edit title",
-    },
-  },
-  {
-    id: "task-2",
-    type: "focusTask",
-    parentId: "proj-1",
-    extent: "parent",
-    position: { x: 40, y: 220 },
-    style: { width: 280, height: 82 },
-    data: {
-      title: "Connect task cards to sketch boxes",
-      status: "doing",
-      priority: 2,
-      paper: "cream",
-      notes: "Drag line from task handles to box handles",
-    },
-  },
-  {
-    id: "box-demo",
-    type: "box",
-    parentId: "proj-1",
-    extent: "parent",
-    position: { x: 400, y: 120 },
-    style: { width: 260, height: 180 },
-    data: {
-      label: "Architecture Notes (Double-click to write)",
-      color: "rgba(16, 185, 129, 0.08)",
-      strokeColor: "#10b981",
-      roughness: 2,
-    },
-  },
-  {
-    id: "text-demo",
-    type: "text",
-    position: { x: 850, y: 90 },
-    data: {
-      text: "✏️ Double click on canvas to write text anywhere!",
-      fontSize: 15,
-      color: "#2563eb",
-    },
-  },
-  {
-    id: "pencil-demo",
-    type: "pencil",
-    position: { x: 850, y: 150 },
-    data: {
-      points: [
-        { x: 10, y: 20 },
-        { x: 30, y: 10 },
-        { x: 60, y: 40 },
-        { x: 90, y: 20 },
-        { x: 130, y: 60 },
-        { x: 160, y: 30 },
-      ],
-      color: "#ef4444",
-      size: 6,
-    },
-  },
-];
-
-const INITIAL_EDGES: Edge[] = [
-  {
-    id: "e1-2",
-    source: "task-1",
-    target: "task-2",
-    animated: true,
-    style: { stroke: "#3b82f6", strokeWidth: 2 },
-  },
-  {
-    id: "e2-box",
-    source: "task-2",
-    target: "box-demo",
-    animated: true,
-    style: { stroke: "#10b981", strokeWidth: 2, strokeDasharray: "4 4" },
-  },
-];
-
-const FLOW_STORAGE_KEY = "foqz_reactflow_poc_board_v1";
+import {
+  useFlowCanvasStore,
+  FLOW_STORAGE_KEY,
+  INITIAL_NODES,
+  INITIAL_EDGES,
+} from "./store/flowCanvasStore";
+import {
+  applyNodeChanges,
+  applyEdgeChanges,
+  type NodeChange,
+  type EdgeChange,
+} from "@xyflow/react";
 
 export function FlowCanvasApp() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(INITIAL_NODES);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(INITIAL_EDGES);
+  const nodes = useFlowCanvasStore((s) => s.nodes);
+  const edges = useFlowCanvasStore((s) => s.edges);
+  const setNodes = useFlowCanvasStore((s) => s.setNodes);
+  const setEdges = useFlowCanvasStore((s) => s.setEdges);
+  const setSelectedNodeId = useFlowCanvasStore((s) => s.setSelectedNodeId);
+  const loadSnapshot = useFlowCanvasStore((s) => s.loadSnapshot);
+  const resetBoard = useFlowCanvasStore((s) => s.resetBoard);
+
   const [activeTool, setActiveTool] = useState<ActiveTool>("select");
   const isDrawing = useRef(false);
   const currentPencilPoints = useRef<{ x: number; y: number }[]>([]);
@@ -153,23 +67,27 @@ export function FlowCanvasApp() {
 
   // 1. Persistence Bridge: Restore snapshot on mount
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(FLOW_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
-          setNodes(parsed.nodes);
-        }
-        if (Array.isArray(parsed.edges)) {
-          setEdges(parsed.edges);
-        }
-      }
-    } catch (err) {
-      console.warn("Failed to load React Flow snapshot:", err);
-    }
-  }, [setNodes, setEdges]);
+    loadSnapshot();
+  }, [loadSnapshot]);
 
-  // 2. Persistence Bridge: Debounced auto-save
+  // 2. Center-on event listener for WorkspaceSidebar & GlobalSpotlight
+  useEffect(() => {
+    const handleCenterOn = (e: any) => {
+      if (e.detail?.id) {
+        fitView({ nodes: [{ id: e.detail.id }], duration: 300, maxZoom: 1.2 });
+      }
+    };
+    const handleFitView = () => fitView({ duration: 300 });
+
+    window.addEventListener("foqz:flow-center-on", handleCenterOn as EventListener);
+    window.addEventListener("foqz:flow-fit-view", handleFitView);
+    return () => {
+      window.removeEventListener("foqz:flow-center-on", handleCenterOn as EventListener);
+      window.removeEventListener("foqz:flow-fit-view", handleFitView);
+    };
+  }, [fitView]);
+
+  // 3. Debounced auto-save
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
@@ -184,16 +102,31 @@ export function FlowCanvasApp() {
     return () => clearTimeout(timer);
   }, [nodes, edges]);
 
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      setNodes((nds) => {
+        const next = applyNodeChanges(changes, nds);
+        const sel = next.find((n) => n.selected);
+        setSelectedNodeId(sel ? sel.id : null);
+        return next;
+      });
+    },
+    [setNodes, setSelectedNodeId]
+  );
+
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      setEdges((eds) => applyEdgeChanges(changes, eds));
+    },
+    [setEdges]
+  );
+
   // Reset to initial demo board
   const handleResetSampleBoard = useCallback(() => {
     if (window.confirm("Reset React Flow canvas to sample demo board?")) {
-      setNodes(INITIAL_NODES);
-      setEdges(INITIAL_EDGES);
-      try {
-        localStorage.removeItem(FLOW_STORAGE_KEY);
-      } catch {}
+      resetBoard();
     }
-  }, [setNodes, setEdges]);
+  }, [resetBoard]);
 
   // Find currently selected node for the floating color menu
   const selectedNode = nodes.find((n) => n.selected) || null;

@@ -397,6 +397,101 @@ export function getCanvasContext(editor: Editor | null) {
   };
 }
 
+/**
+ * Extracts and formats canvas context from React Flow nodes so AI Copilot
+ * can reason over React Flow canvas elements identically to tldraw shapes.
+ */
+export function getFlowCanvasContext(nodes: any[], selectedNodeId: string | null) {
+  const selectedNodes = nodes.filter(
+    (n) => n.id === selectedNodeId || n.selected
+  );
+  const selectedItems: any[] = [];
+
+  for (const n of selectedNodes) {
+    const d = (n.data || {}) as Record<string, any>;
+    let label = "";
+    let fullText = "";
+
+    if (n.type === "focusTask") {
+      label = d.title || "Untitled Task";
+      fullText = `[Focus Task] "${label}" (Status: ${d.status || "open"}, Priority: P${d.priority || 3}${d.notes ? `, Notes: ${d.notes}` : ""})`;
+    } else if (n.type === "projectFrame") {
+      label = d.title || "Untitled Project";
+      fullText = `[Project Frame] "${label}" (Goal: "${d.goal || ""}")`;
+    } else if (n.type === "box") {
+      label = d.label || "Sketch Box";
+      fullText = `[Sketch Box] "${label}"`;
+    } else if (n.type === "text") {
+      label = d.text || "Text Note";
+      fullText = `[Text Note] "${label}"`;
+    } else {
+      label = n.type || "Element";
+      fullText = `[${n.type} Element]`;
+    }
+
+    selectedItems.push({
+      id: n.id,
+      type: n.type,
+      label,
+      fullText,
+      rawType: n.type,
+      hasText: true,
+      shape: n,
+    });
+  }
+
+  const selectedSummary = selectedItems
+    .map((item, idx) => `${idx + 1}. ${item.fullText}`)
+    .join("\n");
+
+  const boardItems: any[] = [];
+  for (const n of nodes) {
+    const d = (n.data || {}) as Record<string, any>;
+    let label = "";
+    let fullText = "";
+
+    if (n.type === "focusTask") {
+      label = d.title || "Untitled Task";
+      fullText = `[Focus Task] "${label}" (Status: ${d.status || "open"}, Priority: P${d.priority || 3}${d.notes ? `, Notes: ${d.notes}` : ""})`;
+    } else if (n.type === "projectFrame") {
+      label = d.title || "Untitled Project";
+      fullText = `[Project Frame] "${label}" (Goal: "${d.goal || ""}")`;
+    } else if (n.type === "box") {
+      label = d.label || "Sketch Box";
+      fullText = `[Sketch Box] "${label}"`;
+    } else if (n.type === "text") {
+      label = d.text || "Text Note";
+      fullText = `[Text Note] "${label}"`;
+    } else {
+      continue;
+    }
+
+    boardItems.push({
+      id: n.id,
+      type: n.type,
+      label,
+      fullText,
+      rawType: n.type,
+      hasText: true,
+      shape: n,
+    });
+  }
+
+  const boardSummary = boardItems
+    .map((item, idx) => `${idx + 1}. ${item.fullText}`)
+    .join("\n");
+
+  const primaryShape = selectedItems.length > 0 ? selectedItems[0].shape : null;
+
+  return {
+    selectedItems,
+    selectedSummary,
+    boardItems,
+    boardSummary,
+    primaryShape,
+  };
+}
+
 export interface ProjectFrameBundle {
   frameId: string;
   title: string;

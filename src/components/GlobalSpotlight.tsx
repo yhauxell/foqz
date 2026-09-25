@@ -19,12 +19,13 @@ import {
 import { extractTextFromShape } from '@/lib/canvasContext'
 import { prioritizeDailyFocusSlot } from '@/lib/jev'
 import { insertDayTemplate } from '@/lib/focusTemplate'
+import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
 
 interface GlobalSpotlightProps {
   editor: Editor | null
   open: boolean
   onClose: () => void
-  onSelectFocusTarget: (shapeId: TLShapeId) => void
+  onSelectFocusTarget: (shapeId: string) => void
 }
 
 function getShapeBadge(type: string) {
@@ -101,36 +102,64 @@ export function GlobalSpotlight({
     }
   }, [open])
 
-  // Collect all searchable shapes and frames from the canvas
-  const searchableShapes = useMemo(() => {
-    if (!editor) return []
-    const all = editor.getCurrentPageShapes()
-    const results: Array<{ id: TLShapeId; text: string; type: string; shape: TLShape }> = []
+  const flowNodes = useFlowCanvasStore((s) => s.nodes)
 
-    for (const s of all) {
-      if (s.type === 'arrow') continue
-      let text = extractTextFromShape(s)
-      if (!text.trim() && s.type === 'project-frame') {
-        text = 'Untitled Project'
+  // Collect all searchable shapes and frames from the canvas (tldraw or React Flow)
+  const searchableShapes = useMemo(() => {
+    if (editor) {
+      const all = editor.getCurrentPageShapes()
+      const results: Array<{ id: string; text: string; type: string; shape: any }> = []
+
+      for (const s of all) {
+        if (s.type === 'arrow') continue
+        let text = extractTextFromShape(s)
+        if (!text.trim() && s.type === 'project-frame') {
+          text = 'Untitled Project'
+        }
+        if (text.trim()) {
+          results.push({
+            id: s.id,
+            text: text.trim(),
+            type: s.type,
+            shape: s,
+          })
+        }
       }
+
+      results.sort((a, b) => {
+        const typeRank = (t: string) => (t === 'project-frame' ? 0 : t === 'focus-task' ? 1 : 2)
+        return typeRank(a.type) - typeRank(b.type)
+      })
+
+      return results
+    }
+
+    // React Flow Search
+    const results: Array<{ id: string; text: string; type: string; shape: any }> = []
+    for (const n of flowNodes) {
+      const d = (n.data || {}) as Record<string, any>
+      let text = d.title || d.label || d.text || ''
+      if (!text.trim() && n.type === 'projectFrame') text = 'Untitled Project'
       if (text.trim()) {
         results.push({
-          id: s.id,
+          id: n.id,
           text: text.trim(),
-          type: s.type,
-          shape: s,
+          type:
+            n.type === 'focusTask'
+              ? 'focus-task'
+              : n.type === 'projectFrame'
+              ? 'project-frame'
+              : n.type,
+          shape: n,
         })
       }
     }
-
-    // Sort: projects first, then tasks, then other shapes
     results.sort((a, b) => {
       const typeRank = (t: string) => (t === 'project-frame' ? 0 : t === 'focus-task' ? 1 : 2)
       return typeRank(a.type) - typeRank(b.type)
     })
-
     return results
-  }, [editor, open])
+  }, [editor, open, flowNodes])
 
 type SpotlightEntry =
   | {
@@ -144,10 +173,10 @@ type SpotlightEntry =
     }
   | {
       kind: 'shape'
-      id: TLShapeId
+      id: string
       text: string
       type: string
-      shape: TLShape
+      shape: any
     }
 
   const actions = useMemo<
@@ -304,30 +333,36 @@ type SpotlightEntry =
     return () => window.removeEventListener('keydown', onGlobalKeyDown)
   }, [open, onClose])
 
-  const handleSelectShape = (shapeId: TLShapeId) => {
-    if (!editor) return
-    const shape = editor.getShape(shapeId)
-    const bounds = editor.getShapePageBounds(shapeId)
-    if (bounds) {
-      if (shape && shape.type === 'project-frame') {
-        // Frame project cleanly without over-magnifying
-        editor.zoomToBounds(bounds, {
-          animation: { duration: 300 },
-          inset: 80,
-        })
-      } else {
-        editor.zoomToBounds(bounds, {
-          targetZoom: 1.1,
-          animation: { duration: 300 },
-          inset: 80,
-        })
+  const handleSelectShape = (shapeId: string) => {
+    if (editor) {
+      const shape = editor.getShape(shapeId as TLShapeId)
+      const bounds = editor.getShapePageBounds(shapeId as TLShapeId)
+      if (bounds) {
+        if (shape && shape.type === 'project-frame') {
+          // Frame project cleanly without over-magnifying
+          editor.zoomToBounds(bounds, {
+            animation: { duration: 300 },
+            inset: 80,
+          })
+        } else {
+          editor.zoomToBounds(bounds, {
+            targetZoom: 1.1,
+            animation: { duration: 300 },
+            inset: 80,
+          })
+        }
+        editor.select(shapeId as TLShapeId)
       }
-      editor.select(shapeId)
+    } else {
+      useFlowCanvasStore.getState().setSelectedNodeId(shapeId)
+      window.dispatchEvent(
+        new CustomEvent('foqz:flow-center-on', { detail: { id: shapeId } })
+      )
     }
     onClose()
   }
 
-  const handleStartFocusSession = (shapeId: TLShapeId) => {
+  const handleStartFocusSession = (shapeId: string) => {
     handleSelectShape(shapeId)
     onSelectFocusTarget(shapeId)
     onClose()

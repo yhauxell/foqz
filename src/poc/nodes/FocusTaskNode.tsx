@@ -7,6 +7,7 @@ import {
   focusTaskShellColorForPriority,
   type TaskPaperTheme,
 } from "@/shapes/focusTask/FocusTaskShapeUtil";
+import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 export interface FocusTaskNodeData {
   title: string;
@@ -29,6 +30,7 @@ const PAPER_COLORS: Record<TaskPaperTheme, { bg: string; fill: string }> = {
 };
 
 export const FocusTaskNode = memo(function FocusTaskNode({
+  id,
   data,
   selected,
   width = 260,
@@ -90,8 +92,9 @@ export const FocusTaskNode = memo(function FocusTaskNode({
 
   const toggleStatus = (e: React.MouseEvent) => {
     e.stopPropagation();
-    data.status = data.status === "done" ? "open" : "done";
-    // Trigger re-render by touching titleDraft
+    const nextStatus = data.status === "done" ? "open" : "done";
+    data.status = nextStatus;
+    useFlowCanvasStore.getState().updateNodeData(id, { status: nextStatus });
     setTitleDraft((d) => d);
   };
 
@@ -146,11 +149,13 @@ export const FocusTaskNode = memo(function FocusTaskNode({
               onBlur={() => {
                 setIsEditing(false);
                 data.title = titleDraft;
+                useFlowCanvasStore.getState().updateNodeData(id, { title: titleDraft });
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   setIsEditing(false);
                   data.title = titleDraft;
+                  useFlowCanvasStore.getState().updateNodeData(id, { title: titleDraft });
                 }
               }}
               className="w-full bg-transparent border-b border-blue-500 outline-none text-[13px] text-zinc-900 dark:text-zinc-100"
