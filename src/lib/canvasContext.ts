@@ -123,15 +123,27 @@ export function extractShapeContext(shape: TLShape): ShapeContextItem | null {
       const proj = shape as TLProjectFrameShape;
       const title = proj.props.title || "Untitled Project";
       const goal = proj.props.goal ? ` (Goal: "${proj.props.goal}")` : "";
+      const repo = proj.props.connectors?.githubRepo
+        ? ` [GitHub Repo: ${proj.props.connectors.githubRepo}]`
+        : "";
+      const sentry = proj.props.connectors?.sentryProject
+        ? ` [Sentry: ${proj.props.connectors.sentryProject}]`
+        : "";
+      const notion = proj.props.connectors?.notionWorkspace
+        ? ` [Notion: ${proj.props.connectors.notionWorkspace}]`
+        : "";
+      const contextSnippet = proj.props.projectContext
+        ? `\n[Project Architecture & Context]:\n${proj.props.projectContext.slice(0, 600)}${proj.props.projectContext.length > 600 ? "..." : ""}`
+        : "";
       return {
         id: shape.id,
         type: "Project Frame",
         label: title,
-        fullText: `[Project Frame] "${title}"${goal}`,
+        fullText: `[Project Frame] "${title}"${goal}${repo}${sentry}${notion}${contextSnippet}`,
         rawType: shape.type,
-        hasText: Boolean(title.trim() || proj.props.goal?.trim()),
+        hasText: Boolean(title.trim() || proj.props.goal?.trim() || repo || proj.props.projectContext),
         shape,
-        color: "violet",
+        color: proj.props.accent || "blue",
         dimensions: { w: Math.round(proj.props.w || 600), h: Math.round(proj.props.h || 400) },
       };
     }
@@ -382,5 +394,85 @@ export function getCanvasContext(editor: Editor | null) {
     boardItems,
     boardSummary,
     primaryShape,
+  };
+}
+
+export interface ProjectFrameBundle {
+  frameId: string;
+  title: string;
+  goal: string;
+  projectContext?: string;
+  connectors?: Record<string, any>;
+  containedShapes: Array<{
+    id: string;
+    type: string;
+    text: string;
+    shape: TLShape;
+  }>;
+  summaryText: string;
+}
+
+/**
+ * Returns all spatial backlog elements (shapes, notes, tasks, arrows)
+ * positioned inside a given ProjectFrame boundary.
+ */
+export function getProjectFrameContents(
+  editor: Editor | null,
+  frameId: string,
+): ProjectFrameBundle | null {
+  if (!editor) return null;
+  const frame = editor.getShape(frameId as any);
+  if (!frame || frame.type !== "project-frame") return null;
+
+  const props = (frame.props || {}) as Record<string, any>;
+  const frameX = frame.x;
+  const frameY = frame.y;
+  const frameW = props.w || 720;
+  const frameH = props.h || 460;
+  const frameR = frameX + frameW;
+  const frameB = frameY + frameH;
+
+  const pageShapes = editor.getCurrentPageShapes();
+  const contained: Array<{
+    id: string;
+    type: string;
+    text: string;
+    shape: TLShape;
+  }> = [];
+
+  for (const s of pageShapes) {
+    if (s.id === frame.id) continue;
+
+    const isDirectChild = s.parentId === frame.id;
+    const isContained =
+      s.x >= frameX && s.x <= frameR && s.y >= frameY && s.y <= frameB;
+
+    if (isDirectChild || isContained) {
+      const text = extractTextFromShape(s);
+      contained.push({
+        id: s.id,
+        type: s.type,
+        text: text || `[${s.type}]`,
+        shape: s,
+      });
+    }
+  }
+
+  const summaryLines = contained.map(
+    (c, idx) => `${idx + 1}. [${c.type}] ${c.text}`,
+  );
+
+  const contextSection = props.projectContext
+    ? `\nProject Context:\n${props.projectContext.slice(0, 500)}${props.projectContext.length > 500 ? "..." : ""}`
+    : "";
+
+  return {
+    frameId: frame.id,
+    title: props.title || "Untitled Project",
+    goal: props.goal || "",
+    projectContext: props.projectContext,
+    connectors: props.connectors,
+    containedShapes: contained,
+    summaryText: `Project: ${props.title}\nGoal: ${props.goal}${contextSection}\nBacklog items (${contained.length}):\n${summaryLines.join("\n")}`,
   };
 }

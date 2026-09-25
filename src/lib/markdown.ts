@@ -5,14 +5,22 @@ marked.setOptions({
   breaks: true,
 });
 
+const inlineCache = new Map<string, string>();
+const blockCache = new Map<string, string>();
+
 /**
  * Render inline markdown (for task titles, badges, and one-line summaries).
  */
 export function renderMarkdownInline(text: string): string {
   if (!text) return "";
+  const cached = inlineCache.get(text);
+  if (cached !== undefined) return cached;
   try {
     const raw = marked.parseInline(text);
-    return typeof raw === "string" ? raw : "";
+    const res = typeof raw === "string" ? raw : "";
+    if (inlineCache.size > 500) inlineCache.clear();
+    inlineCache.set(text, res);
+    return res;
   } catch {
     return text;
   }
@@ -24,15 +32,20 @@ export function renderMarkdownInline(text: string): string {
  */
 export function renderMarkdownBlock(text: string): string {
   if (!text) return "";
+  const cached = blockCache.get(text);
+  if (cached !== undefined) return cached;
   try {
     const raw = marked.parse(text);
     if (typeof raw !== "string") return "";
     let idx = 0;
-    return raw.replace(/<input disabled="" type="checkbox"/g, () => {
+    const res = raw.replace(/<input disabled="" type="checkbox"/g, () => {
       const el = `<input type="checkbox" data-task-checkbox="${idx}" class="task-checkbox-input"`;
       idx++;
       return el;
     });
+    if (blockCache.size > 300) blockCache.clear();
+    blockCache.set(text, res);
+    return res;
   } catch {
     return text;
   }

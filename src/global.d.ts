@@ -1,4 +1,5 @@
 import type { AppSettings } from "./lib/appSettings";
+import type { McpStoreApi } from "./lib/mcpTypes";
 
 export {};
 
@@ -27,6 +28,15 @@ declare global {
         | { ok: false; error?: string; canceled?: boolean }
       >;
       clearBoardFile?: () => Promise<{ ok: boolean; error?: string }>;
+      /** MCP client manager & transport supervisor API */
+      mcp?: McpStoreApi;
+      /** TypeSafe Jev System One IPC bridge */
+      jev?: {
+        evaluate: (
+          req: unknown,
+          options?: { apiKey?: string; baseUrl?: string },
+        ) => Promise<unknown>;
+      };
       /** Electron: run before exit so timers can be stopped and the board saved. */
       onPrepareShutdown?: (handler: () => void | Promise<void>) => () => void;
     };

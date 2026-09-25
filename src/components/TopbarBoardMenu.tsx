@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useState, useRef, useEffect } from "react";
 import {
   type Editor,
   type TLPageId,
@@ -23,11 +23,6 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 
 interface TopbarBoardMenuProps {
   editor: Editor | null;
@@ -40,6 +35,22 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+
+  const pageMenuRef = useRef<HTMLDivElement>(null);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (pageMenuRef.current && !pageMenuRef.current.contains(e.target as Node)) {
+        setPageMenuOpen(false);
+      }
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target as Node)) {
+        setActionsMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const currentPage = useValue(
     "currentPage",
@@ -162,128 +173,128 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
   return (
     <div className="flex items-center gap-1.5">
       {/* 1. Page / Board Selector Dropdown */}
-      <Popover open={pageMenuOpen} onOpenChange={setPageMenuOpen}>
-        <PopoverTrigger
-          render={
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-zinc-100 hover:bg-zinc-200/80 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-800 dark:text-zinc-200 transition-colors max-w-[160px]"
-              title="Switch or manage canvas boards"
-            />
-          }
+      <div ref={pageMenuRef} className="relative">
+        <button
+          type="button"
+          onClick={() => {
+            setPageMenuOpen((v) => !v);
+            setActionsMenuOpen(false);
+          }}
+          className={`h-7 px-2.5 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer max-w-[160px] ${
+            pageMenuOpen ? "border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800" : ""
+          }`}
+          title="Switch or manage canvas boards"
         >
           <Layers className="size-3.5 text-zinc-500 shrink-0" />
           <span className="truncate max-w-[90px]">
             {currentPage.name || "Ideas"}
           </span>
-          <ChevronDown className="size-3 text-zinc-400 shrink-0" />
-        </PopoverTrigger>
+          <ChevronDown className={`size-3 text-zinc-400 shrink-0 transition-transform ${pageMenuOpen ? "rotate-180" : ""}`} />
+        </button>
 
-        <PopoverContent
-          align="start"
-          sideOffset={6}
-          className="w-56 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-lg rounded-xl text-zinc-900 dark:text-zinc-100"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold tracking-tight text-zinc-400 dark:text-zinc-500 uppercase">
-            <span>Canvas Boards</span>
-            <span>{pages.length}</span>
-          </div>
+        {pageMenuOpen && (
+          <div className="absolute left-0 top-full mt-1.5 w-56 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-xl text-zinc-900 dark:text-zinc-100 z-50 animate-in fade-in zoom-in-95 duration-100">
+            {/* Header */}
+            <div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold tracking-tight text-zinc-400 dark:text-zinc-500 uppercase">
+              <span>Canvas Boards</span>
+              <span>{pages.length}</span>
+            </div>
 
-          {/* Page List */}
-          <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto py-1">
-            {pages.map((page) => {
-              const isActive = page.id === currentPage.id;
-              const isRenaming = editingPageId === page.id;
+            {/* Page List */}
+            <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto py-1">
+              {pages.map((page) => {
+                const isActive = page.id === currentPage.id;
+                const isRenaming = editingPageId === page.id;
 
-              return (
-                <div
-                  key={page.id}
-                  onClick={() => !isRenaming && handleSwitchPage(page.id)}
-                  className={`group flex items-center justify-between px-2 py-1.5 rounded-md text-xs cursor-pointer transition-colors ${
-                    isActive
-                      ? "bg-zinc-100 dark:bg-zinc-800/90 text-zinc-900 dark:text-white font-medium"
-                      : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200"
-                  }`}
-                >
-                  {isRenaming ? (
-                    <div
-                      className="flex items-center gap-1 w-full"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <input
-                        type="text"
-                        autoFocus
-                        value={editingName}
-                        onChange={(e) => setEditingName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleSaveRename(page.id);
-                          if (e.key === "Escape") setEditingPageId(null);
-                        }}
-                        onBlur={() => handleSaveRename(page.id)}
-                        className="w-full text-xs px-1.5 py-0.5 bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded outline-none text-zinc-900 dark:text-zinc-100"
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
-                        {isActive ? (
-                          <Check className="size-3 text-emerald-500 shrink-0" />
-                        ) : (
-                          <div className="size-3 shrink-0" />
-                        )}
-                        <span className="truncate">{page.name}</span>
+                return (
+                  <div
+                    key={page.id}
+                    onClick={() => !isRenaming && handleSwitchPage(page.id)}
+                    className={`group flex items-center justify-between px-2 py-1.5 rounded-md text-xs cursor-pointer transition-colors ${
+                      isActive
+                        ? "bg-zinc-100 dark:bg-zinc-800/90 text-zinc-900 dark:text-white font-medium"
+                        : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200"
+                    }`}
+                  >
+                    {isRenaming ? (
+                      <div
+                        className="flex items-center gap-1 w-full"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="text"
+                          autoFocus
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSaveRename(page.id);
+                            if (e.key === "Escape") setEditingPageId(null);
+                          }}
+                          onBlur={() => handleSaveRename(page.id)}
+                          className="w-full text-xs px-1.5 py-0.5 bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded outline-none text-zinc-900 dark:text-zinc-100"
+                        />
                       </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+                          {isActive ? (
+                            <Check className="size-3 text-emerald-500 shrink-0" />
+                          ) : (
+                            <div className="size-3 shrink-0" />
+                          )}
+                          <span className="truncate">{page.name}</span>
+                        </div>
 
-                      {/* Hover action buttons */}
-                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                        <button
-                          type="button"
-                          title="Rename board"
-                          onClick={(e) => handleStartRename(page.id, page.name, e)}
-                          className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                        >
-                          <Edit2 className="size-2.5" />
-                        </button>
-                        <button
-                          type="button"
-                          title="Duplicate board"
-                          onClick={(e) => handleDuplicatePage(page.id, e)}
-                          className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                        >
-                          <Copy className="size-2.5" />
-                        </button>
-                        {pages.length > 1 && (
+                        {/* Hover action buttons */}
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                           <button
                             type="button"
-                            title="Delete board"
-                            onClick={(e) => handleDeletePage(page.id, e)}
-                            className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-950/60 text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                            title="Rename board"
+                            onClick={(e) => handleStartRename(page.id, page.name, e)}
+                            className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
                           >
-                            <Trash2 className="size-2.5" />
+                            <Edit2 className="size-2.5" />
                           </button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                          <button
+                            type="button"
+                            title="Duplicate board"
+                            onClick={(e) => handleDuplicatePage(page.id, e)}
+                            className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                          >
+                            <Copy className="size-2.5" />
+                          </button>
+                          {pages.length > 1 && (
+                            <button
+                              type="button"
+                              title="Delete board"
+                              onClick={(e) => handleDeletePage(page.id, e)}
+                              className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-950/60 text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                            >
+                              <Trash2 className="size-2.5" />
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
-          {/* New Board Action */}
-          <div className="pt-1 mt-1 border-t border-zinc-100 dark:border-zinc-800">
-            <button
-              type="button"
-              onClick={handleCreatePage}
-              className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-            >
-              <Plus className="size-3.5 text-zinc-500" />
-              <span>New Board</span>
-            </button>
+            {/* New Board Action */}
+            <div className="pt-1 mt-1 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={handleCreatePage}
+                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+              >
+                <Plus className="size-3.5 text-zinc-500" />
+                <span>New Board</span>
+              </button>
+            </div>
           </div>
-        </PopoverContent>
-      </Popover>
+        )}
+      </div>
 
       {/* 2. Undo & Redo History Controls */}
       <div className="flex items-center gap-0.5 px-0.5">
@@ -340,102 +351,102 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
       )}
 
       {/* 4. Canvas Actions / More Menu (⋮) */}
-      <Popover open={actionsMenuOpen} onOpenChange={setActionsMenuOpen}>
-        <PopoverTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              className="text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
-              title="Board actions & exports"
-            />
-          }
+      <div ref={actionsMenuRef} className="relative">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => {
+            setActionsMenuOpen((v) => !v);
+            setPageMenuOpen(false);
+          }}
+          className={`text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white ${
+            actionsMenuOpen ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white" : ""
+          }`}
+          title="Board actions & exports"
         >
           <MoreHorizontal className="size-3.5" />
-        </PopoverTrigger>
+        </Button>
 
-        <PopoverContent
-          align="start"
-          sideOffset={6}
-          className="w-48 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-lg rounded-xl text-zinc-900 dark:text-zinc-100"
-        >
-          {/* View controls */}
-          <div className="px-2 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-tight">
-            View
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              editor.zoomToFit({ animation: { duration: 200 } });
-              setActionsMenuOpen(false);
-            }}
-            className="w-full flex items-center justify-between px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Maximize2 className="size-3 text-zinc-500" />
-              <span>Zoom to Fit</span>
+        {actionsMenuOpen && (
+          <div className="absolute left-0 top-full mt-1.5 w-48 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-xl text-zinc-900 dark:text-zinc-100 z-50 animate-in fade-in zoom-in-95 duration-100">
+            {/* View controls */}
+            <div className="px-2 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-tight">
+              View
             </div>
-            <span className="text-[10px] text-zinc-400 font-mono">⇧1</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              editor.resetZoom();
-              setActionsMenuOpen(false);
-            }}
-            className="w-full flex items-center justify-between px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <ZoomIn className="size-3 text-zinc-500" />
-              <span>Zoom to 100%</span>
-            </div>
-            <span className="text-[10px] text-zinc-400 font-mono">⇧0</span>
-          </button>
-
-          {/* Export section */}
-          <div className="px-2 pt-2 pb-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-tight border-t border-zinc-100 dark:border-zinc-800 mt-1">
-            Export
-          </div>
-          <button
-            type="button"
-            onClick={() => handleExport("png")}
-            className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-          >
-            <ImageIcon className="size-3 text-zinc-500" />
-            <span>Export as PNG</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExport("svg")}
-            className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-          >
-            <Download className="size-3 text-zinc-500" />
-            <span>Export as SVG</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExport("json")}
-            className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-          >
-            <FileCode className="size-3 text-zinc-500" />
-            <span>Export as JSON</span>
-          </button>
-
-          {/* Destructive actions */}
-          <div className="pt-1 mt-1 border-t border-zinc-100 dark:border-zinc-800">
             <button
               type="button"
-              onClick={handleClearBoard}
-              className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md transition-colors"
+              onClick={() => {
+                editor.zoomToFit({ animation: { duration: 200 } });
+                setActionsMenuOpen(false);
+              }}
+              className="w-full flex items-center justify-between px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
             >
-              <Trash2 className="size-3 text-red-500" />
-              <span>Clear Board</span>
+              <div className="flex items-center gap-2">
+                <Maximize2 className="size-3 text-zinc-500" />
+                <span>Zoom to Fit</span>
+              </div>
+              <span className="text-[10px] text-zinc-400 font-mono">⇧1</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                editor.resetZoom();
+                setActionsMenuOpen(false);
+              }}
+              className="w-full flex items-center justify-between px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <ZoomIn className="size-3 text-zinc-500" />
+                <span>Zoom to 100%</span>
+              </div>
+              <span className="text-[10px] text-zinc-400 font-mono">⇧0</span>
+            </button>
+
+            {/* Export section */}
+            <div className="px-2 pt-2 pb-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-tight border-t border-zinc-100 dark:border-zinc-800 mt-1">
+              Export
+            </div>
+            <button
+              type="button"
+              onClick={() => handleExport("png")}
+              className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+            >
+              <ImageIcon className="size-3 text-zinc-500" />
+              <span>Export as PNG</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExport("svg")}
+              className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+            >
+              <Download className="size-3 text-zinc-500" />
+              <span>Export as SVG</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExport("json")}
+              className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+            >
+              <FileCode className="size-3 text-zinc-500" />
+              <span>Export as JSON</span>
+            </button>
+
+            {/* Destructive actions */}
+            <div className="pt-1 mt-1 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={handleClearBoard}
+                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md transition-colors"
+              >
+                <Trash2 className="size-3 text-red-500" />
+                <span>Clear Board</span>
+              </button>
+            </div>
           </div>
-        </PopoverContent>
-      </Popover>
+        )}
+      </div>
     </div>
   );
 });

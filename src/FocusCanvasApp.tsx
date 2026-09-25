@@ -20,8 +20,13 @@ import { CopilotDrawer } from "@/components/CopilotDrawer";
 import { TopbarBoardMenu } from "@/components/TopbarBoardMenu";
 import { WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { ContextualSelectionHud } from "@/components/ContextualSelectionHud";
-import { FolderPlus, Moon, PanelLeft, PanelRight, Plus, Settings, Sparkles, Sun } from "lucide-react";
+import { ElementInlineChat } from "@/components/ElementInlineChat";
+import { MonoFocusController } from "@/components/MonoFocusController";
+import { GlobalSpotlight } from "@/components/GlobalSpotlight";
+import { CanvasZoomControls } from "@/components/CanvasZoomControls";
+import { ProjectConnectorsModal } from "@/components/ProjectConnectorsModal";
 import { useOllama } from "@/lib/ollama";
+import { FolderPlus, PanelLeft, Plus, Search, Settings, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createShapeId,
@@ -74,9 +79,26 @@ function FocusCanvasAppInner() {
   const [status, setStatus] = useState("Loading board...");
   const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<
+    "general" | "workingHours" | "ai" | "mcp" | "data"
+  >("general");
+
+  const handleOpenSettings = useCallback(
+    (initialTab: "general" | "workingHours" | "ai" | "mcp" | "data" = "general") => {
+      setSettingsInitialTab(initialTab);
+      setSettingsOpen(true);
+    },
+    [],
+  );
+
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [selectedShapeId, setSelectedShapeId] = useState<TLShapeId | null>(null);
+  const [inlineChatShapeId, setInlineChatShapeId] = useState<TLShapeId | null>(null);
+  const [activeFocusShapeId, setActiveFocusShapeId] = useState<TLShapeId | null>(null);
+  const [connectorsShapeId, setConnectorsShapeId] = useState<TLShapeId | null>(null);
+  const [connectorsInitialTab, setConnectorsInitialTab] = useState<"connectors" | "context">("connectors");
+  const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [stats, setStats] = useState<{
     totalTasks: number;
     doneTasks: number;
@@ -84,7 +106,7 @@ function FocusCanvasAppInner() {
   }>({ totalTasks: 0, doneTasks: 0, projects: [] });
 
   const { settings, update } = useFocusAppSettings();
-  const { online, selectedModel, models, setSelectedModel } = useOllama();
+  const { online } = useOllama();
 
   const isDark =
     settings.colorScheme === "dark" ||
@@ -146,8 +168,89 @@ function FocusCanvasAppInner() {
       }
       setCopilotOpen(true);
     };
+
+    const onInlineChatEvent = (e: any) => {
+      const shapeId = e.detail?.shapeId || (typeof e.detail === "string" ? e.detail : null);
+      if (shapeId) {
+        setSelectedShapeId(shapeId);
+        setInlineChatShapeId(shapeId);
+      }
+    };
+
+    const onFocusTargetEvent = (e: any) => {
+      const shapeId = e.detail?.shapeId || (typeof e.detail === "string" ? e.detail : null);
+      if (shapeId) {
+        setSelectedShapeId(shapeId);
+        setActiveFocusShapeId(shapeId);
+      }
+    };
+
+    const onOpenSpotlightEvent = () => {
+      setSpotlightOpen(true);
+    };
+
+    const onOpenConnectorsEvent = (e: any) => {
+      const shapeId = e.detail?.shapeId || (typeof e.detail === "string" ? e.detail : null);
+      const tab = e.detail?.initialTab || "connectors";
+      if (shapeId) {
+        setSelectedShapeId(shapeId);
+        setConnectorsShapeId(shapeId);
+        setConnectorsInitialTab(tab);
+      }
+    };
+
     window.addEventListener("foqz:open-copilot", onOpenCopilotEvent);
-    return () => window.removeEventListener("foqz:open-copilot", onOpenCopilotEvent);
+    window.addEventListener("foqz:open-inline-chat", onInlineChatEvent);
+    window.addEventListener("foqz:set-focus-target", onFocusTargetEvent);
+    window.addEventListener("foqz:open-spotlight", onOpenSpotlightEvent);
+    window.addEventListener("foqz:open-project-connectors", onOpenConnectorsEvent);
+
+    return () => {
+      window.removeEventListener("foqz:open-copilot", onOpenCopilotEvent);
+      window.removeEventListener("foqz:open-inline-chat", onInlineChatEvent);
+      window.removeEventListener("foqz:set-focus-target", onFocusTargetEvent);
+      window.removeEventListener("foqz:open-spotlight", onOpenSpotlightEvent);
+      window.removeEventListener("foqz:open-project-connectors", onOpenConnectorsEvent);
+    };
+  }, []);
+
+  // Global Keyboard shortcuts: Cmd+K (Spotlight), C (Inline Chat), F (Mono-Focus)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Spotlight: Cmd+K / Ctrl+K
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setSpotlightOpen((prev) => !prev);
+        return;
+      }
+
+      // Ignore single-key shortcuts if typing in an input or textarea
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const ed = editorRef.current;
+      if (!ed) return;
+      const selectedIds = ed.getSelectedShapeIds();
+      const primaryId = selectedIds.length > 0 ? selectedIds[0] : null;
+
+      if ((e.key === "c" || e.key === "C") && primaryId) {
+        e.preventDefault();
+        setInlineChatShapeId((prev) => (prev === primaryId ? null : primaryId));
+      } else if ((e.key === "f" || e.key === "F") && primaryId) {
+        e.preventDefault();
+        setActiveFocusShapeId(primaryId);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   const tldrawComponents = useMemo(
@@ -159,6 +262,10 @@ function FocusCanvasAppInner() {
       QuickActions: null,
       ActionsMenu: null,
       StylePanel: null,
+      NavigationPanel: null,
+      Minimap: null,
+      ZoomMenu: null,
+      HelpMenu: null,
     }),
     [],
   );
@@ -239,27 +346,6 @@ function FocusCanvasAppInner() {
           migratePageNamesToFocusBoard(ed);
           refreshCanvasStats(ed);
 
-          // Double-click on canvas spawns a task card at cursor
-          ed.on("event", (info) => {
-            if (info.name === "double_click" && info.target === "canvas") {
-              const pagePoint = ed.inputs.currentPagePoint;
-              const newId = createShapeId();
-              ed.createShape({
-                id: newId,
-                type: "focus-task",
-                x: pagePoint.x - 130,
-                y: pagePoint.y - 42,
-                props: {
-                  w: 260,
-                  h: 84,
-                  title: "",
-                  status: "open",
-                },
-              });
-              ed.select(newId);
-            }
-          });
-
           // Track selection changes
           ed.on("change", () => {
             const selected = ed.getSelectedShapeIds();
@@ -300,7 +386,7 @@ function FocusCanvasAppInner() {
         h: 460,
         title: "New Project",
         goal: "Goal: Launch milestone by Friday",
-        accent: "indigo",
+        accent: "blue",
       },
     });
     editor.select(id);
@@ -326,18 +412,6 @@ function FocusCanvasAppInner() {
     editor.select(id);
   }, [editor]);
 
-  // Quick Action: Smoothly jump camera to selected project
-  const handleJumpToProject = useCallback(
-    (projectId: string) => {
-      if (!editor || !projectId) return;
-      const bounds = editor.getShapePageBounds(projectId as TLShapeId);
-      if (bounds) {
-        editor.zoomToBounds(bounds, { animation: { duration: 300 }, inset: 80 });
-        editor.select(projectId as TLShapeId);
-      }
-    },
-    [editor],
-  );
 
   // Global Keyboard Shortcuts: Sidebars, New Project, New Task
   useEffect(() => {
@@ -350,10 +424,7 @@ function FocusCanvasAppInner() {
         target?.isContentEditable ||
         Boolean(target?.closest?.("[contenteditable='true']"));
 
-      const isMac =
-        typeof navigator !== "undefined" &&
-        /Mac|iPhone|iPod|iPad/i.test(navigator.platform);
-      const mod = isMac ? e.metaKey : e.ctrlKey;
+      const mod = e.metaKey || e.ctrlKey;
 
       // 1. Toggle Workspace Sidebar (Cmd+B or Cmd+\)
       if (
@@ -362,24 +433,20 @@ function FocusCanvasAppInner() {
         !e.altKey &&
         (e.key.toLowerCase() === "b" || e.key === "\\")
       ) {
-        if (!isInput) {
-          e.preventDefault();
-          setSidebarOpen((v) => !v);
-          return;
-        }
+        e.preventDefault();
+        setSidebarOpen((v) => !v);
+        return;
       }
 
-      // 2. Toggle Copilot Sidebar (Cmd+J or Cmd+Shift+B or Cmd+/)
+      // 2. Toggle Assistant Sidebar (Cmd+J or Cmd+Shift+B or Cmd+/)
       if (
         (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") ||
         (mod && e.shiftKey && e.key.toLowerCase() === "b") ||
         (mod && !e.shiftKey && e.key === "/")
       ) {
-        if (!isInput) {
-          e.preventDefault();
-          setCopilotOpen((v) => !v);
-          return;
-        }
+        e.preventDefault();
+        setCopilotOpen((v) => !v);
+        return;
       }
 
       // 3. New Project Frame (Cmd+Shift+P, Option+Cmd+N, or Option+P)
@@ -397,19 +464,6 @@ function FocusCanvasAppInner() {
       if (
         (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") ||
         (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "n")
-      ) {
-        e.preventDefault();
-        handleCreateTask();
-        return;
-      }
-
-      // Single-key shortcut on canvas: 'c' for New Task (when not typing in any input)
-      if (
-        !mod &&
-        !e.altKey &&
-        !e.shiftKey &&
-        !isInput &&
-        e.key.toLowerCase() === "c"
       ) {
         e.preventDefault();
         handleCreateTask();
@@ -439,74 +493,65 @@ function FocusCanvasAppInner() {
   }, [handleCreateProject, handleCreateTask]);
 
   return (
-    <div className="app bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+    <div
+      className={`app bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 ${
+        copilotOpen ? "app--copilot-open" : ""
+      }`}
+      style={{
+        ["--tools-bar-right" as any]: copilotOpen ? "412px" : "18px",
+      }}
+    >
       {/* Vercel / shadcn Topbar */}
-      <header className="topbar h-12 px-4 border-b border-zinc-200 dark:border-zinc-800/80 bg-white/95 dark:bg-zinc-950/95 backdrop-blur flex items-center justify-between select-none z-50">
-        {/* Left section: Sidebar Toggle + Brand + Daily Clearance + Project Jump */}
-        <div className="flex items-center gap-2.5">
+      <header className="topbar h-12 px-4 flex items-center justify-between select-none z-50">
+        {/* Left section: Sidebar Toggle + Brand + Page Switcher */}
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
             type="button"
             title="Toggle Workspace Sidebar (⌘B)"
             onClick={() => setSidebarOpen((v) => !v)}
-            className={`p-1.5 rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors mr-0.5 ${
-              sidebarOpen ? "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-900 dark:text-white" : ""
+            className={`size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer mr-0.5 ${
+              sidebarOpen ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white border-zinc-300 dark:border-zinc-700" : ""
             }`}
           >
-            <PanelLeft className="size-4" />
+            <PanelLeft className="size-3.5" />
           </button>
 
           <div className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-white mr-1">
             Foqz
           </div>
 
-          {/* Global Daily Clearance Progress Pill */}
-          <div
-            className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-700 dark:text-zinc-300"
-            title="Daily clearance progress across all projects"
-          >
-            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>
-              {stats.doneTasks}/{stats.totalTasks} Done Today
-            </span>
-          </div>
-
           {/* Board / Page Switcher & Canvas Actions (replaces floating Ideas bar) */}
-          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5" />
           <TopbarBoardMenu editor={editor} />
-
-          {/* Quick-Jump Project Dropdown */}
-          {stats.projects.length > 0 ? (
-            <select
-              aria-label="Quick-Jump Project"
-              defaultValue=""
-              onChange={(e) => {
-                handleJumpToProject(e.target.value);
-                e.target.value = "";
-              }}
-              className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs rounded-md px-2 py-1 outline-none hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors cursor-pointer"
-            >
-              <option value="" disabled>
-                Jump to Project...
-              </option>
-              {stats.projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.props.title || "Untitled Project"}
-                </option>
-              ))}
-            </select>
-          ) : null}
         </div>
 
-        {/* Right section: Quick Create + Copilot + Ollama + Theme + Settings */}
-        <div className="flex items-center gap-2">
+        {/* Centered Unified Jump & Search Action (⌘K) */}
+        <div className="flex-1 flex justify-center px-2 sm:px-4 max-w-sm sm:max-w-md mx-auto">
+          <button
+            type="button"
+            onClick={() => setSpotlightOpen(true)}
+            className="h-7 w-full max-w-xs sm:max-w-sm px-3 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-zinc-100/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all shadow-2xs flex items-center justify-between cursor-pointer group"
+            title="Jump to project, task, or search canvas (⌘K)"
+          >
+            <div className="flex items-center gap-2 truncate text-xs">
+              <Search className="size-3.5 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 shrink-0 transition-colors" />
+              <span className="truncate">Jump to or search...</span>
+            </div>
+            <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-60 group-hover:opacity-90 px-1.5 py-0.2 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/60 transition-opacity shrink-0 ml-1.5">
+              ⌘K
+            </kbd>
+          </button>
+        </div>
+
+        {/* Right section: Quick Create + Assistant + Settings */}
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Quick Add Project Frame */}
           <button
             type="button"
             title="Add Project Frame (⌘⇧P)"
             onClick={handleCreateProject}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 hover:bg-zinc-200/80 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-colors"
+            className="h-7 px-2.5 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
           >
-            <FolderPlus className="size-3.5" />
+            <FolderPlus className="size-3" />
             <span>Project</span>
             <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘⇧P</kbd>
           </button>
@@ -514,78 +559,43 @@ function FocusCanvasAppInner() {
           {/* Quick Add Task */}
           <button
             type="button"
-            title="Add Task Card (⌘N or double-click canvas)"
+            title="Add Task Card (⌘N)"
             onClick={handleCreateTask}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 hover:bg-zinc-200/80 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-colors"
+            className="h-7 px-2.5 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
           >
             <Plus className="size-3.5" />
             <span>Task</span>
             <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘N</kbd>
           </button>
 
-          {/* Ollama Model / Status Pill */}
+          {/* Toggle AI Assistant */}
           <button
             type="button"
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-              online
-                ? "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 hover:text-zinc-950 dark:hover:text-white"
-                : "bg-zinc-100/60 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-500"
+            title="Toggle AI Assistant (⌘J)"
+            onClick={() => setCopilotOpen((v) => !v)}
+            className={`h-7 px-2.5 rounded-full text-xs font-medium border transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer ${
+              copilotOpen
+                ? "bg-blue-100 dark:bg-blue-950/70 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 font-semibold"
+                : "border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 hover:text-zinc-950 dark:hover:text-white"
             }`}
-            title={
-              online
-                ? `Ollama online • Model: ${selectedModel || "Auto"} (click to cycle)`
-                : "Ollama offline • Start Ollama at localhost:11434"
-            }
-            onClick={() => {
-              if (!models.length) return;
-              const idx = models.indexOf(selectedModel);
-              const next = models[(idx + 1) % models.length];
-              setSelectedModel(next);
-            }}
           >
+            <Sparkles className="size-3 text-blue-500" />
+            <span>Assistant</span>
             <span
               className={`size-1.5 rounded-full ${online ? "bg-emerald-500" : "bg-zinc-400 dark:bg-zinc-600"}`}
+              title={online ? "Ollama is online" : "Ollama is offline"}
             />
-            <span className="truncate max-w-[100px]">
-              {online ? selectedModel || "ollama" : "ollama: off"}
-            </span>
+            <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘J</kbd>
           </button>
 
-          {/* 1-Click Theme Toggle Button (Light / Dark) */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            onClick={toggleTheme}
-          >
-            {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
-          </Button>
-
           {/* Settings Modal */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label="Settings"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings className="size-4" />
-          </Button>
-
-          {/* Copilot Side Trigger (matches left toolbar PanelLeft trigger) */}
           <button
             type="button"
-            title="Toggle AI Copilot (⌘J)"
-            onClick={() => setCopilotOpen((v) => !v)}
-            className={`p-1.5 rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors ml-0.5 ${
-              copilotOpen ? "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-900 dark:text-white" : ""
-            }`}
+            className="size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+            aria-label="Settings"
+            onClick={() => handleOpenSettings("general")}
           >
-            <PanelRight className="size-4" />
+            <Settings className="size-3.5" />
           </button>
 
           {/* Status */}
@@ -593,19 +603,10 @@ function FocusCanvasAppInner() {
         </div>
       </header>
 
+
       {/* Workspace Shell: Left Sidebar + Center Infinite Canvas + Right Copilot Panel */}
       <div className="flex-1 flex overflow-hidden relative">
-        <WorkspaceSidebar
-          editor={editor}
-          open={sidebarOpen}
-          onToggle={() => setSidebarOpen((v) => !v)}
-          onOpenCopilot={(shapeId) => {
-            if (shapeId) setSelectedShapeId(shapeId);
-            setCopilotOpen(true);
-          }}
-        />
-
-        <main ref={setCanvasRef} className="canvas flex-1 relative overflow-hidden">
+        <main ref={setCanvasRef} className="canvas w-full h-full relative overflow-hidden">
           <Tldraw
             components={tldrawComponents}
             onMount={handlers.onMount}
@@ -616,20 +617,56 @@ function FocusCanvasAppInner() {
             <FocusColorSchemeSync />
             <FocusEditorUi canvasEl={canvasEl} />
             <ContextualSelectionHud />
+            <CanvasZoomControls sidebarOpen={sidebarOpen} />
+            <ElementInlineChat
+              editor={editor}
+              shapeId={inlineChatShapeId}
+              onClose={() => setInlineChatShapeId(null)}
+            />
+            <MonoFocusController
+              editor={editor}
+              activeShapeId={activeFocusShapeId}
+              onClearFocus={() => setActiveFocusShapeId(null)}
+            />
+            <GlobalSpotlight
+              editor={editor}
+              open={spotlightOpen}
+              onClose={() => setSpotlightOpen(false)}
+              onSelectFocusTarget={(id) => setActiveFocusShapeId(id)}
+            />
             <FocusSettings
               open={settingsOpen}
               onClose={() => setSettingsOpen(false)}
+              initialTab={settingsInitialTab}
+            />
+            <ProjectConnectorsModal
+              editor={editor}
+              shapeId={connectorsShapeId}
+              initialTab={connectorsInitialTab}
+              onClose={() => setConnectorsShapeId(null)}
+            />
+
+            {/* Floating Left Workspace Sidebar */}
+            <WorkspaceSidebar
+              editor={editor}
+              open={sidebarOpen}
+              onToggle={() => setSidebarOpen((v) => !v)}
+              onOpenCopilot={(shapeId) => {
+                if (shapeId) setSelectedShapeId(shapeId);
+                setCopilotOpen(true);
+              }}
+            />
+
+            {/* Decoupled Copilot Side Panel (matches left WorkspaceSidebar) */}
+            <CopilotDrawer
+              editor={editor}
+              open={copilotOpen}
+              onClose={() => setCopilotOpen(false)}
+              selectedShapeId={selectedShapeId}
+              onOpenSettings={handleOpenSettings}
             />
           </Tldraw>
         </main>
-
-        {/* Decoupled Copilot Side Panel (matches left WorkspaceSidebar) */}
-        <CopilotDrawer
-          editor={editor}
-          open={copilotOpen}
-          onClose={() => setCopilotOpen(false)}
-          selectedShapeId={selectedShapeId}
-        />
       </div>
     </div>
   );

@@ -12,7 +12,7 @@
 [![Local AI](https://img.shields.io/badge/AI-Ollama%20(Local%20%26%20Private)-purple.svg)](https://ollama.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 
-[Download Releases](#installation--downloads) • [Features](#key-features) • [Quickstart](#development-setup) • [Architecture](#architecture--project-structure) • [Contributing](#contributing)
+[Download Releases](#installation--downloads) • [Features](#key-features) • [Roadmap](#roadmap) • [Quickstart](#development-setup) • [Architecture](#architecture--project-structure) • [Contributing](#contributing)
 
 </div>
 
@@ -88,6 +88,25 @@ Pre-built binaries are available on the [GitHub Releases](https://github.com/yha
 | **macOS** | `.dmg`, `.zip` | Universal (Apple Silicon & Intel) |
 | **Windows** | `.exe` (NSIS Installer) | x64 |
 | **Linux** | `.AppImage` | x64 |
+
+### 🍎 macOS Installation Note (Gatekeeper Quarantine)
+
+Because Foqz is an independent open-source project and builds are not yet signed with a paid Apple Developer ID certificate, macOS Gatekeeper may flag downloaded binaries with:
+> *"Foqz is damaged and can’t be opened. You should move it to the Trash."*
+
+This is standard macOS security behavior for unsigned software downloaded from the web (macOS attaches a `com.apple.quarantine` extended attribute). The app is completely intact and safe.
+
+**To launch Foqz on macOS:**
+
+1. Drag `Foqz.app` into your `/Applications` folder.
+2. Open your **Terminal** and run this one-time command to clear the quarantine attribute:
+   ```bash
+   xattr -cr /Applications/Foqz.app
+   ```
+3. *Alternative via GUI*: Go to **System Settings ➔ Privacy & Security**, scroll to **Security**, and click **"Open Anyway"**.
+
+> [!TIP]
+> **Windows Users**: On first launch, Windows SmartScreen may display an *"Unknown Publisher"* prompt. Click **More info ➔ Run anyway**.
 
 ---
 
@@ -226,6 +245,18 @@ Foqz stores board snapshots and user preferences as local JSON files. No externa
 - **Linux**: `~/.config/foqz/board-snapshot.json`
 
 Because snapshots are clean JSON, you can easily back them up, sync them via your own tools (Git, Syncthing, Dropbox), or version-control your workspaces.
+
+---
+
+## Roadmap
+
+Active development milestones and proposed features are tracked through our [GitHub Issues](https://github.com/yhauxell/foqz/issues?q=is%3Aissue+label%3Aroadmap). Current priority items:
+
+- [ ] [**#2**: Detect and auto-configure running local LLM servers](https://github.com/yhauxell/foqz/issues/2) (Ollama, LM Studio, llama.cpp, LocalAI)
+- [ ] [**#3**: Support Model Context Protocol (MCP) integrations](https://github.com/yhauxell/foqz/issues/3) for local tools & environment context
+- [ ] [**#4**: Improve spatial layout algorithms and ordering for generated canvas elements](https://github.com/yhauxell/foqz/issues/4)
+- [ ] [**#5**: Support custom SKILLs and AGENT.md configuration profiles](https://github.com/yhauxell/foqz/issues/5)
+- [ ] [**#6**: Project-scoped AI context and spatial frame awareness](https://github.com/yhauxell/foqz/issues/6)
 
 ---
 

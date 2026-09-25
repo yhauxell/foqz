@@ -29,6 +29,20 @@ export type AppSettings = {
   playSoundOnTimerEnd: boolean;
   colorScheme: "light" | "dark" | "system";
   workingHours: WorkingHoursRange;
+  typesafeEnabled?: boolean;
+  typesafeApiKey?: string;
+  typesafeBaseUrl?: string;
+  ollamaEnabled?: boolean;
+  ollamaBaseUrl?: string;
+  ollamaDefaultModel?: string;
+  openaiEnabled?: boolean;
+  openaiApiKey?: string;
+  openaiBaseUrl?: string;
+  openaiDefaultModel?: string;
+  geminiEnabled?: boolean;
+  geminiApiKey?: string;
+  geminiDefaultModel?: string;
+  activeAiProvider?: "ollama" | "openai" | "gemini";
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -46,6 +60,19 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   colorScheme: "light",
   // 9am..5pm
   workingHours: { startMin: 9 * 60, endMin: 17 * 60 },
+  typesafeEnabled: true,
+  typesafeApiKey: "",
+  typesafeBaseUrl: "https://api.typesafe.ai",
+  ollamaEnabled: true,
+  ollamaBaseUrl: "http://127.0.0.1:11434",
+  ollamaDefaultModel: "",
+  openaiEnabled: false,
+  openaiApiKey: "",
+  openaiBaseUrl: "https://api.openai.com/v1",
+  openaiDefaultModel: "gpt-4o-mini",
+  geminiEnabled: false,
+  geminiApiKey: "",
+  geminiDefaultModel: "gemini-1.5-flash",
 };
 
 function isValidBounds(b: unknown): b is AppWindowBounds {
@@ -160,5 +187,138 @@ export function mergeAppSettings(
         : base.playSoundOnTimerEnd,
     colorScheme,
     workingHours: normalizeWorkingHours(parsed.workingHours),
+    typesafeEnabled:
+      typeof parsed.typesafeEnabled === "boolean"
+        ? parsed.typesafeEnabled
+        : base.typesafeEnabled,
+    typesafeApiKey:
+      typeof parsed.typesafeApiKey === "string"
+        ? parsed.typesafeApiKey.trim()
+        : base.typesafeApiKey,
+    typesafeBaseUrl:
+      typeof parsed.typesafeBaseUrl === "string" && parsed.typesafeBaseUrl.trim()
+        ? parsed.typesafeBaseUrl.trim().replace(/\/+$/, "")
+        : base.typesafeBaseUrl,
+    ollamaEnabled:
+      typeof parsed.ollamaEnabled === "boolean"
+        ? parsed.ollamaEnabled
+        : base.ollamaEnabled,
+    ollamaBaseUrl:
+      typeof parsed.ollamaBaseUrl === "string" && parsed.ollamaBaseUrl.trim()
+        ? parsed.ollamaBaseUrl.trim().replace(/\/+$/, "")
+        : base.ollamaBaseUrl,
+    ollamaDefaultModel:
+      typeof parsed.ollamaDefaultModel === "string"
+        ? parsed.ollamaDefaultModel.trim()
+        : base.ollamaDefaultModel,
+    openaiEnabled:
+      typeof parsed.openaiEnabled === "boolean"
+        ? parsed.openaiEnabled
+        : base.openaiEnabled,
+    openaiApiKey:
+      typeof parsed.openaiApiKey === "string"
+        ? parsed.openaiApiKey.trim()
+        : base.openaiApiKey,
+    openaiBaseUrl:
+      typeof parsed.openaiBaseUrl === "string" && parsed.openaiBaseUrl.trim()
+        ? parsed.openaiBaseUrl.trim().replace(/\/+$/, "")
+        : base.openaiBaseUrl,
+    openaiDefaultModel:
+      typeof parsed.openaiDefaultModel === "string"
+        ? parsed.openaiDefaultModel.trim()
+        : base.openaiDefaultModel,
+    geminiEnabled:
+      typeof parsed.geminiEnabled === "boolean"
+        ? parsed.geminiEnabled
+        : base.geminiEnabled,
+    geminiApiKey:
+      typeof parsed.geminiApiKey === "string"
+        ? parsed.geminiApiKey.trim()
+        : base.geminiApiKey,
+    geminiDefaultModel:
+      typeof parsed.geminiDefaultModel === "string"
+        ? parsed.geminiDefaultModel.trim()
+        : base.geminiDefaultModel,
+    activeAiProvider:
+      parsed.activeAiProvider === "openai" ||
+      parsed.activeAiProvider === "gemini" ||
+      parsed.activeAiProvider === "ollama"
+        ? parsed.activeAiProvider
+        : base.activeAiProvider,
   };
 }
+
+export interface ActiveAiConfig {
+  provider: "ollama" | "openai" | "gemini";
+  model: string;
+  apiKey?: string;
+  baseUrl?: string;
+  isConfigured: boolean;
+}
+
+/**
+ * Resolves the effective active AI provider, model, and credentials.
+ * Automatically chooses the best enabled provider if user selection is not set or disabled.
+ */
+export function resolveActiveAiConfig(
+  settings: Partial<AppSettings> | null | undefined,
+): ActiveAiConfig {
+  const merged = mergeAppSettings(settings);
+
+  // If user explicitly chose a provider:
+  if (merged.activeAiProvider === "openai") {
+    return {
+      provider: "openai",
+      model: merged.openaiDefaultModel || "gpt-4o-mini",
+      apiKey: merged.openaiApiKey || "",
+      baseUrl: merged.openaiBaseUrl || "https://api.openai.com/v1",
+      isConfigured: Boolean(merged.openaiApiKey?.trim()),
+    };
+  }
+
+  if (merged.activeAiProvider === "gemini") {
+    return {
+      provider: "gemini",
+      model: merged.geminiDefaultModel || "gemini-1.5-flash",
+      apiKey: merged.geminiApiKey || "",
+      isConfigured: Boolean(merged.geminiApiKey?.trim()),
+    };
+  }
+
+  if (merged.activeAiProvider === "ollama") {
+    return {
+      provider: "ollama",
+      model: merged.ollamaDefaultModel || "",
+      baseUrl: merged.ollamaBaseUrl || "http://127.0.0.1:11434",
+      isConfigured: Boolean(merged.ollamaEnabled !== false),
+    };
+  }
+
+  // Fallback / Auto-detection:
+  if (merged.openaiEnabled && merged.openaiApiKey?.trim()) {
+    return {
+      provider: "openai",
+      model: merged.openaiDefaultModel || "gpt-4o-mini",
+      apiKey: merged.openaiApiKey,
+      baseUrl: merged.openaiBaseUrl || "https://api.openai.com/v1",
+      isConfigured: true,
+    };
+  }
+
+  if (merged.geminiEnabled && merged.geminiApiKey?.trim()) {
+    return {
+      provider: "gemini",
+      model: merged.geminiDefaultModel || "gemini-1.5-flash",
+      apiKey: merged.geminiApiKey,
+      isConfigured: true,
+    };
+  }
+
+  return {
+    provider: "ollama",
+    model: merged.ollamaDefaultModel || "",
+    baseUrl: merged.ollamaBaseUrl || "http://127.0.0.1:11434",
+    isConfigured: Boolean(merged.ollamaEnabled !== false),
+  };
+}
+

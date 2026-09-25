@@ -9,25 +9,58 @@
  * Frosted glass panel chrome (matches tldraw menu/toolbar + `.focus-floating-panel`).
  * Compose with radius/spacing: `className="glass-panel rounded-2xl p-3 …"`.
  */
-@utility glass-panel {
-  backdrop-filter: blur(28px) saturate(1.35);
-  -webkit-backdrop-filter: blur(28px) saturate(1.35);
-  background: rgb(255 255 255 / 46%);
+.glass-panel {
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: rgb(255 255 255 / 85%);
   border-width: 1px;
   border-style: solid;
-  border-color: rgb(255 255 255 / 58%);
+  border-color: rgb(255 255 255 / 75%);
   box-shadow:
-    0 1px 0 rgb(255 255 255 / 55%) inset,
-    0 12px 40px rgb(0 0 0 / 9%),
-    0 4px 16px rgb(0 0 0 / 5%);
+    0 1px 0 rgb(255 255 255 / 80%) inset,
+    0 16px 40px rgb(0 0 0 / 8%),
+    0 4px 16px rgb(0 0 0 / 4%);
+}
+
+.dark .glass-panel,
+html.dark .glass-panel {
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: rgb(24 24 27 / 85%);
+  border-color: rgb(255 255 255 / 12%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 8%) inset,
+    0 16px 40px rgb(0 0 0 / 40%),
+    0 4px 16px rgb(0 0 0 / 20%);
+}
+
+@utility glass-panel {
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: rgb(255 255 255 / 85%);
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgb(255 255 255 / 75%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 80%) inset,
+    0 16px 40px rgb(0 0 0 / 8%),
+    0 4px 16px rgb(0 0 0 / 4%);
   @variant dark {
-    background: rgb(24 24 27 / 42%);
+    background: rgb(24 24 27 / 85%);
     border-color: rgb(255 255 255 / 12%);
     box-shadow:
       0 1px 0 rgb(255 255 255 / 8%) inset,
-      0 12px 40px rgb(0 0 0 / 35%);
+      0 16px 40px rgb(0 0 0 / 40%),
+      0 4px 16px rgb(0 0 0 / 20%);
   }
 }
+
+/* Allow floating UI panels (sidebars, zoom controls, HUDs) to sample and blur canvas shapes */
+.tl-canvas,
+.tl-overlays {
+  contain: layout size !important;
+}
+
 
 /* ⌘K command palette: inset search strip + list (pairs with `glass-panel` on the shell) */
 .focus-command-input-shell {
@@ -115,15 +148,19 @@ html.dark .app {
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
-  border-bottom: 1px solid #e4e4e7;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   -webkit-app-region: drag;
-  background: #ffffff;
+  background: rgb(255 255 255 / 88%);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 55%) inset;
 }
 
 .dark .topbar,
 html.dark .topbar {
   border-bottom: 1px solid rgb(255 255 255 / 10%);
-  background: #09090b;
+  background: rgb(24 24 27 / 88%);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 8%) inset;
 }
 
 .topbar * {
@@ -195,6 +232,11 @@ html.dark .canvas {
 /*
  * Task Markdown Rendering Styles (Title & Body)
  */
+.task-title-markdown {
+  font-family: var(--tl-font-draw), sans-serif;
+  letter-spacing: 0.01em;
+}
+
 .task-title-markdown code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
@@ -213,7 +255,8 @@ html.dark .canvas {
 }
 
 .task-markdown-body {
-  font-size: 12px;
+  font-family: var(--tl-font-draw), sans-serif;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -308,6 +351,175 @@ html.dark .canvas {
   opacity: 0.7;
 }
 
+/* AI Assistant & Copilot Markdown Output Styling */
+.ai-markdown {
+  line-height: 1.6;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.ai-markdown p {
+  margin: 0 0 6px 0;
+}
+
+.ai-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.ai-markdown strong,
+.ai-markdown b {
+  font-weight: 600;
+  color: inherit;
+}
+
+.ai-markdown em,
+.ai-markdown i {
+  font-style: italic;
+}
+
+.ai-markdown h1,
+.ai-markdown h2,
+.ai-markdown h3,
+.ai-markdown h4 {
+  font-weight: 600;
+  color: inherit;
+  margin: 10px 0 4px 0;
+  line-height: 1.35;
+}
+
+.ai-markdown h1 {
+  font-size: 14px;
+}
+
+.ai-markdown h2 {
+  font-size: 13px;
+}
+
+.ai-markdown h3 {
+  font-size: 12px;
+}
+
+.ai-markdown ul {
+  list-style-type: disc !important;
+  margin: 4px 0 8px 0;
+  padding-left: 20px !important;
+}
+
+.ai-markdown ol {
+  list-style-type: decimal !important;
+  margin: 4px 0 8px 0;
+  padding-left: 20px !important;
+}
+
+.ai-markdown li {
+  margin-bottom: 3px;
+  display: list-item;
+}
+
+.ai-markdown li > ul,
+.ai-markdown li > ol {
+  margin: 2px 0 4px 0;
+}
+
+.ai-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #7c3aed;
+}
+
+.dark .ai-markdown code {
+  background: rgba(255, 255, 255, 0.12);
+  color: #c084fc;
+}
+
+.ai-markdown pre {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+  background: #09090b;
+  color: #f4f4f5;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.ai-markdown pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  border-radius: 0;
+}
+
+.ai-markdown blockquote {
+  border-left: 3px solid #8b5cf6;
+  padding-left: 10px;
+  margin: 6px 0;
+  color: #71717a;
+  background: rgba(139, 92, 246, 0.05);
+  border-radius: 0 4px 4px 0;
+}
+
+.dark .ai-markdown blockquote {
+  color: #a1a1aa;
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.ai-markdown a {
+  color: #8b5cf6;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ai-markdown a:hover {
+  color: #7c3aed;
+}
+
+.dark .ai-markdown a {
+  color: #a78bfa;
+}
+
+.ai-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 11px;
+}
+
+.ai-markdown th,
+.ai-markdown td {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 4px 8px;
+}
+
+.dark .ai-markdown th,
+.dark .ai-markdown td {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.ai-markdown th {
+  background: rgba(0, 0, 0, 0.04);
+  font-weight: 600;
+}
+
+.dark .ai-markdown th {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ai-markdown hr {
+  border: 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin: 10px 0;
+}
+
+.dark .ai-markdown hr {
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+
 /* Bottom tool strip — same glass as .focus-floating-panel */
 .tl-container.tl-theme__light .tlui-toolbar__tools {
   background: rgb(255 255 255 / 46%);
@@ -366,7 +578,8 @@ html.dark .canvas {
 }
 
 /*
- * Desktop: Horizontal main tool bar placed at the TOP (center).
+ * Desktop: Vertical main tool bar placed on the RIGHT side.
+ * Moves with the right sidebar (CopilotDrawer) when open.
  */
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) {
   display: block;
@@ -375,80 +588,230 @@ html.dark .canvas {
   height: 100%;
 }
 
-/* Position the main tool bar at top center */
+/* Position the main tool bar vertically on the right */
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-layout__bottom {
-  position: absolute;
-  top: 10px;
-  left: 0;
-  right: 0;
-  bottom: auto;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  pointer-events: none;
-  z-index: 150;
-  padding: 0;
-  margin: 0;
+  position: absolute !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  right: var(--tools-bar-right, 18px) !important;
+  left: auto !important;
+  bottom: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  pointer-events: none !important;
+  z-index: 150 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: auto !important;
+  transition: right 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.app.app--copilot-open .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-layout__bottom {
+  right: var(--tools-bar-right, 412px) !important;
 }
 
 .app
   .tl-container
   .tlui-layout:not(.tlui-layout__mobile)
   .tlui-layout__bottom__main {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  pointer-events: auto;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  pointer-events: auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: auto !important;
 }
 
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar {
-  width: auto;
-  max-width: none;
-  padding: 0;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
+  width: auto !important;
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-grow: 0 !important;
 }
 
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__inner {
-  flex-direction: row;
-  align-items: center;
-  width: auto;
-  gap: 4px;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  gap: 6px !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__left {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  width: auto;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
+/* Vertical Capsule Pill */
 .app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools {
-  flex-direction: row;
-  align-items: center;
-  width: auto;
-  max-width: none;
-  border-radius: 9999px;
-  padding: 4px 8px;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+  box-sizing: border-box !important;
+  padding: 6px !important;
+  border-radius: 9999px !important;
+  max-height: calc(100vh - 120px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  gap: 4px !important;
+  margin: 0 !important;
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools::-webkit-scrollbar {
+  display: none !important;
 }
 
 .app
   .tl-container
   .tlui-layout:not(.tlui-layout__mobile)
   .tlui-toolbar__tools__list {
-  flex-direction: row;
-  align-items: center;
-  width: auto;
-  gap: 2px;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+  gap: 4px !important;
 }
 
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-toolbar__overflow {
-  width: auto;
+/* All buttons in the vertical tools pill: strict 36px circular buttons */
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button,
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool,
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-toolbar__overflow {
+  position: relative !important;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  max-width: 36px !important;
+  max-height: 36px !important;
+  box-sizing: border-box !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+  border-radius: 9999px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+}
+
+/* Reset tldraw nth-of-type margins */
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool:nth-of-type(1),
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool:nth-last-of-type(1) {
+  margin: 0 auto !important;
+}
+
+/* Active and Hover pseudo-elements: exact 100% concentric circle */
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button::before,
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button::after,
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool::before,
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool::after,
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-toolbar__overflow::before,
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-toolbar__overflow::after {
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 9999px !important;
+  box-sizing: border-box !important;
+}
+
+/* Centered icon inside buttons */
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button .tlui-icon {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  margin: auto !important;
+  display: block !important;
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button:focus-visible,
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool:focus-visible {
+  border-radius: 9999px !important;
+  outline-offset: -2px !important;
+}
+
+/* Extras / lock button */
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras {
+  position: relative !important;
+  top: 0 !important;
+  height: auto !important;
+  width: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 0 6px 0 !important;
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras:empty {
+  display: none !important;
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 auto !important;
+  border-radius: 9999px !important;
+  padding: 4px !important;
+  width: auto !important;
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls .tlui-button,
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls .tlui-button::before,
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls .tlui-button::after {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  margin: 0 auto !important;
+  border-radius: 9999px !important;
+}
+
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls .tlui-button::before,
+.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls .tlui-button::after {
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 /* Contextual Selection HUD is rendered dynamically via ContextualSelectionHud.tsx */
@@ -467,43 +830,20 @@ html.dark .canvas {
   pointer-events: auto;
 }
 
-/* Zoom row + minimap pinned to bottom right */
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-navigation-panel {
-  position: absolute;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  right: 12px;
-  top: auto;
-  left: auto;
-  width: auto;
-  max-width: 240px;
-  z-index: 100;
-  pointer-events: auto;
+/* Hide legacy tldraw minimap and navigation panel to prevent overlay collisions */
+.tlui-navigation-panel,
+.tlui-minimap {
+  display: none !important;
+  pointer-events: none !important;
 }
 
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-navigation-panel
-  .tlui-buttons__horizontal {
-  width: auto;
-  max-width: 240px;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-minimap {
-  width: 100%;
-  max-width: 200px;
-}
 
 /* Task list drawer: same glass language as `glass-panel` + .focus-board-tracked-row */
 .focus-sidebar {
-  @apply glass-panel;
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: rgb(255 255 255 / 85%);
+  border: 1px solid rgb(255 255 255 / 75%);
   position: absolute;
   left: 0;
   top: 0;
@@ -516,6 +856,8 @@ html.dark .canvas {
 }
 
 .dark .focus-sidebar {
+  background: rgb(24 24 27 / 85%);
+  border-color: rgb(255 255 255 / 12%);
   border-left-color: rgb(0 0 0 / 35%);
 }
 
@@ -578,13 +920,21 @@ html.dark .canvas {
 
 /* Unified Focus dock: chrome + quick capture + try bar (single frosted shell) */
 .focus-floating-panel {
-  @apply glass-panel;
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: rgb(255 255 255 / 85%);
+  border: 1px solid rgb(255 255 255 / 75%);
   z-index: var(--z-focus-floating);
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 8px 12px 12px;
   border-radius: 20px;
+}
+
+.dark .focus-floating-panel {
+  background: rgb(24 24 27 / 85%);
+  border-color: rgb(255 255 255 / 12%);
 }
 
 .focus-timer-dim {
@@ -644,9 +994,20 @@ html.dark .canvas {
   border-radius: 14px;
   background: rgb(255 255 255 / 42%);
   border: 1px solid rgb(255 255 255 / 52%);
+  backdrop-filter: blur(16px) saturate(1.35);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 58%),
     0 1px 3px rgb(0 0 0 / 5%);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.focus-quick-field:focus-within {
+  border-color: rgb(59 130 246 / 50%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 65%),
+    0 0 0 2px rgb(59 130 246 / 20%),
+    0 1px 4px rgb(0 0 0 / 6%);
 }
 
 .dark .focus-quick-field {
@@ -655,6 +1016,14 @@ html.dark .canvas {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 8%),
     0 1px 3px rgb(0 0 0 / 25%);
+}
+
+.dark .focus-quick-field:focus-within {
+  border-color: rgb(59 130 246 / 60%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 12%),
+    0 0 0 2px rgb(59 130 246 / 25%),
+    0 1px 4px rgb(0 0 0 / 30%);
 }
 
 .focus-quick-field .focus-quick-add {

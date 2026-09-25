@@ -7,3 +7,9 @@ release
 .env.local
 landing-public/release-embed.json
 electron-assets/concepts
+.agents
+.claude
+.cursor
+skills-lock.json
+AGENTS.md
+downloads/
