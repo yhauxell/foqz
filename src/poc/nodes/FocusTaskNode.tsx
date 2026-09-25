@@ -89,7 +89,10 @@ export const FocusTaskNode = memo(function FocusTaskNode({
         selected ? "ring-2 ring-blue-500/80 rounded-lg" : ""
       }`}
       style={{ contain: "layout style" }}
-      onDoubleClick={() => setIsEditing(true)}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        setIsEditing(true);
+      }}
     >
       {/* 4 Handles for Connecting Tasks to other shapes / boxes / text */}
       <Handle type="target" position={Position.Top} className="!w-2.5 !h-2.5 !bg-zinc-400" />

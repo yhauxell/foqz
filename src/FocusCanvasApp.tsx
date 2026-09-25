@@ -657,11 +657,6 @@ function FocusCanvasAppInner() {
                 onClose={() => setSpotlightOpen(false)}
                 onSelectFocusTarget={(id) => setActiveFocusShapeId(id)}
               />
-              <FocusSettings
-                open={settingsOpen}
-                onClose={() => setSettingsOpen(false)}
-                initialTab={settingsInitialTab}
-              />
               <ProjectConnectorsModal
                 editor={editor}
                 shapeId={connectorsShapeId}
@@ -690,6 +685,12 @@ function FocusCanvasAppInner() {
               />
             </Tldraw>
           )}
+
+          <FocusSettings
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            initialTab={settingsInitialTab}
+          />
         </main>
       </div>
     </div>

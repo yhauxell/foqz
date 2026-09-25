@@ -51,7 +51,10 @@ export const BoxNode = memo(function BoxNode({
         selected ? "ring-2 ring-blue-500/80 rounded-xl" : ""
       }`}
       style={{ contain: "layout style" }}
-      onDoubleClick={() => setIsEditing(true)}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        setIsEditing(true);
+      }}
     >
       <NodeResizer minWidth={80} minHeight={40} isVisible={selected} />
 

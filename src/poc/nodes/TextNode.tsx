@@ -23,7 +23,10 @@ export const TextNode = memo(function TextNode({
       className={`relative min-w-[60px] p-1.5 rounded transition-all select-none cursor-text ${
         selected ? "ring-1 ring-blue-500/60" : ""
       }`}
-      onDoubleClick={() => setIsEditing(true)}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        setIsEditing(true);
+      }}
     >
       {/* Handles for connecting text notes to tasks and boxes */}
       <Handle type="target" position={Position.Left} className="!w-2 !h-2 !bg-zinc-400" />

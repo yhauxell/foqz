@@ -78,6 +78,10 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
         selected ? "ring-2 ring-blue-500/80 shadow-lg" : "shadow-xs"
       }`}
       style={{ contain: "layout style" }}
+      onDoubleClick={(e) => {
+        // Prevent background double-click from creating orphaned text inside the frame
+        e.stopPropagation();
+      }}
     >
       <NodeResizer minWidth={360} minHeight={240} isVisible={selected} />
 
