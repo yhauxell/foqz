@@ -39,6 +39,7 @@ import {
 } from "tldraw";
 import "tldraw/tldraw.css";
 import { Button } from "./components/ui/button";
+import { FlowCanvasAppWrapper } from "./poc/FlowCanvasAppWrapper";
 
 const SAVE_DELAY_MS = 500;
 
@@ -78,7 +79,15 @@ function FocusCanvasAppInner() {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [status, setStatus] = useState("Loading board...");
   const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [engineMode, setEngineMode] = useState<"tldraw" | "reactflow">(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("engine") === "flow" || urlParams.get("engine") === "reactflow") {
+        return "reactflow";
+      }
+    }
+    return "tldraw";
+  });
   const [settingsInitialTab, setSettingsInitialTab] = useState<
     "general" | "workingHours" | "ai" | "mcp" | "data"
   >("general");
@@ -588,6 +597,17 @@ function FocusCanvasAppInner() {
             <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘J</kbd>
           </button>
 
+          {/* Canvas Engine Switcher */}
+          <button
+            type="button"
+            title="Toggle Canvas Engine (tldraw vs React Flow PoC)"
+            onClick={() => setEngineMode((prev) => (prev === "tldraw" ? "reactflow" : "tldraw"))}
+            className="h-7 px-2.5 rounded-full text-xs font-semibold border border-purple-300 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-100 transition-colors shadow-2xs inline-flex items-center gap-1 cursor-pointer"
+          >
+            <Sparkles className="size-3 text-purple-500" />
+            <span>Engine: {engineMode === "reactflow" ? "React Flow" : "tldraw"}</span>
+          </button>
+
           {/* Settings Modal */}
           <button
             type="button"
@@ -603,69 +623,72 @@ function FocusCanvasAppInner() {
         </div>
       </header>
 
-
       {/* Workspace Shell: Left Sidebar + Center Infinite Canvas + Right Copilot Panel */}
       <div className="flex-1 flex overflow-hidden relative">
         <main ref={setCanvasRef} className="canvas w-full h-full relative overflow-hidden">
-          <Tldraw
-            components={tldrawComponents}
-            onMount={handlers.onMount}
-            shapeUtils={[...focusShapeUtils]}
-            tools={[...focusTools]}
-            overrides={focusOverrides}
-          >
-            <FocusColorSchemeSync />
-            <FocusEditorUi canvasEl={canvasEl} />
-            <ContextualSelectionHud />
-            <CanvasZoomControls sidebarOpen={sidebarOpen} />
-            <ElementInlineChat
-              editor={editor}
-              shapeId={inlineChatShapeId}
-              onClose={() => setInlineChatShapeId(null)}
-            />
-            <MonoFocusController
-              editor={editor}
-              activeShapeId={activeFocusShapeId}
-              onClearFocus={() => setActiveFocusShapeId(null)}
-            />
-            <GlobalSpotlight
-              editor={editor}
-              open={spotlightOpen}
-              onClose={() => setSpotlightOpen(false)}
-              onSelectFocusTarget={(id) => setActiveFocusShapeId(id)}
-            />
-            <FocusSettings
-              open={settingsOpen}
-              onClose={() => setSettingsOpen(false)}
-              initialTab={settingsInitialTab}
-            />
-            <ProjectConnectorsModal
-              editor={editor}
-              shapeId={connectorsShapeId}
-              initialTab={connectorsInitialTab}
-              onClose={() => setConnectorsShapeId(null)}
-            />
+          {engineMode === "reactflow" ? (
+            <FlowCanvasAppWrapper />
+          ) : (
+            <Tldraw
+              components={tldrawComponents}
+              onMount={handlers.onMount}
+              shapeUtils={[...focusShapeUtils]}
+              tools={[...focusTools]}
+              overrides={focusOverrides}
+            >
+              <FocusColorSchemeSync />
+              <FocusEditorUi canvasEl={canvasEl} />
+              <ContextualSelectionHud />
+              <CanvasZoomControls sidebarOpen={sidebarOpen} />
+              <ElementInlineChat
+                editor={editor}
+                shapeId={inlineChatShapeId}
+                onClose={() => setInlineChatShapeId(null)}
+              />
+              <MonoFocusController
+                editor={editor}
+                activeShapeId={activeFocusShapeId}
+                onClearFocus={() => setActiveFocusShapeId(null)}
+              />
+              <GlobalSpotlight
+                editor={editor}
+                open={spotlightOpen}
+                onClose={() => setSpotlightOpen(false)}
+                onSelectFocusTarget={(id) => setActiveFocusShapeId(id)}
+              />
+              <FocusSettings
+                open={settingsOpen}
+                onClose={() => setSettingsOpen(false)}
+                initialTab={settingsInitialTab}
+              />
+              <ProjectConnectorsModal
+                editor={editor}
+                shapeId={connectorsShapeId}
+                initialTab={connectorsInitialTab}
+                onClose={() => setConnectorsShapeId(null)}
+              />
 
-            {/* Floating Left Workspace Sidebar */}
-            <WorkspaceSidebar
-              editor={editor}
-              open={sidebarOpen}
-              onToggle={() => setSidebarOpen((v) => !v)}
-              onOpenCopilot={(shapeId) => {
-                if (shapeId) setSelectedShapeId(shapeId);
-                setCopilotOpen(true);
-              }}
-            />
+              {/* Floating Left Workspace Sidebar */}
+              <WorkspaceSidebar
+                editor={editor}
+                open={sidebarOpen}
+                onToggle={() => setSidebarOpen((v) => !v)}
+                onOpenCopilot={(shapeId) => {
+                  if (shapeId) setSelectedShapeId(shapeId);
+                  setCopilotOpen(true);
+                }}
+              />
 
-            {/* Decoupled Copilot Side Panel (matches left WorkspaceSidebar) */}
-            <CopilotDrawer
-              editor={editor}
-              open={copilotOpen}
-              onClose={() => setCopilotOpen(false)}
-              selectedShapeId={selectedShapeId}
-              onOpenSettings={handleOpenSettings}
-            />
-          </Tldraw>
+              {/* Decoupled Copilot Side Panel (matches left WorkspaceSidebar) */}
+              <CopilotDrawer
+                editor={editor}
+                open={copilotOpen}
+                onClose={() => setCopilotOpen(false)}
+                selectedShapeId={selectedShapeId}
+                onOpenSettings={handleOpenSettings}
+              />
+            </Tldraw>
+          )}
         </main>
       </div>
     </div>
