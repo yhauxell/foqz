@@ -7,6 +7,7 @@ export interface BoxNodeData {
   color?: string;
   strokeColor?: string;
   roughness?: number;
+  borderStyle?: "solid" | "dashed" | "dotted";
   [key: string]: unknown;
 }
 
@@ -33,17 +34,23 @@ export const BoxNode = memo(function BoxNode({
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
     const rc = rough.svg(svg);
+    const borderStyle = data.borderStyle || "solid";
+    let dashArray: number[] | undefined;
+    if (borderStyle === "dashed") dashArray = [6, 4];
+    else if (borderStyle === "dotted") dashArray = [2, 4];
+
     const node = rc.rectangle(3, 3, w - 6, h - 6, {
       roughness: data.roughness ?? 1.8,
       stroke,
       strokeWidth: 2,
+      strokeLineDash: dashArray,
       fill,
       fillStyle: "hachure",
       fillWeight: 1,
       hachureGap: 6,
     });
     svg.appendChild(node);
-  }, [w, h, stroke, fill, data.roughness]);
+  }, [w, h, stroke, fill, data.roughness, data.borderStyle]);
 
   return (
     <div

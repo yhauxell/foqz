@@ -11,6 +11,7 @@ export interface ProjectFrameNodeData {
   title: string;
   goal?: string;
   accent?: ProjectAccent;
+  borderStyle?: "solid" | "dashed" | "dotted";
   connectors?: {
     githubRepo?: string;
     notionWorkspace?: string;
@@ -57,13 +58,17 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
     const rc = rough.svg(svg);
+    const borderStyle = data.borderStyle || "dashed";
+    let dashArray: number[] | undefined;
+    if (borderStyle === "dashed") dashArray = [6, 4];
+    else if (borderStyle === "dotted") dashArray = [2, 4];
 
-    // 1. Hand-drawn outer dashed frame container
+    // 1. Hand-drawn outer frame container
     const outerRect = rc.rectangle(3, 3, w - 6, h - 6, {
       roughness: 1.5,
       stroke: accent.dotHex || "#3b82f6",
       strokeWidth: 2,
-      strokeLineDash: [6, 4],
+      strokeLineDash: dashArray,
       fill: "transparent",
     });
     svg.appendChild(outerRect);
@@ -75,7 +80,7 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
       strokeWidth: 1.5,
     });
     svg.appendChild(headerLine);
-  }, [w, h, accent.dotHex]);
+  }, [w, h, accent.dotHex, data.borderStyle]);
 
   return (
     <div

@@ -15,6 +15,7 @@ export interface FocusTaskNodeData {
   notes?: string;
   paper?: TaskPaperTheme;
   trackedMs?: number;
+  borderStyle?: "solid" | "dashed" | "dotted";
   [key: string]: unknown;
 }
 
@@ -50,12 +51,17 @@ export const FocusTaskNode = memo(function FocusTaskNode({
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
     const rc = rough.svg(svg);
+    const borderStyle = data.borderStyle || "solid";
+    let dashArray: number[] | undefined;
+    if (borderStyle === "dashed") dashArray = [6, 4];
+    else if (borderStyle === "dotted") dashArray = [2, 4];
 
     // 1. Organic Hand-drawn Card Background & Border
     const cardRect = rc.rectangle(3, 3, w - 6, h - 6, {
       roughness: 1.2,
       stroke: isDone ? "#94a3b8" : "#475569",
       strokeWidth: 1.5,
+      strokeLineDash: dashArray,
       fill: theme.fill,
       fillStyle: "solid",
     });
@@ -80,7 +86,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
       fill: isDone ? "rgba(22, 163, 74, 0.15)" : "transparent",
     });
     svg.appendChild(checkOutline);
-  }, [w, h, isDone, priorityHex, theme.fill]);
+  }, [w, h, isDone, priorityHex, theme.fill, data.borderStyle]);
 
   const toggleStatus = (e: React.MouseEvent) => {
     e.stopPropagation();

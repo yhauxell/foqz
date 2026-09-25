@@ -83,9 +83,63 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     );
   };
 
+  const isBorderEligible =
+    selectedNode.type === "box" ||
+    selectedNode.type === "focusTask" ||
+    selectedNode.type === "projectFrame";
+
+  const currentBorderStyle =
+    (selectedNode.data?.borderStyle as "solid" | "dashed" | "dotted") ||
+    (selectedNode.type === "projectFrame" ? "dashed" : "solid");
+
+  const handleBorderStyleChange = (borderStyle: "solid" | "dashed" | "dotted") => {
+    setNodes((nodes) =>
+      nodes.map((node) => {
+        if (node.id !== selectedNode.id) return node;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            borderStyle,
+          },
+        };
+      })
+    );
+  };
+
   const handleDelete = () => {
     setNodes((nodes) => nodes.filter((n) => n.id !== selectedNode.id && n.parentId !== selectedNode.id));
   };
+
+  const BORDER_STYLES: { id: "solid" | "dashed" | "dotted"; label: string; icon: React.ReactNode }[] = [
+    {
+      id: "solid",
+      label: "Solid Border",
+      icon: (
+        <svg className="size-3.5" viewBox="0 0 16 16" fill="none">
+          <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      id: "dashed",
+      label: "Dashed Border",
+      icon: (
+        <svg className="size-3.5" viewBox="0 0 16 16" fill="none">
+          <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="2.2" strokeDasharray="3.2 2.2" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      id: "dotted",
+      label: "Dotted Border",
+      icon: (
+        <svg className="size-3.5" viewBox="0 0 16 16" fill="none">
+          <line x1="2.5" y1="8" x2="13.5" y2="8" stroke="currentColor" strokeWidth="2.4" strokeDasharray="0.1 3.2" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+  ];
 
   return (
     <div
@@ -110,6 +164,33 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
           />
         ))}
       </div>
+
+      {/* Border Style Controls for Project, Box, and Task Card */}
+      {isBorderEligible && (
+        <>
+          <div className="w-[1px] h-3.5 bg-zinc-300 dark:bg-zinc-700 mx-1" />
+          <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800/80 p-0.5 rounded-md">
+            {BORDER_STYLES.map((style) => {
+              const isActive = currentBorderStyle === style.id;
+              return (
+                <button
+                  key={style.id}
+                  type="button"
+                  title={style.label}
+                  onClick={() => handleBorderStyleChange(style.id)}
+                  className={`size-5 rounded flex items-center justify-center transition-colors cursor-pointer ${
+                    isActive
+                      ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+                      : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  {style.icon}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       <div className="w-[1px] h-3.5 bg-zinc-300 dark:bg-zinc-700 mx-1" />
 
