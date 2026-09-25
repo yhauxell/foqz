@@ -1,12 +1,4 @@
 import { Button } from "@/components/ui/button";
-import {
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
@@ -15,7 +7,6 @@ import {
 } from "@/components/ui/popover";
 import { createFocusTask } from "@/lib/focusActions";
 import { getReflectionHistory } from "@/lib/focusMeta";
-import { insertDayTemplate } from "@/lib/focusTemplate";
 import {
   formatTrackedMs,
   formatTrackedMsShort,
@@ -34,11 +25,7 @@ import {
   Calendar,
   CheckSquare,
   ChevronRight,
-  FolderPlus,
-  Grid2X2,
-  List,
   Minus,
-  PanelLeft,
   PanelRight,
   Plus,
   Search,
@@ -166,7 +153,6 @@ type FocusEditorUiProps = {
 export function FocusEditorUi({ dockHost }: FocusEditorUiProps) {
   const editor = useEditor();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [paletteOpen, setPaletteOpen] = useState(false);
   const [quickText, setQuickText] = useState("");
   const [taskFilter, setTaskFilter] = useState<
     "all" | "open" | "doing" | "done"
@@ -214,22 +200,6 @@ export function FocusEditorUi({ dockHost }: FocusEditorUiProps) {
   );
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName ?? "";
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setPaletteOpen((o) => !o);
-        return;
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [editor]);
-
-  useEffect(() => {
     const syncTray = () => {
       const pageTasks = editor
         .getCurrentPageShapes()
@@ -273,42 +243,9 @@ export function FocusEditorUi({ dockHost }: FocusEditorUiProps) {
     setQuickText("");
   }, [editor, quickText]);
 
-  const runPaletteAction = useCallback(
-    (action: string) => {
-      setPaletteOpen(false);
-      const center = getViewportCenter(editor);
-      switch (action) {
-        case "add-task":
-          createFocusTask(editor, center, "New task");
-          break;
-        case "add-project":
-          window.dispatchEvent(new CustomEvent("foqz:new-project"));
-          break;
-        case "toggle-sidebar":
-          window.dispatchEvent(new CustomEvent("foqz:toggle-sidebar"));
-          break;
-        case "toggle-copilot":
-          window.dispatchEvent(new CustomEvent("foqz:toggle-copilot"));
-          break;
-        case "start-day":
-          insertDayTemplate(editor);
-          break;
-        case "select":
-          editor.setCurrentTool("select");
-          break;
-        case "arrow":
-          editor.setCurrentTool("arrow");
-          break;
-        default:
-          break;
-      }
-    },
-    [editor],
-  );
-
   const reflections = useMemo(
     () => getReflectionHistory().slice(0, 8),
-    [sidebarOpen, paletteOpen],
+    [sidebarOpen],
   );
 
   const tryBarAddTask = useCallback(() => {
@@ -484,82 +421,6 @@ export function FocusEditorUi({ dockHost }: FocusEditorUiProps) {
         </aside>
       ) : null}
 
-      <CommandDialog
-        open={paletteOpen}
-        onOpenChange={setPaletteOpen}
-        label="Commands"
-        loop
-      >
-        <div className="focus-command-input-shell">
-          <p className="focus-command-hint">Commands · ⌘K</p>
-          <CommandInput placeholder="Filter commands…" />
-        </div>
-        <CommandList>
-          <CommandEmpty>No matching commands.</CommandEmpty>
-          <CommandGroup heading="Actions">
-            <CommandItem
-              value="add-task"
-              keywords={["task", "new", "create", "card"]}
-              onSelect={() => runPaletteAction("add-task")}
-              className="py-3 rounded-xl flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                <List className="size-4" />
-                <span>New Task</span>
-              </div>
-              <kbd className="font-mono text-[10px] opacity-60">⌘N</kbd>
-            </CommandItem>
-            <CommandItem
-              value="add-project"
-              keywords={["project", "frame", "goal", "new"]}
-              onSelect={() => runPaletteAction("add-project")}
-              className="py-3 rounded-xl flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                <FolderPlus className="size-4" />
-                <span>New Project Frame</span>
-              </div>
-              <kbd className="font-mono text-[10px] opacity-60">⌘⇧P</kbd>
-            </CommandItem>
-            <CommandItem
-              value="toggle-sidebar"
-              keywords={["sidebar", "workspace", "queue", "tasks"]}
-              onSelect={() => runPaletteAction("toggle-sidebar")}
-              className="py-3 rounded-xl flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                <PanelLeft className="size-4" />
-                <span>Toggle Workspace Sidebar</span>
-              </div>
-              <kbd className="font-mono text-[10px] opacity-60">⌘B</kbd>
-            </CommandItem>
-            <CommandItem
-              value="toggle-copilot"
-              keywords={["copilot", "ai", "chat", "assistant"]}
-              onSelect={() => runPaletteAction("toggle-copilot")}
-              className="py-3 rounded-xl flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                <Sparkles className="size-4 text-blue-500" />
-                <span>Toggle AI Copilot</span>
-              </div>
-              <kbd className="font-mono text-[10px] opacity-60">⌘J</kbd>
-            </CommandItem>
-            <CommandItem
-              value="priority-grid"
-              keywords={["grid", "priority", "template", "day"]}
-              onSelect={() => runPaletteAction("start-day")}
-              className="py-3 rounded-xl flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                <Grid2X2 className="size-4" />
-                <span>New Priority Grid</span>
-              </div>
-            </CommandItem>
-          </CommandGroup>
-        </CommandList>
-      </CommandDialog>
-
       {dockHost
         ? createPortal(
             <div className="focus-floating-panel focus-floating-panel--topbar">
@@ -582,7 +443,7 @@ export function FocusEditorUi({ dockHost }: FocusEditorUiProps) {
                     size="icon-sm"
                     title="Commands (⌘K)"
                     aria-label="Commands"
-                    onClick={() => setPaletteOpen(true)}
+                    onClick={() => window.dispatchEvent(new CustomEvent("foqz:open-spotlight"))}
                   >
                     <Search className="size-4" />
                   </Button>

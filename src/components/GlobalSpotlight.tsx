@@ -11,9 +11,14 @@ import {
   StickyNote,
   Type,
   CornerDownLeft,
+  Plus,
+  FolderPlus,
+  PanelLeft,
+  Grid2X2,
 } from 'lucide-react'
 import { extractTextFromShape } from '@/lib/canvasContext'
 import { prioritizeDailyFocusSlot } from '@/lib/jev'
+import { insertDayTemplate } from '@/lib/focusTemplate'
 
 interface GlobalSpotlightProps {
   editor: Editor | null
@@ -127,19 +132,149 @@ export function GlobalSpotlight({
     return results
   }, [editor, open])
 
-  // Simple fuzzy text filtering
-  const filteredShapes = useMemo(() => {
-    if (!query.trim()) {
-      // Prioritize projects first, then recent items
-      const projects = searchableShapes.filter((s) => s.type === 'project-frame')
-      const others = searchableShapes.filter((s) => s.type !== 'project-frame')
-      return [...projects, ...others].slice(0, 15)
+type SpotlightEntry =
+  | {
+      kind: 'action'
+      id: string
+      title: string
+      shortcut?: string
+      badgeClass: string
+      icon: React.ReactNode
+      perform: () => void
     }
-    const q = query.toLowerCase()
-    return searchableShapes
+  | {
+      kind: 'shape'
+      id: TLShapeId
+      text: string
+      type: string
+      shape: TLShape
+    }
+
+  const actions = useMemo<
+    Array<{
+      id: string
+      title: string
+      shortcut?: string
+      keywords: string[]
+      icon: React.ReactNode
+      perform: () => void
+    }>
+  >(
+    () => [
+      {
+        id: 'action-new-task',
+        title: 'New Task Card',
+        shortcut: '⌘N',
+        keywords: ['task', 'new', 'create', 'card', 'todo', 'item'],
+        icon: <Plus className="size-3 text-blue-500 shrink-0" />,
+        perform: () => {
+          window.dispatchEvent(new CustomEvent('foqz:new-task'))
+        },
+      },
+      {
+        id: 'action-new-project',
+        title: 'New Project Frame',
+        shortcut: '⌘⇧P',
+        keywords: ['project', 'frame', 'goal', 'new', 'container', 'group'],
+        icon: <FolderPlus className="size-3 text-indigo-500 shrink-0" />,
+        perform: () => {
+          window.dispatchEvent(new CustomEvent('foqz:new-project'))
+        },
+      },
+      {
+        id: 'action-toggle-copilot',
+        title: 'Toggle AI Assistant',
+        shortcut: '⌘J',
+        keywords: ['copilot', 'ai', 'chat', 'assistant', 'drawer', 'panel'],
+        icon: <Sparkles className="size-3 text-blue-500 shrink-0" />,
+        perform: () => {
+          window.dispatchEvent(new CustomEvent('foqz:toggle-copilot'))
+        },
+      },
+      {
+        id: 'action-toggle-sidebar',
+        title: 'Toggle Workspace Sidebar',
+        shortcut: '⌘B',
+        keywords: ['sidebar', 'workspace', 'queue', 'tasks', 'nav', 'left'],
+        icon: <PanelLeft className="size-3 text-zinc-500 shrink-0" />,
+        perform: () => {
+          window.dispatchEvent(new CustomEvent('foqz:toggle-sidebar'))
+        },
+      },
+      {
+        id: 'action-priority-grid',
+        title: 'Insert Priority Grid Template',
+        keywords: ['grid', 'priority', 'template', 'day', 'quadrant', 'eisenhower'],
+        icon: <Grid2X2 className="size-3 text-amber-500 shrink-0" />,
+        perform: () => {
+          if (editor) insertDayTemplate(editor)
+        },
+      },
+      {
+        id: 'action-prioritize-ai',
+        title: 'Prioritize Backlog with AI',
+        keywords: ['prioritize', 'backlog', 'ai', 'slot', 'day', 'rank', 'goal'],
+        icon: <Sparkles className="size-3 text-violet-500 shrink-0" />,
+        perform: () => {
+          setMode('prioritize')
+        },
+      },
+    ],
+    [editor],
+  )
+
+  // Unified fuzzy search for actions and canvas shapes
+  const filteredEntries = useMemo<SpotlightEntry[]>(() => {
+    const q = query.trim().toLowerCase()
+
+    if (!q) {
+      const actionEntries: SpotlightEntry[] = actions.map((a) => ({
+        kind: 'action',
+        id: a.id,
+        title: a.title,
+        shortcut: a.shortcut,
+        badgeClass:
+          'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700',
+        icon: a.icon,
+        perform: a.perform,
+      }))
+
+      const projects: SpotlightEntry[] = searchableShapes
+        .filter((s) => s.type === 'project-frame')
+        .map((s) => ({ kind: 'shape', ...s }))
+
+      const others: SpotlightEntry[] = searchableShapes
+        .filter((s) => s.type !== 'project-frame')
+        .slice(0, 15)
+        .map((s) => ({ kind: 'shape', ...s }))
+
+      return [...actionEntries, ...projects, ...others]
+    }
+
+    const matchedActions: SpotlightEntry[] = actions
+      .filter(
+        (a) =>
+          a.title.toLowerCase().includes(q) ||
+          a.keywords.some((k) => k.toLowerCase().includes(q)),
+      )
+      .map((a) => ({
+        kind: 'action',
+        id: a.id,
+        title: a.title,
+        shortcut: a.shortcut,
+        badgeClass:
+          'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700',
+        icon: a.icon,
+        perform: a.perform,
+      }))
+
+    const matchedShapes: SpotlightEntry[] = searchableShapes
       .filter((s) => s.text.toLowerCase().includes(q) || s.type.toLowerCase().includes(q))
-      .slice(0, 20)
-  }, [searchableShapes, query])
+      .slice(0, 25)
+      .map((s) => ({ kind: 'shape', ...s }))
+
+    return [...matchedActions, ...matchedShapes]
+  }, [actions, searchableShapes, query])
 
   // Reset selected index when query or results change
   useEffect(() => {
@@ -201,14 +336,21 @@ export function GlobalSpotlight({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setSelectedIndex((prev) => Math.min(prev + 1, Math.max(0, filteredShapes.length - 1)))
+      setSelectedIndex((prev) => Math.min(prev + 1, Math.max(0, filteredEntries.length - 1)))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setSelectedIndex((prev) => Math.max(prev - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      if (filteredShapes[selectedIndex]) {
-        handleSelectShape(filteredShapes[selectedIndex].id)
+      const selected = filteredEntries[selectedIndex]
+      if (!selected) return
+      if (selected.kind === 'action') {
+        selected.perform()
+        if (selected.id !== 'action-prioritize-ai') {
+          onClose()
+        }
+      } else {
+        handleSelectShape(selected.id)
       }
     }
   }
@@ -284,21 +426,65 @@ export function GlobalSpotlight({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Jump to project, task, or search canvas..."
+                placeholder="Jump to project, task, or run an action (⌘N, ⌘⇧P, ⌘J)..."
                 className="w-full bg-transparent border-0 outline-none text-sm text-foreground placeholder:text-zinc-400"
               />
             </div>
 
             {/* Results List */}
             <div ref={listRef} className="max-h-[380px] overflow-y-auto p-2 space-y-1">
-              {filteredShapes.length === 0 ? (
+              {filteredEntries.length === 0 ? (
                 <div className="py-12 text-center text-zinc-400">
-                  No matching projects, tasks, or shapes found on this board.
+                  No matching actions, projects, or canvas items found.
                 </div>
               ) : (
-                filteredShapes.map((item, index) => {
-                  const badge = getShapeBadge(item.type)
+                filteredEntries.map((item, index) => {
                   const isSelected = index === selectedIndex
+
+                  if (item.kind === 'action') {
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex items-center justify-between p-2.5 rounded-xl transition-all group cursor-pointer border ${
+                          isSelected
+                            ? 'bg-zinc-100 dark:bg-zinc-800/90 border-zinc-300 dark:border-zinc-700 shadow-2xs'
+                            : 'border-transparent hover:bg-zinc-100/70 dark:hover:bg-zinc-800/50'
+                        }`}
+                        onClick={() => {
+                          item.perform()
+                          if (item.id !== 'action-prioritize-ai') onClose()
+                        }}
+                        onMouseEnter={() => setSelectedIndex(index)}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium tracking-wide uppercase shrink-0 border ${item.badgeClass}`}
+                          >
+                            {item.icon}
+                            <span>Action</span>
+                          </span>
+                          <span className="font-medium text-foreground truncate text-xs">
+                            {item.title}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                          {item.shortcut && (
+                            <kbd className="font-mono text-[10px] text-zinc-400 dark:text-zinc-500 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/70 px-1.5 py-0.5 rounded">
+                              {item.shortcut}
+                            </kbd>
+                          )}
+                          {isSelected && (
+                            <span className="text-zinc-400 dark:text-zinc-500 flex items-center">
+                              <CornerDownLeft className="size-3.5" />
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  const badge = getShapeBadge(item.type)
                   const isProject = item.type === 'project-frame'
                   const isTask = item.type === 'focus-task'
 
@@ -333,7 +519,7 @@ export function GlobalSpotlight({
                               e.stopPropagation()
                               handleStartFocusSession(item.id)
                             }}
-                            className="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-medium hover:bg-emerald-200 transition-colors opacity-0 group-hover:opacity-100"
+                            className="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-medium hover:bg-emerald-200 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
                             title="Start Focus Session"
                           >
                             <Lock className="size-2.5" />
@@ -381,9 +567,9 @@ export function GlobalSpotlight({
                   close
                 </span>
               </div>
-              {filteredShapes.length > 0 && (
+              {filteredEntries.length > 0 && (
                 <span className="text-[10px] text-zinc-400 font-mono">
-                  {filteredShapes.length} {filteredShapes.length === 1 ? 'item' : 'items'}
+                  {filteredEntries.length} {filteredEntries.length === 1 ? 'item' : 'items'}
                 </span>
               )}
             </div>
