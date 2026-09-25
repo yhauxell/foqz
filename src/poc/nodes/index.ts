@@ -4,6 +4,7 @@ import { ProjectFrameNode } from "./ProjectFrameNode";
 import { RectangleNode } from "./RectangleNode";
 import { TextNode } from "./TextNode";
 import { PencilNode } from "./PencilNode";
+import { HandDrawnRectNode } from "./HandDrawnRectNode";
 
 export const nodeTypes: NodeTypes = {
   focusTask: FocusTaskNode,
@@ -11,4 +12,5 @@ export const nodeTypes: NodeTypes = {
   rectangle: RectangleNode,
   text: TextNode,
   pencil: PencilNode,
+  handDrawnRect: HandDrawnRectNode,
 };

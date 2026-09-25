@@ -1,20 +1,25 @@
 import React, { memo } from "react";
 import { type NodeProps, type Node } from "@xyflow/react";
+import getStroke from "perfect-freehand";
 
 export interface PencilNodeData {
   points: { x: number; y: number }[];
   color?: string;
-  strokeWidth?: number;
+  size?: number;
   [key: string]: unknown;
 }
 
 export type PencilNodeType = Node<PencilNodeData, "pencil">;
 
-function pointsToSvgPath(points: { x: number; y: number }[]) {
-  if (!points || points.length === 0) return "";
-  const d = points.reduce((acc, pt, i) => {
-    return `${acc} ${i === 0 ? "M" : "L"} ${pt.x} ${pt.y}`;
-  }, "");
+function getSvgPathFromStroke(stroke: number[][]) {
+  if (!stroke.length) return "";
+  const d = stroke.reduce(
+    (acc, [x0, y0], i, arr) => {
+      const [x1, y1] = arr[(i + 1) % arr.length];
+      return `${acc} ${x0},${y0} ${(x0 + x1) / 2},${(y0 + y1) / 2}`;
+    },
+    `M ${stroke[0][0]},${stroke[0][1]} Q`
+  );
   return d;
 }
 
@@ -22,30 +27,36 @@ export const PencilNode = memo(function PencilNode({
   data,
   selected,
 }: NodeProps<PencilNodeType>) {
-  const points = data.points || [];
-  if (points.length === 0) return null;
+  const rawPoints = data.points || [];
+  if (rawPoints.length === 0) return null;
 
   // Calculate bounding box
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
+  const xs = rawPoints.map((p) => p.x);
+  const ys = rawPoints.map((p) => p.y);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
 
-  const padding = 4;
-  const width = Math.max(10, maxX - minX + padding * 2);
-  const height = Math.max(10, maxY - minY + padding * 2);
+  const padding = 12;
+  const width = Math.max(20, maxX - minX + padding * 2);
+  const height = Math.max(20, maxY - minY + padding * 2);
 
-  // Normalize path relative to SVG box
-  const normalizedPath = points
-    .map(
-      (p, i) =>
-        `${i === 0 ? "M" : "L"} ${(p.x - minX + padding).toFixed(1)} ${(
-          p.y - minY + padding
-        ).toFixed(1)}`
-    )
-    .join(" ");
+  // Normalize points relative to container
+  const localPoints = rawPoints.map((p) => [
+    p.x - minX + padding,
+    p.y - minY + padding,
+  ]);
+
+  // Generate pressure-sensitive smooth stroke path via perfect-freehand
+  const stroke = getStroke(localPoints, {
+    size: data.size || 6,
+    thinning: 0.5,
+    smoothing: 0.5,
+    streamline: 0.5,
+  });
+
+  const pathData = getSvgPathFromStroke(stroke);
 
   return (
     <div
@@ -60,12 +71,10 @@ export const PencilNode = memo(function PencilNode({
         className="overflow-visible pointer-events-none"
       >
         <path
-          d={normalizedPath}
-          fill="none"
+          d={pathData}
+          fill={data.color || "#ef4444"}
           stroke={data.color || "#ef4444"}
-          strokeWidth={data.strokeWidth || 3}
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          strokeWidth={0.5}
         />
       </svg>
     </div>

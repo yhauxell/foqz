@@ -279,9 +279,35 @@ export function FlowCanvasApp() {
           variant="ghost"
           onClick={handleCreateRectangle}
           className="h-6 text-[11px] gap-1 px-2"
-          title="Add Rectangle"
+          title="Add Clean Rectangle"
         >
           <Square className="size-3 text-blue-500" /> Rectangle
+        </Button>
+
+        {/* Hand-Drawn Sketch Box */}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            const id = `hand-${Date.now()}`;
+            const newNode: Node = {
+              id,
+              type: "handDrawnRect",
+              position: { x: 320 + Math.random() * 40, y: 180 + Math.random() * 40 },
+              style: { width: 220, height: 130 },
+              data: {
+                label: "Hand-drawn Sketch Box",
+                color: "rgba(16, 185, 129, 0.08)",
+                strokeColor: "#10b981",
+                roughness: 2.2,
+              },
+            };
+            setNodes((nds) => [...nds, newNode]);
+          }}
+          className="h-6 text-[11px] gap-1 px-2 text-emerald-600 dark:text-emerald-400"
+          title="Add Hand-Drawn Sketch Box"
+        >
+          <Sparkles className="size-3 text-emerald-500" /> Sketch Box
         </Button>
 
         {/* Text Label */}
