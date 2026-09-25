@@ -28,9 +28,11 @@ export const TextNode = memo(function TextNode({
         setIsEditing(true);
       }}
     >
-      {/* Handles for connecting text notes to tasks and boxes */}
+      {/* Handles for connecting text notes to tasks, boxes, and frames in all directions */}
+      <Handle type="target" position={Position.Top} className="!w-2 !h-2 !bg-zinc-400" />
       <Handle type="target" position={Position.Left} className="!w-2 !h-2 !bg-zinc-400" />
       <Handle type="source" position={Position.Right} className="!w-2 !h-2 !bg-zinc-400" />
+      <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 !bg-zinc-400" />
 
       {isEditing ? (
         <input

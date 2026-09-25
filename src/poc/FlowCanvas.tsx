@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -8,6 +8,8 @@ import {
   useEdgesState,
   addEdge,
   useReactFlow,
+  ConnectionMode,
+  MarkerType,
   type Connection,
   type Edge,
   type Node,
@@ -25,6 +27,7 @@ import {
   Pencil,
   Pointer,
   Sparkles,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -131,6 +134,8 @@ const INITIAL_EDGES: Edge[] = [
   },
 ];
 
+const FLOW_STORAGE_KEY = "foqz_reactflow_poc_board_v1";
+
 export function FlowCanvasApp() {
   const [nodes, setNodes, onNodesChange] = useNodesState(INITIAL_NODES);
   const [edges, setEdges, onEdgesChange] = useEdgesState(INITIAL_EDGES);
@@ -139,6 +144,50 @@ export function FlowCanvasApp() {
   const currentPencilPoints = useRef<{ x: number; y: number }[]>([]);
 
   const { screenToFlowPosition } = useReactFlow();
+
+  // 1. Persistence Bridge: Restore snapshot on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FLOW_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
+          setNodes(parsed.nodes);
+        }
+        if (Array.isArray(parsed.edges)) {
+          setEdges(parsed.edges);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to load React Flow snapshot:", err);
+    }
+  }, [setNodes, setEdges]);
+
+  // 2. Persistence Bridge: Debounced auto-save
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          FLOW_STORAGE_KEY,
+          JSON.stringify({ nodes, edges, updatedAt: Date.now() })
+        );
+      } catch (err) {
+        console.warn("Failed to save React Flow snapshot:", err);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [nodes, edges]);
+
+  // Reset to initial demo board
+  const handleResetSampleBoard = useCallback(() => {
+    if (window.confirm("Reset React Flow canvas to sample demo board?")) {
+      setNodes(INITIAL_NODES);
+      setEdges(INITIAL_EDGES);
+      try {
+        localStorage.removeItem(FLOW_STORAGE_KEY);
+      } catch {}
+    }
+  }, [setNodes, setEdges]);
 
   // Find currently selected node for the floating color menu
   const selectedNode = nodes.find((n) => n.selected) || null;
@@ -151,11 +200,74 @@ export function FlowCanvasApp() {
             ...params,
             animated: true,
             style: { stroke: "#475569", strokeWidth: 2 },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              width: 16,
+              height: 16,
+              color: "#475569",
+            },
           },
           eds
         )
       ),
     [setEdges]
+  );
+
+  // 3. Subflow Containment: Auto-assign or detach parentId on drag stop
+  const handleNodeDragStop = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      if (node.type === "projectFrame") return;
+
+      setNodes((currentNodes) => {
+        const frames = currentNodes.filter((n) => n.type === "projectFrame");
+        const currentParent = frames.find((f) => f.id === node.parentId);
+
+        const absX = currentParent
+          ? currentParent.position.x + node.position.x
+          : node.position.x;
+        const absY = currentParent
+          ? currentParent.position.y + node.position.y
+          : node.position.y;
+
+        // Check if dropped inside a project frame
+        const targetFrame = frames.find((f) => {
+          const fx = f.position.x;
+          const fy = f.position.y;
+          const fw = Number(f.style?.width ?? (f.width ?? 640));
+          const fh = Number(f.style?.height ?? (f.height ?? 420));
+          return absX >= fx && absX <= fx + fw && absY >= fy && absY <= fy + fh;
+        });
+
+        if (targetFrame) {
+          const relX = Math.round(absX - targetFrame.position.x);
+          const relY = Math.max(55, Math.round(absY - targetFrame.position.y));
+
+          return currentNodes.map((n) => {
+            if (n.id !== node.id) return n;
+            return {
+              ...n,
+              parentId: targetFrame.id,
+              position: { x: relX, y: relY },
+            };
+          });
+        } else if (node.parentId) {
+          // Detach from parent frame if dragged outside
+          return currentNodes.map((n) => {
+            if (n.id !== node.id) return n;
+            const detached = { ...n };
+            delete detached.parentId;
+            delete detached.extent;
+            return {
+              ...detached,
+              position: { x: Math.round(absX), y: Math.round(absY) },
+            };
+          });
+        }
+
+        return currentNodes;
+      });
+    },
+    [setNodes]
   );
 
   const handleCreateTask = useCallback(() => {
@@ -373,6 +485,18 @@ export function FlowCanvasApp() {
         >
           <FolderPlus className="size-3" /> Project
         </Button>
+
+        <div className="w-[1px] h-3.5 bg-zinc-300 dark:bg-zinc-700 mx-0.5" />
+
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={handleResetSampleBoard}
+          className="h-6 text-[11px] gap-1 px-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+          title="Reset board to sample demo"
+        >
+          <RotateCcw className="size-3" />
+        </Button>
       </div>
 
       <ReactFlow
@@ -382,6 +506,8 @@ export function FlowCanvasApp() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeDragStop={handleNodeDragStop}
+        connectionMode={ConnectionMode.Loose}
         onDoubleClick={handlePaneDoubleClick}
         panOnDrag={activeTool === "select"}
         selectionOnDrag={activeTool === "select"}

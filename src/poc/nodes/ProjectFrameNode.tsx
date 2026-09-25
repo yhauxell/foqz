@@ -1,5 +1,5 @@
-import React, { memo, useEffect, useRef } from "react";
-import { NodeResizer, type NodeProps, type Node } from "@xyflow/react";
+import React, { memo, useEffect, useRef, useState } from "react";
+import { NodeResizer, Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
 import { GitBranch, Sparkles } from "lucide-react";
 import {
@@ -42,6 +42,11 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
   const accent = ACCENT_STYLES[currentAccent] || ACCENT_STYLES.blue;
   const glassBg = ACCENT_GLASS_BG[currentAccent] || ACCENT_GLASS_BG.blue;
   const svgRef = useRef<SVGSVGElement | null>(null);
+
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleVal, setTitleVal] = useState(data.title || "Project Frame");
+  const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [goalVal, setGoalVal] = useState(data.goal || "");
 
   const w = Math.max(360, width);
   const h = Math.max(240, height);
@@ -93,24 +98,53 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
         className="absolute inset-0 overflow-visible pointer-events-none"
       />
 
+      <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-zinc-400" />
+      <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-zinc-400" />
+
       {/* Frame Header Content */}
       <div className="relative z-10 flex items-center justify-between px-5 pt-3.5 pb-2">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <span
-            className="size-3 rounded-full shadow-2xs"
+            className="size-3 rounded-full shadow-2xs shrink-0"
             style={{ backgroundColor: accent.dotHex || "#3b82f6" }}
           />
-          <span
-            className="font-bold text-base tracking-tight truncate text-zinc-900 dark:text-zinc-100"
-            style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
-          >
-            {data.title || "Project Frame"}
-          </span>
+          {isEditingTitle ? (
+            <input
+              type="text"
+              value={titleVal}
+              autoFocus
+              onChange={(e) => setTitleVal(e.target.value)}
+              onBlur={() => {
+                setIsEditingTitle(false);
+                data.title = titleVal;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setIsEditingTitle(false);
+                  data.title = titleVal;
+                }
+              }}
+              className="bg-transparent border-b border-blue-500 outline-none font-bold text-base text-zinc-900 dark:text-zinc-100 flex-1 min-w-[120px]"
+              style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+            />
+          ) : (
+            <span
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                setIsEditingTitle(true);
+              }}
+              className="font-bold text-base tracking-tight truncate text-zinc-900 dark:text-zinc-100 cursor-text"
+              style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+              title="Double-click to edit project title"
+            >
+              {data.title || "Project Frame"}
+            </span>
+          )}
         </div>
 
         {data.connectors?.githubRepo && (
           <div
-            className="flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 text-zinc-700 dark:text-zinc-300 font-mono shadow-2xs backdrop-blur-xs"
+            className="flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 text-zinc-700 dark:text-zinc-300 font-mono shadow-2xs backdrop-blur-xs ml-2 shrink-0"
             style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
           >
             <GitBranch className="size-3" />
@@ -122,15 +156,42 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
       </div>
 
       {/* Goal Sub-header */}
-      {data.goal && (
-        <div
-          className="relative z-10 px-5 pt-2.5 text-[12px] text-zinc-600 dark:text-zinc-400 flex items-center gap-1.5"
-          style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
-        >
-          <Sparkles className="size-3 text-amber-500 shrink-0" />
-          <span className="truncate">{data.goal}</span>
-        </div>
-      )}
+      <div className="relative z-10 px-5 pt-1.5 pb-1 text-[12px] text-zinc-600 dark:text-zinc-400 flex items-center gap-1.5">
+        <Sparkles className="size-3 text-amber-500 shrink-0" />
+        {isEditingGoal ? (
+          <input
+            type="text"
+            value={goalVal}
+            autoFocus
+            onChange={(e) => setGoalVal(e.target.value)}
+            onBlur={() => {
+              setIsEditingGoal(false);
+              data.goal = goalVal;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                setIsEditingGoal(false);
+                data.goal = goalVal;
+              }
+            }}
+            placeholder="Add a milestone goal..."
+            className="bg-transparent border-b border-amber-500 outline-none text-xs text-zinc-800 dark:text-zinc-200 flex-1"
+            style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+          />
+        ) : (
+          <span
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setIsEditingGoal(true);
+            }}
+            className="truncate cursor-text"
+            style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+            title="Double-click to edit goal"
+          >
+            {data.goal || "Double-click to set milestone goal..."}
+          </span>
+        )}
+      </div>
 
       {/* Subflow containment drop target zone */}
       <div className="w-full h-[calc(100%-60px)] pointer-events-none" />
