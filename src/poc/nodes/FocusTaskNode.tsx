@@ -1,5 +1,6 @@
-import React, { memo } from "react";
+import React, { memo, useEffect, useRef } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
+import rough from "roughjs";
 import { Check, FileText } from "lucide-react";
 import { renderMarkdownInline } from "@/lib/markdown";
 import {
@@ -19,55 +20,94 @@ export interface FocusTaskNodeData {
 
 export type FocusTaskNodeType = Node<FocusTaskNodeData, "focusTask">;
 
-const PAPER_THEME_CLASSES: Record<TaskPaperTheme, string> = {
-  cream: "bg-[#faf8f5] dark:bg-zinc-900 border-amber-200/60 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100",
-  fog: "bg-[#f4f6f8] dark:bg-zinc-900 border-slate-200/60 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100",
-  bloom: "bg-[#faf4f6] dark:bg-zinc-900 border-rose-200/60 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100",
-  sage: "bg-[#f3f7f4] dark:bg-zinc-900 border-emerald-200/60 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100",
+const PAPER_COLORS: Record<TaskPaperTheme, { bg: string; fill: string }> = {
+  cream: { bg: "#fefcf6", fill: "rgba(254, 252, 246, 0.95)" },
+  fog: { bg: "#f6f8fb", fill: "rgba(246, 248, 251, 0.95)" },
+  bloom: { bg: "#fdf5f8", fill: "rgba(253, 245, 248, 0.95)" },
+  sage: { bg: "#f4f9f6", fill: "rgba(244, 249, 246, 0.95)" },
 };
 
 export const FocusTaskNode = memo(function FocusTaskNode({
   data,
   selected,
 }: NodeProps<FocusTaskNodeType>) {
-  const paperClass =
-    PAPER_THEME_CLASSES[data.paper || "cream"] || PAPER_THEME_CLASSES.cream;
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const isDone = data.status === "done";
   const priorityHex = focusTaskShellColorForPriority(data.priority || 3);
+  const theme = PAPER_COLORS[data.paper || "cream"] || PAPER_COLORS.cream;
+
+  // Render Rough.js hand-drawn card container and checkbox box
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = svgRef.current;
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    const rc = rough.svg(svg);
+
+    // 1. Organic Hand-drawn Card Background & Border
+    const cardRect = rc.rectangle(3, 3, 254, 76, {
+      roughness: 1.2,
+      stroke: isDone ? "#94a3b8" : "#475569",
+      strokeWidth: 1.5,
+      fill: theme.fill,
+      fillStyle: "solid",
+    });
+    svg.appendChild(cardRect);
+
+    // 2. Hand-drawn Left Priority Accent Tab
+    const priorityBar = rc.rectangle(4, 8, 4, 30, {
+      roughness: 1.0,
+      stroke: priorityHex,
+      strokeWidth: 2,
+      fill: priorityHex,
+      fillStyle: "solid",
+    });
+    svg.appendChild(priorityBar);
+
+    // 3. Hand-drawn Checkbox outline
+    const checkOutline = rc.rectangle(16, 12, 16, 16, {
+      roughness: 1.4,
+      stroke: isDone ? "#16a34a" : "#64748b",
+      strokeWidth: 1.5,
+      fill: isDone ? "rgba(22, 163, 74, 0.15)" : "transparent",
+    });
+    svg.appendChild(checkOutline);
+  }, [isDone, priorityHex, theme.fill]);
 
   return (
     <div
-      className={`relative min-w-[240px] max-w-[320px] rounded-xl border p-3 shadow-sm transition-all select-none ${paperClass} ${
-        selected ? "ring-2 ring-blue-500/80 ring-offset-2 dark:ring-offset-zinc-950" : ""
+      className={`relative w-[260px] h-[82px] select-none ${
+        selected ? "ring-2 ring-blue-500/80 rounded-lg" : ""
       }`}
       style={{ contain: "layout style" }}
     >
       <Handle type="target" position={Position.Top} className="!w-2 !h-2 !bg-zinc-400" />
-      
-      {/* Priority Bar Indicator */}
-      <div
-        className="absolute top-3 left-0 w-1 h-5 rounded-r-full"
-        style={{ backgroundColor: priorityHex }}
+
+      {/* Rough.js Organic Sketch Container */}
+      <svg
+        ref={svgRef}
+        width={260}
+        height={82}
+        className="absolute inset-0 overflow-visible pointer-events-none"
       />
 
-      <div className="flex items-start gap-2 pl-1.5">
-        {/* Status Checkbox */}
+      {/* Card Content Overlay */}
+      <div className="relative z-10 flex items-start gap-2.5 px-4 pt-3 h-full">
+        {/* Checkbox Click Target (overlaps the hand-drawn checkbox SVG) */}
         <button
           type="button"
-          className={`mt-0.5 size-4 rounded flex items-center justify-center border transition-colors cursor-pointer ${
-            isDone
-              ? "bg-emerald-600 border-emerald-600 text-white"
-              : "border-zinc-300 dark:border-zinc-700 bg-white/50 dark:bg-zinc-800/50 hover:border-zinc-400"
-          }`}
+          className="size-4.5 mt-0.5 flex items-center justify-center cursor-pointer shrink-0"
         >
-          {isDone && <Check className="size-3 stroke-[3]" />}
+          {isDone && (
+            <Check className="size-3.5 stroke-[3] text-emerald-600 dark:text-emerald-400" />
+          )}
         </button>
 
-        {/* Content */}
-        <div className="flex-1 min-w-0">
+        {/* Task Title & Notes */}
+        <div className="flex-1 min-w-0 pr-1">
           <div
             className={`text-[13px] leading-snug break-words ${
-              isDone ? "line-through text-zinc-400 dark:text-zinc-500" : ""
+              isDone ? "line-through text-zinc-400 dark:text-zinc-500" : "text-zinc-800 dark:text-zinc-100"
             }`}
             style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
           >
@@ -83,7 +123,10 @@ export const FocusTaskNode = memo(function FocusTaskNode({
           </div>
 
           {data.notes && (
-            <div className="mt-1 flex items-center gap-1 text-[10px] text-zinc-400 dark:text-zinc-500">
+            <div
+              className="mt-1 flex items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400"
+              style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+            >
               <FileText className="size-3 shrink-0" />
               <span className="truncate">{data.notes}</span>
             </div>
