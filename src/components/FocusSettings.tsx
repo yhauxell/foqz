@@ -217,12 +217,20 @@ export function FocusSettings({
   open,
   onClose,
   initialTab = "general",
+  editor: externalEditor,
 }: {
   open: boolean;
   onClose: () => void;
   initialTab?: SettingsTab;
+  editor?: Editor | null;
 }) {
-  const editor = useEditor();
+  let editor: Editor | null = externalEditor ?? null;
+  try {
+    const internalEditor = useEditor();
+    if (!editor) editor = internalEditor;
+  } catch {
+    // Outside Tldraw context (e.g. React Flow PoC mode)
+  }
   const { settings, update } = useFocusAppSettings();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [shortcutDraft, setShortcutDraft] = useState(settings.globalToggleShortcut);
@@ -482,6 +490,7 @@ export function FocusSettings({
   }, [update, presetsDraft, settings]);
 
   const exportBoard = useCallback(async () => {
+    if (!editor) return;
     setSaveError(null);
     const snapshot = getSnapshot(editor.store);
     const r = await window.focusStore?.exportBoardToFile?.(snapshot);
@@ -490,6 +499,7 @@ export function FocusSettings({
   }, [editor]);
 
   const importBoard = useCallback(async () => {
+    if (!editor) return;
     setSaveError(null);
     const r = await window.focusStore?.importBoardFromFile?.();
     if (!r || r.canceled) return;
@@ -507,6 +517,7 @@ export function FocusSettings({
   }, [editor]);
 
   const resetBoard = useCallback(async () => {
+    if (!editor) return;
     if (
       !window.confirm(
         "Erase everything on this board? This cannot be undone.",
