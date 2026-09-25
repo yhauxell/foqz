@@ -1,5 +1,5 @@
 import React, { memo, useState, useEffect, useRef } from "react";
-import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
+import { NodeResizer, Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
 import { Check, FileText } from "lucide-react";
 import { renderMarkdownInline } from "@/lib/markdown";
@@ -30,6 +30,8 @@ const PAPER_COLORS: Record<TaskPaperTheme, { bg: string; fill: string }> = {
 export const FocusTaskNode = memo(function FocusTaskNode({
   data,
   selected,
+  width = 260,
+  height = 82,
 }: NodeProps<FocusTaskNodeType>) {
   const [isEditing, setIsEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(data.title || "");
@@ -37,6 +39,9 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   const isDone = data.status === "done";
   const priorityHex = focusTaskShellColorForPriority(data.priority || 3);
   const theme = PAPER_COLORS[data.paper || "cream"] || PAPER_COLORS.cream;
+
+  const w = Math.max(200, width);
+  const h = Math.max(70, height);
 
   // Render Rough.js hand-drawn card container and checkbox box
   useEffect(() => {
@@ -47,7 +52,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
     const rc = rough.svg(svg);
 
     // 1. Organic Hand-drawn Card Background & Border
-    const cardRect = rc.rectangle(3, 3, 254, 76, {
+    const cardRect = rc.rectangle(3, 3, w - 6, h - 6, {
       roughness: 1.2,
       stroke: isDone ? "#94a3b8" : "#475569",
       strokeWidth: 1.5,
@@ -57,7 +62,8 @@ export const FocusTaskNode = memo(function FocusTaskNode({
     svg.appendChild(cardRect);
 
     // 2. Hand-drawn Left Priority Accent Tab
-    const priorityBar = rc.rectangle(4, 8, 4, 30, {
+    const barHeight = Math.min(32, Math.max(20, h - 24));
+    const priorityBar = rc.rectangle(4, 8, 4, barHeight, {
       roughness: 1.0,
       stroke: priorityHex,
       strokeWidth: 2,
@@ -74,7 +80,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
       fill: isDone ? "rgba(22, 163, 74, 0.15)" : "transparent",
     });
     svg.appendChild(checkOutline);
-  }, [isDone, priorityHex, theme.fill]);
+  }, [w, h, isDone, priorityHex, theme.fill]);
 
   const toggleStatus = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -85,7 +91,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
 
   return (
     <div
-      className={`relative w-[260px] h-[82px] select-none ${
+      className={`relative w-full h-full select-none ${
         selected ? "ring-2 ring-blue-500/80 rounded-lg" : ""
       }`}
       style={{ contain: "layout style" }}
@@ -94,6 +100,8 @@ export const FocusTaskNode = memo(function FocusTaskNode({
         setIsEditing(true);
       }}
     >
+      <NodeResizer minWidth={200} minHeight={70} isVisible={selected} />
+
       {/* 4 Handles for Connecting Tasks to other shapes / boxes / text */}
       <Handle type="target" position={Position.Top} className="!w-2.5 !h-2.5 !bg-zinc-400" />
       <Handle type="target" position={Position.Left} className="!w-2.5 !h-2.5 !bg-zinc-400" />
@@ -103,8 +111,8 @@ export const FocusTaskNode = memo(function FocusTaskNode({
       {/* Rough.js Organic Sketch Container */}
       <svg
         ref={svgRef}
-        width={260}
-        height={82}
+        width={w}
+        height={h}
         className="absolute inset-0 overflow-visible pointer-events-none"
       />
 

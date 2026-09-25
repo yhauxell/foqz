@@ -19,6 +19,8 @@ import "@xyflow/react/dist/style.css";
 import { nodeTypes } from "./nodes";
 import { FlowZoomControls } from "./components/FlowZoomControls";
 import { FlowShapeMenu } from "./components/FlowShapeMenu";
+import { ShortcutsModal } from "./components/ShortcutsModal";
+import { useFlowCanvasShortcuts } from "./hooks/useFlowCanvasShortcuts";
 import {
   Plus,
   FolderPlus,
@@ -28,6 +30,7 @@ import {
   Pointer,
   Sparkles,
   RotateCcw,
+  Keyboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -52,6 +55,7 @@ const INITIAL_NODES: Node[] = [
     parentId: "proj-1",
     extent: "parent",
     position: { x: 40, y: 100 },
+    style: { width: 280, height: 82 },
     data: {
       title: "Setup `@xyflow/react` and sketch engine",
       status: "done",
@@ -66,6 +70,7 @@ const INITIAL_NODES: Node[] = [
     parentId: "proj-1",
     extent: "parent",
     position: { x: 40, y: 220 },
+    style: { width: 280, height: 82 },
     data: {
       title: "Connect task cards to sketch boxes",
       status: "doing",
@@ -143,7 +148,8 @@ export function FlowCanvasApp() {
   const isDrawing = useRef(false);
   const currentPencilPoints = useRef<{ x: number; y: number }[]>([]);
 
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   // 1. Persistence Bridge: Restore snapshot on mount
   useEffect(() => {
@@ -276,6 +282,7 @@ export function FlowCanvasApp() {
       id,
       type: "focusTask",
       position: { x: 400 + Math.random() * 50, y: 300 + Math.random() * 50 },
+      style: { width: 280, height: 82 },
       data: {
         title: "New Task Card",
         status: "open",
@@ -334,6 +341,45 @@ export function FlowCanvasApp() {
     },
     [setNodes]
   );
+
+  const handleDeleteSelected = useCallback(() => {
+    setNodes((nds) => {
+      const selected = nds.filter((n) => n.selected);
+      if (selected.length === 0) return nds;
+      const selectedIds = new Set(selected.map((n) => n.id));
+      return nds.filter(
+        (n) =>
+          !selectedIds.has(n.id) &&
+          (!n.parentId || !selectedIds.has(n.parentId))
+      );
+    });
+    setEdges((eds) => eds.filter((e) => !e.selected));
+  }, [setNodes, setEdges]);
+
+  const handleEscape = useCallback(() => {
+    setActiveTool("select");
+    setNodes((nds) =>
+      nds.map((n) => (n.selected ? { ...n, selected: false } : n))
+    );
+  }, [setNodes]);
+
+  // Keyboard Shortcuts Hook
+  useFlowCanvasShortcuts({
+    onSelectTool: () => setActiveTool("select"),
+    onCreateBox: handleCreateBox,
+    onCreateText: () =>
+      handleCreateTextAt({
+        x: 400 + Math.random() * 40,
+        y: 250 + Math.random() * 40,
+      }),
+    onPencilTool: () => setActiveTool("pencil"),
+    onCreateTask: handleCreateTask,
+    onCreateProject: handleCreateProject,
+    onDeleteSelected: handleDeleteSelected,
+    onFitView: () => fitView({ duration: 300 }),
+    onToggleShortcutsModal: () => setShortcutsOpen((prev) => !prev),
+    onEscape: handleEscape,
+  });
 
   // Double Click Canvas to Create Text Node
   const handlePaneDoubleClick = useCallback(
@@ -419,9 +465,10 @@ export function FlowCanvasApp() {
           variant={activeTool === "select" ? "secondary" : "ghost"}
           onClick={() => setActiveTool("select")}
           className="h-6 text-[11px] gap-1 px-2"
-          title="Select / Move"
+          title="Select / Move (V)"
         >
           <Pointer className="size-3" /> Select
+          <kbd className="text-[9px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800 ml-0.5">V</kbd>
         </Button>
 
         {/* Hand-Drawn Box */}
@@ -430,9 +477,10 @@ export function FlowCanvasApp() {
           variant="ghost"
           onClick={handleCreateBox}
           className="h-6 text-[11px] gap-1 px-2 text-emerald-600 dark:text-emerald-400 font-medium"
-          title="Add Hand-Drawn Sketch Box"
+          title="Add Hand-Drawn Sketch Box (B)"
         >
           <BoxIcon className="size-3 text-emerald-500" /> Box
+          <kbd className="text-[9px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800 ml-0.5">B</kbd>
         </Button>
 
         {/* Text Label */}
@@ -446,9 +494,10 @@ export function FlowCanvasApp() {
             })
           }
           className="h-6 text-[11px] gap-1 px-2"
-          title="Add Text Label (Or double-click canvas)"
+          title="Add Text Label (T)"
         >
           <TypeIcon className="size-3 text-amber-500" /> Text
+          <kbd className="text-[9px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800 ml-0.5">T</kbd>
         </Button>
 
         {/* Freehand Pencil */}
@@ -461,9 +510,10 @@ export function FlowCanvasApp() {
               ? "bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 font-semibold"
               : ""
           }`}
-          title="Freehand Pencil Drawing"
+          title="Freehand Pencil Drawing (P)"
         >
           <Pencil className="size-3 text-rose-500" /> Pencil
+          <kbd className="text-[9px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800 ml-0.5">P</kbd>
         </Button>
 
         <div className="w-[1px] h-3.5 bg-zinc-300 dark:bg-zinc-700 mx-0.5" />
@@ -473,8 +523,10 @@ export function FlowCanvasApp() {
           variant="ghost"
           onClick={handleCreateTask}
           className="h-6 text-[11px] gap-1 px-2"
+          title="Add Focus Task (N)"
         >
           <Plus className="size-3" /> Task
+          <kbd className="text-[9px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800 ml-0.5">N</kbd>
         </Button>
 
         <Button
@@ -482,11 +534,24 @@ export function FlowCanvasApp() {
           variant="ghost"
           onClick={handleCreateProject}
           className="h-6 text-[11px] gap-1 px-2"
+          title="Add Project Frame (F)"
         >
           <FolderPlus className="size-3" /> Project
+          <kbd className="text-[9px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800 ml-0.5">F</kbd>
         </Button>
 
         <div className="w-[1px] h-3.5 bg-zinc-300 dark:bg-zinc-700 mx-0.5" />
+
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setShortcutsOpen(true)}
+          className="h-6 text-[11px] gap-1 px-1.5 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+          title="Keyboard Shortcuts (?)"
+        >
+          <Keyboard className="size-3" />
+          <kbd className="text-[9px] font-mono opacity-50">?</kbd>
+        </Button>
 
         <Button
           size="sm"
@@ -498,6 +563,8 @@ export function FlowCanvasApp() {
           <RotateCcw className="size-3" />
         </Button>
       </div>
+
+      <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       <ReactFlow
         nodes={nodes}
