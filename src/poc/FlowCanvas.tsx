@@ -16,10 +16,11 @@ import {
 import "@xyflow/react/dist/style.css";
 import { nodeTypes } from "./nodes";
 import { FlowZoomControls } from "./components/FlowZoomControls";
+import { FlowShapeMenu } from "./components/FlowShapeMenu";
 import {
   Plus,
   FolderPlus,
-  Square,
+  Box as BoxIcon,
   Type as TypeIcon,
   Pencil,
   Pointer,
@@ -27,17 +28,17 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type ActiveTool = "select" | "rectangle" | "text" | "pencil";
+type ActiveTool = "select" | "box" | "text" | "pencil";
 
 const INITIAL_NODES: Node[] = [
   {
     id: "proj-1",
     type: "projectFrame",
-    position: { x: 100, y: 80 },
+    position: { x: 80, y: 80 },
     style: { width: 720, height: 440 },
     data: {
       title: "React Flow Migration Milestone",
-      goal: "Goal: Validate subflows, performance and drawing customizability",
+      goal: "Goal: Validate sketchy style, themes & connections",
       accent: "blue",
       connectors: { githubRepo: "yhauxell/foqz" },
     },
@@ -49,11 +50,11 @@ const INITIAL_NODES: Node[] = [
     extent: "parent",
     position: { x: 40, y: 100 },
     data: {
-      title: "Setup `@xyflow/react` in Foqz PoC branch",
+      title: "Setup `@xyflow/react` and sketch engine",
       status: "done",
       priority: 1,
       paper: "sage",
-      notes: "Installed v12 package successfully",
+      notes: "Double click me to edit title",
     },
   },
   {
@@ -63,39 +64,41 @@ const INITIAL_NODES: Node[] = [
     extent: "parent",
     position: { x: 40, y: 220 },
     data: {
-      title: "Implement custom `FocusTaskNode` & `ProjectFrameNode`",
-      status: "done",
+      title: "Connect task cards to sketch boxes",
+      status: "doing",
       priority: 2,
       paper: "cream",
-      notes: "Testing nested subflows and drag mechanics",
+      notes: "Drag line from task handles to box handles",
     },
   },
   {
-    id: "rect-demo",
-    type: "rectangle",
+    id: "box-demo",
+    type: "box",
     parentId: "proj-1",
     extent: "parent",
-    position: { x: 420, y: 100 },
-    style: { width: 240, height: 160 },
+    position: { x: 400, y: 120 },
+    style: { width: 260, height: 180 },
     data: {
-      label: "Architecture Boundary",
-      color: "rgba(59, 130, 246, 0.08)",
-      strokeColor: "#3b82f6",
+      label: "Architecture Notes (Double-click to write)",
+      color: "rgba(16, 185, 129, 0.08)",
+      strokeColor: "#10b981",
+      roughness: 2,
     },
   },
   {
     id: "text-demo",
     type: "text",
-    position: { x: 860, y: 90 },
+    position: { x: 850, y: 90 },
     data: {
-      text: "✏️ Double click to edit freeform text",
-      fontSize: 14,
+      text: "✏️ Double click on canvas to write text anywhere!",
+      fontSize: 15,
+      color: "#2563eb",
     },
   },
   {
     id: "pencil-demo",
     type: "pencil",
-    position: { x: 860, y: 140 },
+    position: { x: 850, y: 150 },
     data: {
       points: [
         { x: 10, y: 20 },
@@ -106,7 +109,7 @@ const INITIAL_NODES: Node[] = [
         { x: 160, y: 30 },
       ],
       color: "#ef4444",
-      strokeWidth: 3,
+      size: 6,
     },
   },
 ];
@@ -119,6 +122,13 @@ const INITIAL_EDGES: Edge[] = [
     animated: true,
     style: { stroke: "#3b82f6", strokeWidth: 2 },
   },
+  {
+    id: "e2-box",
+    source: "task-2",
+    target: "box-demo",
+    animated: true,
+    style: { stroke: "#10b981", strokeWidth: 2, strokeDasharray: "4 4" },
+  },
 ];
 
 export function FlowCanvasApp() {
@@ -130,8 +140,21 @@ export function FlowCanvasApp() {
 
   const { screenToFlowPosition } = useReactFlow();
 
+  // Find currently selected node for the floating color menu
+  const selectedNode = nodes.find((n) => n.selected) || null;
+
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
+    (params: Connection) =>
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...params,
+            animated: true,
+            style: { stroke: "#475569", strokeWidth: 2 },
+          },
+          eds
+        )
+      ),
     [setEdges]
   );
 
@@ -159,7 +182,7 @@ export function FlowCanvasApp() {
       position: { x: 200 + Math.random() * 40, y: 200 + Math.random() * 40 },
       style: { width: 640, height: 400 },
       data: {
-        title: "New Project Container",
+        title: "New Project Workspace",
         goal: "Goal: Define new workspace milestone",
         accent: "emerald",
       },
@@ -167,34 +190,47 @@ export function FlowCanvasApp() {
     setNodes((nds) => [...nds, newNode]);
   }, [setNodes]);
 
-  const handleCreateRectangle = useCallback(() => {
-    const id = `rect-${Date.now()}`;
+  const handleCreateBox = useCallback(() => {
+    const id = `box-${Date.now()}`;
     const newNode: Node = {
       id,
-      type: "rectangle",
+      type: "box",
       position: { x: 300 + Math.random() * 40, y: 150 + Math.random() * 40 },
-      style: { width: 200, height: 120 },
+      style: { width: 220, height: 140 },
       data: {
-        label: "Rectangle Shape",
-        color: "rgba(244, 114, 182, 0.12)",
-        strokeColor: "#ec4899",
+        label: "Sketch Box",
+        color: "rgba(16, 185, 129, 0.08)",
+        strokeColor: "#10b981",
+        roughness: 2.0,
       },
     };
     setNodes((nds) => [...nds, newNode]);
   }, [setNodes]);
 
-  const handleCreateText = useCallback(() => {
-    const id = `text-${Date.now()}`;
-    const newNode: Node = {
-      id,
-      type: "text",
-      position: { x: 350 + Math.random() * 40, y: 200 + Math.random() * 40 },
-      data: {
-        text: "New text label",
-      },
-    };
-    setNodes((nds) => [...nds, newNode]);
-  }, [setNodes]);
+  const handleCreateTextAt = useCallback(
+    (pos: { x: number; y: number }) => {
+      const id = `text-${Date.now()}`;
+      const newNode: Node = {
+        id,
+        type: "text",
+        position: pos,
+        data: {
+          text: "Type something...",
+        },
+      };
+      setNodes((nds) => [...nds, newNode]);
+    },
+    [setNodes]
+  );
+
+  // Double Click Canvas to Create Text Node
+  const handlePaneDoubleClick = useCallback(
+    (event: React.MouseEvent) => {
+      const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      handleCreateTextAt(pos);
+    },
+    [screenToFlowPosition, handleCreateTextAt]
+  );
 
   // Handle Freehand Pencil Mouse/Pointer Events on Canvas Pane
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -228,7 +264,7 @@ export function FlowCanvasApp() {
           data: {
             points,
             color: "#ef4444",
-            strokeWidth: 3,
+            size: 6,
           },
         },
       ];
@@ -253,6 +289,9 @@ export function FlowCanvasApp() {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
+      {/* Floating Shape Popover Menu for Selected Node (Color & Delete) */}
+      <FlowShapeMenu selectedNode={selectedNode} />
+
       {/* Engine Switcher / Status & Shape Toolbar */}
       <div className="absolute top-3 left-16 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-panel shadow-sm">
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 mr-1">
@@ -273,50 +312,29 @@ export function FlowCanvasApp() {
           <Pointer className="size-3" /> Select
         </Button>
 
-        {/* Rectangle Shape */}
+        {/* Hand-Drawn Box */}
         <Button
           size="sm"
           variant="ghost"
-          onClick={handleCreateRectangle}
-          className="h-6 text-[11px] gap-1 px-2"
-          title="Add Clean Rectangle"
-        >
-          <Square className="size-3 text-blue-500" /> Rectangle
-        </Button>
-
-        {/* Hand-Drawn Sketch Box */}
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            const id = `hand-${Date.now()}`;
-            const newNode: Node = {
-              id,
-              type: "handDrawnRect",
-              position: { x: 320 + Math.random() * 40, y: 180 + Math.random() * 40 },
-              style: { width: 220, height: 130 },
-              data: {
-                label: "Hand-drawn Sketch Box",
-                color: "rgba(16, 185, 129, 0.08)",
-                strokeColor: "#10b981",
-                roughness: 2.2,
-              },
-            };
-            setNodes((nds) => [...nds, newNode]);
-          }}
-          className="h-6 text-[11px] gap-1 px-2 text-emerald-600 dark:text-emerald-400"
+          onClick={handleCreateBox}
+          className="h-6 text-[11px] gap-1 px-2 text-emerald-600 dark:text-emerald-400 font-medium"
           title="Add Hand-Drawn Sketch Box"
         >
-          <Sparkles className="size-3 text-emerald-500" /> Sketch Box
+          <BoxIcon className="size-3 text-emerald-500" /> Box
         </Button>
 
         {/* Text Label */}
         <Button
           size="sm"
           variant="ghost"
-          onClick={handleCreateText}
+          onClick={() =>
+            handleCreateTextAt({
+              x: 350 + Math.random() * 40,
+              y: 200 + Math.random() * 40,
+            })
+          }
           className="h-6 text-[11px] gap-1 px-2"
-          title="Add Text Label"
+          title="Add Text Label (Or double-click canvas)"
         >
           <TypeIcon className="size-3 text-amber-500" /> Text
         </Button>
@@ -364,6 +382,7 @@ export function FlowCanvasApp() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onDoubleClick={handlePaneDoubleClick}
         panOnDrag={activeTool === "select"}
         selectionOnDrag={activeTool === "select"}
         onlyRenderVisibleElements={true}

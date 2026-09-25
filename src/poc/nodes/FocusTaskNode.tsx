@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef } from "react";
+import React, { memo, useState, useEffect, useRef } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
 import { Check, FileText } from "lucide-react";
@@ -31,6 +31,8 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   data,
   selected,
 }: NodeProps<FocusTaskNodeType>) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(data.title || "");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const isDone = data.status === "done";
   const priorityHex = focusTaskShellColorForPriority(data.priority || 3);
@@ -74,14 +76,26 @@ export const FocusTaskNode = memo(function FocusTaskNode({
     svg.appendChild(checkOutline);
   }, [isDone, priorityHex, theme.fill]);
 
+  const toggleStatus = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    data.status = data.status === "done" ? "open" : "done";
+    // Trigger re-render by touching titleDraft
+    setTitleDraft((d) => d);
+  };
+
   return (
     <div
       className={`relative w-[260px] h-[82px] select-none ${
         selected ? "ring-2 ring-blue-500/80 rounded-lg" : ""
       }`}
       style={{ contain: "layout style" }}
+      onDoubleClick={() => setIsEditing(true)}
     >
-      <Handle type="target" position={Position.Top} className="!w-2 !h-2 !bg-zinc-400" />
+      {/* 4 Handles for Connecting Tasks to other shapes / boxes / text */}
+      <Handle type="target" position={Position.Top} className="!w-2.5 !h-2.5 !bg-zinc-400" />
+      <Handle type="target" position={Position.Left} className="!w-2.5 !h-2.5 !bg-zinc-400" />
+      <Handle type="source" position={Position.Right} className="!w-2.5 !h-2.5 !bg-zinc-400" />
+      <Handle type="source" position={Position.Bottom} className="!w-2.5 !h-2.5 !bg-zinc-400" />
 
       {/* Rough.js Organic Sketch Container */}
       <svg
@@ -96,6 +110,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
         {/* Checkbox Click Target (overlaps the hand-drawn checkbox SVG) */}
         <button
           type="button"
+          onClick={toggleStatus}
           className="size-4.5 mt-0.5 flex items-center justify-center cursor-pointer shrink-0"
         >
           {isDone && (
@@ -105,22 +120,43 @@ export const FocusTaskNode = memo(function FocusTaskNode({
 
         {/* Task Title & Notes */}
         <div className="flex-1 min-w-0 pr-1">
-          <div
-            className={`text-[13px] leading-snug break-words ${
-              isDone ? "line-through text-zinc-400 dark:text-zinc-500" : "text-zinc-800 dark:text-zinc-100"
-            }`}
-            style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
-          >
-            {data.title ? (
-              <span
-                dangerouslySetInnerHTML={{
-                  __html: renderMarkdownInline(data.title),
-                }}
-              />
-            ) : (
-              <span className="text-zinc-400 italic">Untitled Task</span>
-            )}
-          </div>
+          {isEditing ? (
+            <input
+              type="text"
+              value={titleDraft}
+              autoFocus
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={() => {
+                setIsEditing(false);
+                data.title = titleDraft;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setIsEditing(false);
+                  data.title = titleDraft;
+                }
+              }}
+              className="w-full bg-transparent border-b border-blue-500 outline-none text-[13px] text-zinc-900 dark:text-zinc-100"
+              style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+            />
+          ) : (
+            <div
+              className={`text-[13px] leading-snug break-words ${
+                isDone ? "line-through text-zinc-400 dark:text-zinc-500" : "text-zinc-800 dark:text-zinc-100"
+              }`}
+              style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+            >
+              {data.title || titleDraft ? (
+                <span
+                  dangerouslySetInnerHTML={{
+                    __html: renderMarkdownInline(data.title || titleDraft),
+                  }}
+                />
+              ) : (
+                <span className="text-zinc-400 italic">Double-click to write task</span>
+              )}
+            </div>
+          )}
 
           {data.notes && (
             <div
@@ -133,8 +169,6 @@ export const FocusTaskNode = memo(function FocusTaskNode({
           )}
         </div>
       </div>
-
-      <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 !bg-zinc-400" />
     </div>
   );
 });
