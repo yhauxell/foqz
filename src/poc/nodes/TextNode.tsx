@@ -48,10 +48,10 @@ export const TextNode = memo(function TextNode({
         <span
           className="text-zinc-900 dark:text-zinc-100 break-words"
           style={{
-            fontSize: data.fontSize || 22,
+            fontSize: data.fontSize || 16,
             color: data.color,
-            fontFamily: "'Caveat', cursive, sans-serif",
-            lineHeight: 1.2,
+            fontFamily: "'Shantell Sans', cursive, sans-serif",
+            lineHeight: 1.35,
           }}
           dangerouslySetInnerHTML={{
             __html: renderMarkdownInline(val || "Double click to edit text"),

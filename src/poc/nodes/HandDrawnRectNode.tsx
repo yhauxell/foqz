@@ -61,8 +61,8 @@ export const HandDrawnRectNode = memo(function HandDrawnRectNode({
 
       {data.label && (
         <span
-          className="relative z-10 px-3 text-center text-sm font-sans font-medium text-zinc-800 dark:text-zinc-200"
-          style={{ fontFamily: "'Caveat', cursive, sans-serif", fontSize: 18 }}
+          className="relative z-10 px-3 text-center text-sm font-medium text-zinc-800 dark:text-zinc-200"
+          style={{ fontFamily: "'Shantell Sans', cursive, sans-serif", fontSize: 16 }}
         >
           {data.label}
         </span>

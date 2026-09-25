@@ -43,7 +43,10 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
       >
         <div className="flex items-center gap-2 min-w-0">
           <Folder className="size-4 text-blue-500 shrink-0" />
-          <span className="font-semibold text-xs tracking-tight truncate text-zinc-900 dark:text-zinc-100">
+          <span
+            className="font-bold text-sm tracking-tight truncate text-zinc-900 dark:text-zinc-100"
+            style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+          >
             {data.title || "Project Frame"}
           </span>
         </div>
@@ -60,7 +63,8 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
 
       {/* Goal Sub-header */}
       {data.goal && (
-        <div className="px-3.5 py-1.5 border-b border-zinc-200/50 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/30 text-[11px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+        <div className="px-3.5 py-1.5 border-b border-zinc-200/50 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/30 text-[12px] text-zinc-600 dark:text-zinc-300 flex items-center gap-1.5"
+             style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}>
           <Sparkles className="size-3 text-amber-500 shrink-0" />
           <span className="truncate">{data.goal}</span>
         </div>

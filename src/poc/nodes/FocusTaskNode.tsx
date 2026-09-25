@@ -66,9 +66,10 @@ export const FocusTaskNode = memo(function FocusTaskNode({
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div
-            className={`text-xs font-medium leading-snug break-words ${
+            className={`text-[13px] leading-snug break-words ${
               isDone ? "line-through text-zinc-400 dark:text-zinc-500" : ""
             }`}
+            style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
           >
             {data.title ? (
               <span
