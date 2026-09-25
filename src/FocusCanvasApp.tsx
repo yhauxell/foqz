@@ -88,6 +88,7 @@ function FocusCanvasAppInner() {
     }
     return "tldraw";
   });
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<
     "general" | "workingHours" | "ai" | "mcp" | "data"
   >("general");
