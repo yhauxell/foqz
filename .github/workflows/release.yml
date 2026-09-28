@@ -1,7 +1,6 @@
-# Build and publish installers to GitHub Releases on every push to `main`.
+# Build and publish installers to GitHub Releases on tag push or manual dispatch.
 #
-# Versioning: bump the `version` field in package.json when you want a new GitHub Release.
-# Pushing again with the same version usually fails because the release assets already exist.
+# Versioning: bump the `version` field in package.json and push a git tag (e.g. `v0.1.0`).
 #
 # macOS builds are ad-hoc signed in CI. For notarized, trusted installs, add Apple certs and
 # notarize hooks to electron-builder (CSC_LINK, APPLE_ID, etc.).
@@ -9,7 +8,9 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}

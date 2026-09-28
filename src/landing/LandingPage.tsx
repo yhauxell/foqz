@@ -14,7 +14,7 @@ export function LandingPage() {
   return (
     <div className="min-h-dvh bg-[#070709] text-zinc-100">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-1/4 top-0 h-[520px] w-[720px] rounded-full bg-violet-500/15 blur-[120px]" />
+        <div className="absolute -left-1/4 top-0 h-[520px] w-[720px] rounded-full bg-blue-500/15 blur-[120px]" />
         <div className="absolute -right-1/4 bottom-0 h-[480px] w-[640px] rounded-full bg-cyan-500/10 blur-[110px]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgb(255_255_255/6%),transparent_55%)]" />
       </div>
@@ -57,7 +57,7 @@ export function LandingPage() {
           A quiet canvas for deep work — from the menu bar.
         </h1>
         <p className="mt-6 max-w-xl text-lg leading-relaxed text-zinc-400">
-          Toggle a frosted window when you need it, sketch and plan on a tldraw board, and keep timers
+          Toggle a frosted window when you need it, sketch and plan on a spatial canvas, and keep timers
           within reach. Built as a small desktop app you install yourself — no App Store required.
         </p>
 
@@ -160,7 +160,7 @@ export function LandingPage() {
             },
             {
               title: "Infinite board",
-              body: "Plan and sketch with tldraw — your snapshot stays on device.",
+              body: "Plan and sketch with tactile rough styling — your board stays on device.",
             },
             {
               title: "Focus timers",
@@ -236,7 +236,7 @@ function PlatformCard(props: {
         {!primary && !disabled && fallbackUrl ? (
           <a
             href={fallbackUrl}
-            className="text-center text-xs font-medium text-violet-300/90 underline-offset-2 hover:underline"
+            className="text-center text-xs font-medium text-blue-400 underline-offset-2 hover:underline"
             target="_blank"
             rel="noreferrer"
           >

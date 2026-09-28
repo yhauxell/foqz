@@ -56,7 +56,7 @@ const NOTE_COLORS: Record<string, { dot: string; label: string }> = {
   red: { dot: "bg-red-400", label: "Red" },
   black: { dot: "bg-zinc-800", label: "Black" },
   grey: { dot: "bg-zinc-400", label: "Grey" },
-  violet: { dot: "bg-violet-400", label: "Violet" },
+  violet: { dot: "bg-blue-400", label: "Blue" },
 };
 
 export function CanvasActionList({
@@ -82,7 +82,7 @@ export function CanvasActionList({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <Sparkles className="size-3.5 text-violet-500" />
+          <Sparkles className="size-3.5 text-blue-500" />
           <span className="text-xs font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
             Proposed Canvas Items
           </span>
@@ -94,7 +94,7 @@ export function CanvasActionList({
         <button
           type="button"
           onClick={onSpawnAll}
-          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-950 transition-colors shadow-xs"
+          className="inline-flex items-center gap-1.5 h-6.5 px-3 rounded-full text-[11px] font-medium bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-950 transition-colors shadow-2xs cursor-pointer"
         >
           <span>Spawn All</span>
           <ArrowRight className="size-3" />
@@ -120,7 +120,7 @@ export function CanvasActionList({
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <CheckSquare className="size-3.5 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 shrink-0" />
                   <span
-                    className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded border shrink-0 ${prio.bg} ${prio.text} ${prio.border}`}
+                    className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded-full border shrink-0 ${prio.bg} ${prio.text} ${prio.border}`}
                   >
                     {prio.label}
                   </span>
@@ -136,7 +136,7 @@ export function CanvasActionList({
                   type="button"
                   title="Spawn this task onto canvas"
                   onClick={() => handleSingleSpawn(action, index)}
-                  className="shrink-0 p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+                  className="shrink-0 p-1 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors cursor-pointer"
                 >
                   {isItemSpawned ? (
                     <Check className="size-3 text-emerald-500" />
@@ -159,7 +159,7 @@ export function CanvasActionList({
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <StickyNote className="size-3.5 text-amber-500 shrink-0" />
-                  <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-100/80 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 shrink-0">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border border-zinc-200 dark:border-zinc-800 bg-zinc-100/80 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 shrink-0">
                     <span className={`size-1.5 rounded-full ${colorMeta.dot}`} />
                     <span>{colorMeta.label} Note</span>
                   </span>
@@ -172,7 +172,7 @@ export function CanvasActionList({
                   type="button"
                   title="Spawn this note onto canvas"
                   onClick={() => handleSingleSpawn(action, index)}
-                  className="shrink-0 p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+                  className="shrink-0 p-1 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors cursor-pointer"
                 >
                   {isItemSpawned ? (
                     <Check className="size-3 text-emerald-500" />
@@ -194,7 +194,7 @@ export function CanvasActionList({
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <Clock className="size-3.5 text-emerald-500 shrink-0" />
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-medium shrink-0">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-900/50 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-medium shrink-0">
                     {minutes}m Timer
                   </span>
                   <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
@@ -206,7 +206,7 @@ export function CanvasActionList({
                   type="button"
                   title="Spawn this timer onto canvas"
                   onClick={() => handleSingleSpawn(action, index)}
-                  className="shrink-0 p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+                  className="shrink-0 p-1 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors cursor-pointer"
                 >
                   {isItemSpawned ? (
                     <Check className="size-3 text-emerald-500" />

@@ -1,0 +1,1054 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  useReactFlow,
+  ConnectionMode,
+  MarkerType,
+  type Connection,
+  type Edge,
+  type Node,
+  BackgroundVariant,
+  applyNodeChanges,
+  applyEdgeChanges,
+  type NodeChange,
+  type EdgeChange,
+  PanOnScrollMode,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { nodeTypes } from "./nodes";
+import { edgeTypes } from "./edges";
+import { FlowZoomControls } from "./components/FlowZoomControls";
+import { FlowShapeMenu } from "./components/FlowShapeMenu";
+import {
+  ReparentConfirmModal,
+  type ReparentConfirmState,
+  SKIP_REPARENT_KEY,
+} from "./components/ReparentConfirmModal";
+import { useFlowCanvasShortcuts } from "./hooks/useFlowCanvasShortcuts";
+import {
+  Pointer,
+  CheckSquare,
+  Square,
+  Circle,
+  Type as TypeIcon,
+  MoveRight,
+  Pencil,
+  RotateCcw,
+} from "lucide-react";
+import { ElementInlineChat } from "@/components/ElementInlineChat";
+import getStroke from "perfect-freehand";
+import {
+  useFlowCanvasStore,
+  FLOW_STORAGE_KEY,
+  INITIAL_NODES,
+  INITIAL_EDGES,
+} from "./store/flowCanvasStore";
+
+function getSvgPathFromStroke(stroke: number[][]) {
+  if (!stroke.length) return "";
+  const d = stroke.reduce(
+    (acc, [x0, y0], i, arr) => {
+      const [x1, y1] = arr[(i + 1) % arr.length];
+      return `${acc} ${x0},${y0} ${(x0 + x1) / 2},${(y0 + y1) / 2}`;
+    },
+    `M ${stroke[0][0]},${stroke[0][1]} Q`
+  );
+  return d;
+}
+
+const PRO_OPTIONS = { hideAttribution: true };
+const DEFAULT_EDGE_OPTIONS = {
+  type: "semantic",
+  data: { relation: "depends" },
+};
+const MULTI_SELECTION_KEY_CODE = ["Meta", "Control", "Shift"];
+const ZOOM_ACTIVATION_KEY_CODE = ["Meta", "Control"];
+const PAN_ON_DRAG: (number | boolean)[] = [1, 2];
+
+export type ActiveTool = "select" | "task" | "box" | "circle" | "text" | "arrow" | "pencil";
+
+interface FlowCanvasAppProps {
+  sidebarOpen?: boolean;
+}
+
+export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
+  const nodes = useFlowCanvasStore((s) => s.nodes);
+  const edges = useFlowCanvasStore((s) => s.edges);
+  const setNodes = useFlowCanvasStore((s) => s.setNodes);
+  const setEdges = useFlowCanvasStore((s) => s.setEdges);
+  const setSelectedNodeId = useFlowCanvasStore((s) => s.setSelectedNodeId);
+  const loadSnapshot = useFlowCanvasStore((s) => s.loadSnapshot);
+  const resetBoard = useFlowCanvasStore((s) => s.resetBoard);
+
+  const [activeTool, setActiveTool] = useState<ActiveTool>("select");
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Drag-to-size state for Box tool
+  const boxDragStartRef = useRef<{
+    flow: { x: number; y: number };
+    client: { x: number; y: number };
+  } | null>(null);
+  const [boxPreviewRect, setBoxPreviewRect] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
+
+  // Freehand pencil drawing state & live preview overlay (fast 60fps without re-rendering entire ReactFlow graph)
+  const isDrawingPencil = useRef(false);
+  const currentPencilFlowPoints = useRef<{ x: number; y: number }[]>([]);
+  const currentPencilClientPoints = useRef<number[][]>([]);
+  const [pencilPreviewSvgPath, setPencilPreviewSvgPath] = useState<string | null>(null);
+
+  // Reparent tracking: preserve exact original coordinates prior to drag
+  const dragStartPosRef = useRef<{ id: string; position: { x: number; y: number } } | null>(null);
+  const [reparentState, setReparentState] = useState<ReparentConfirmState | null>(null);
+
+  const { screenToFlowPosition, fitView, getInternalNode } = useReactFlow();
+
+  // In-Canvas Chat state
+  const [inlineChatNodeId, setInlineChatNodeId] = useState<string | null>(null);
+
+  // 1. Persistence Bridge: Restore snapshot on mount
+  useEffect(() => {
+    loadSnapshot();
+  }, [loadSnapshot]);
+
+  // 2. Viewport Event Listeners (Center-on node, fit view & inline chat)
+  useEffect(() => {
+    const handleCenterOn = (e: any) => {
+      if (e.detail?.id) {
+        fitView({ nodes: [{ id: e.detail.id }], duration: 300, maxZoom: 1.2 });
+      }
+    };
+    const handleFitView = () => fitView({ duration: 300 });
+    const handleZoomReset = () => fitView({ duration: 300, maxZoom: 1, minZoom: 1 });
+    const handleOpenInlineChat = (e: any) => {
+      if (e.detail?.shapeId) {
+        setInlineChatNodeId(e.detail.shapeId);
+      }
+    };
+
+    window.addEventListener("foqz:flow-center-on", handleCenterOn as EventListener);
+    window.addEventListener("foqz:flow-fit-view", handleFitView);
+    window.addEventListener("foqz:flow-zoom-fit", handleFitView);
+    window.addEventListener("foqz:flow-zoom-reset", handleZoomReset);
+    window.addEventListener("foqz:open-inline-chat", handleOpenInlineChat as EventListener);
+    return () => {
+      window.removeEventListener("foqz:flow-center-on", handleCenterOn as EventListener);
+      window.removeEventListener("foqz:flow-fit-view", handleFitView);
+      window.removeEventListener("foqz:flow-zoom-fit", handleFitView);
+      window.removeEventListener("foqz:flow-zoom-reset", handleZoomReset);
+      window.removeEventListener("foqz:open-inline-chat", handleOpenInlineChat as EventListener);
+    };
+  }, [fitView]);
+
+  // 3. Debounced Auto-save to localStorage
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          FLOW_STORAGE_KEY,
+          JSON.stringify({ nodes, edges, updatedAt: Date.now() })
+        );
+      } catch (err) {
+        console.warn("Failed to save React Flow snapshot:", err);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [nodes, edges]);
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      setNodes((nds) => applyNodeChanges(changes, nds));
+      const selectionChange = changes.find((c) => c.type === "select");
+      if (selectionChange && "selected" in selectionChange) {
+        if (selectionChange.selected) {
+          setSelectedNodeId(selectionChange.id);
+        } else {
+          const remainingSelected = nodes.find(
+            (n) => n.id !== selectionChange.id && n.selected
+          );
+          setSelectedNodeId(remainingSelected ? remainingSelected.id : null);
+        }
+      }
+    },
+    [nodes, setNodes, setSelectedNodeId]
+  );
+
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      setEdges((eds) => applyEdgeChanges(changes, eds));
+    },
+    [setEdges]
+  );
+
+  // Selected node for the contextual floating color/border menu
+  const selectedNode = nodes.find((n) => n.selected) || null;
+
+  // Semantic edge creation handler
+  const onConnect = useCallback(
+    (params: Connection) => {
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...params,
+            type: "semantic",
+            data: { relation: "depends" },
+          },
+          eds
+        )
+      );
+      if (activeTool === "arrow") {
+        setActiveTool("select");
+      }
+    },
+    [setEdges, activeTool]
+  );
+
+  // Track initial node position on drag start to restore on cancel
+  const handleNodeDragStart = useCallback((_event: React.MouseEvent, node: Node) => {
+    dragStartPosRef.current = { id: node.id, position: { ...node.position } };
+  }, []);
+
+  // Reparenting & Detach Logic on Node Drag Stop
+  const handleNodeDragStop = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      if (node.type === "projectFrame") return;
+
+      const currentNodes = useFlowCanvasStore.getState().nodes;
+      const frames = currentNodes.filter((n) => n.type === "projectFrame");
+      const currentParent = frames.find((f) => f.id === node.parentId);
+
+      // 1. Get exact absolute coordinates directly from React Flow's live internal state
+      const nodeInternal = getInternalNode(node.id);
+      const nodeAbs = nodeInternal?.internals?.positionAbsolute;
+
+      const parentInternal = currentParent ? getInternalNode(currentParent.id) : undefined;
+      const parentAbsX = parentInternal?.internals?.positionAbsolute?.x ?? currentParent?.position.x ?? 0;
+      const parentAbsY = parentInternal?.internals?.positionAbsolute?.y ?? currentParent?.position.y ?? 0;
+
+      const absX = nodeAbs?.x ?? (currentParent ? parentAbsX + node.position.x : node.position.x);
+      const absY = nodeAbs?.y ?? (currentParent ? parentAbsY + node.position.y : node.position.y);
+
+      const nodeW = nodeInternal?.measured?.width ?? Number(node.style?.width ?? (node.width ?? 260));
+      const nodeH = nodeInternal?.measured?.height ?? Number(node.style?.height ?? (node.height ?? 90));
+      const nodeCenterX = absX + nodeW / 2;
+      const nodeCenterY = absY + nodeH / 2;
+
+      const getFrameMetrics = (f: Node) => {
+        const fi = getInternalNode(f.id);
+        const fx = fi?.internals?.positionAbsolute?.x ?? f.position.x;
+        const fy = fi?.internals?.positionAbsolute?.y ?? f.position.y;
+        const fw = fi?.measured?.width ?? Number(f.style?.width ?? (f.width ?? 640));
+        const fh = fi?.measured?.height ?? Number(f.style?.height ?? (f.height ?? 420));
+        return { fx, fy, fw, fh };
+      };
+
+      const isInsideOrOverlapping = (fx: number, fy: number, fw: number, fh: number) => {
+        const centerInside =
+          nodeCenterX >= fx &&
+          nodeCenterX <= fx + fw &&
+          nodeCenterY >= fy &&
+          nodeCenterY <= fy + fh;
+
+        const bboxOverlap =
+          absX < fx + fw &&
+          absX + nodeW > fx &&
+          absY < fy + fh &&
+          absY + nodeH > fy;
+
+        return centerInside || bboxOverlap;
+      };
+
+      // 2. SAME PROJECT CHECK: If node already belongs to currentParent and is still inside/overlapping
+      if (currentParent) {
+        const { fx, fy, fw, fh } = getFrameMetrics(currentParent);
+        if (isInsideOrOverlapping(fx, fy, fw, fh)) {
+          // Still inside the same project frame!
+          // Calculate relative position within currentParent, keeping it neatly in bounds
+          const relX = Math.max(16, Math.min(fw - nodeW - 16, Math.round(absX - fx)));
+          const relY = Math.max(55, Math.min(fh - nodeH - 16, Math.round(absY - fy)));
+
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === node.id
+                ? {
+                    ...n,
+                    parentId: currentParent.id,
+                    position: { x: relX, y: relY },
+                    selected: true,
+                  }
+                : n
+            )
+          );
+          // Never trigger move out modal or detaching!
+          return;
+        }
+      }
+
+      // 3. Check if dropped inside a DIFFERENT project frame
+      const targetDifferentFrame = frames.find((f) => {
+        if (currentParent && f.id === currentParent.id) return false;
+        const { fx, fy, fw, fh } = getFrameMetrics(f);
+        return isInsideOrOverlapping(fx, fy, fw, fh);
+      });
+
+      if (targetDifferentFrame) {
+        // Dropped inside a new frame (either from standalone or from another frame)
+        const { fx, fy, fw, fh } = getFrameMetrics(targetDifferentFrame);
+        const relX = Math.max(16, Math.min(fw - nodeW - 16, Math.round(absX - fx)));
+        const relY = Math.max(55, Math.min(fh - nodeH - 16, Math.round(absY - fy)));
+
+        setNodes((nds) => {
+          const withoutNode = nds.filter((n) => n.id !== node.id);
+          const parentIdx = withoutNode.findIndex((n) => n.id === targetDifferentFrame.id);
+          const updatedNode = {
+            ...node,
+            parentId: targetDifferentFrame.id,
+            position: { x: relX, y: relY },
+            selected: true,
+          };
+          delete (updatedNode as any).extent;
+
+          if (parentIdx !== -1) {
+            const result = [...withoutNode];
+            result.splice(parentIdx + 1, 0, updatedNode);
+            return result;
+          }
+          return [...withoutNode, updatedNode];
+        });
+        return;
+      }
+
+      // 4. Node had a parent, but was dragged COMPLETELY OUTSIDE onto open canvas!
+      if (currentParent) {
+        const nodeTitle =
+          (node.data?.title as string) ||
+          (node.data?.label as string) ||
+          (node.data?.text as string) ||
+          "Item";
+        const parentTitle =
+          (currentParent?.data?.title as string) || "Project Frame";
+
+        const skipConfirm =
+          typeof window !== "undefined" &&
+          localStorage.getItem(SKIP_REPARENT_KEY) === "true";
+
+        if (skipConfirm) {
+          // Immediately detach without asking
+          setNodes((nds) =>
+            nds.map((n) => {
+              if (n.id !== node.id) return n;
+              const detached = { ...n };
+              delete detached.parentId;
+              delete detached.extent;
+              return {
+                ...detached,
+                position: { x: Math.round(absX), y: Math.round(absY) },
+              };
+            })
+          );
+        } else {
+          // Open confirmation modal with preserved pre-drag coordinate
+          const origPos =
+            dragStartPosRef.current?.id === node.id
+              ? dragStartPosRef.current.position
+              : { x: node.position.x, y: node.position.y };
+
+          setReparentState({
+            isOpen: true,
+            nodeId: node.id,
+            nodeTitle,
+            parentTitle,
+            originalPosition: origPos,
+            targetAbsolutePosition: {
+              x: Math.round(absX),
+              y: Math.round(absY),
+            },
+          });
+        }
+      }
+    },
+    [getInternalNode, setNodes]
+  );
+
+  const handleConfirmReparent = (rememberChoice: boolean) => {
+    if (!reparentState) return;
+    if (rememberChoice && typeof window !== "undefined") {
+      localStorage.setItem(SKIP_REPARENT_KEY, "true");
+    }
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id !== reparentState.nodeId) return n;
+        const detached = { ...n };
+        delete detached.parentId;
+        delete detached.extent;
+        return {
+          ...detached,
+          position: reparentState.targetAbsolutePosition,
+        };
+      })
+    );
+    setReparentState(null);
+  };
+
+  const handleCancelReparent = () => {
+    // Revert position cleanly to its original pre-drag coordinates
+    if (reparentState) {
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== reparentState.nodeId) return n;
+          return {
+            ...n,
+            position: reparentState.originalPosition,
+          };
+        })
+      );
+    }
+    setReparentState(null);
+  };
+
+  // Helper spawners
+  const handleCreateTaskAt = useCallback(
+    (pos: { x: number; y: number }) => {
+      const id = `task-${Date.now()}`;
+      const newNode: Node = {
+        id,
+        type: "focusTask",
+        position: { x: pos.x - 130, y: pos.y - 41 },
+        style: { width: 280, height: 90 },
+        data: {
+          title: "New Task Card",
+          status: "open",
+          priority: 3,
+          paper: "cream",
+          borderStyle: "solid",
+        },
+      };
+      setNodes((nds) => [...nds, newNode]);
+      setSelectedNodeId(id);
+      setActiveTool("select");
+    },
+    [setNodes, setSelectedNodeId]
+  );
+
+  const handleCreateBoxAt = useCallback(
+    (x: number, y: number, w: number, h: number) => {
+      const id = `box-${Date.now()}`;
+      const newNode: Node = {
+        id,
+        type: "box",
+        position: { x, y },
+        style: { width: w, height: h },
+        data: {
+          label: "Sketch Box",
+          color: "rgba(16, 185, 129, 0.08)",
+          strokeColor: "#10b981",
+          roughness: 1.8,
+          borderStyle: "solid",
+        },
+      };
+      setNodes((nds) => [...nds, newNode]);
+      setSelectedNodeId(id);
+      setActiveTool("select");
+    },
+    [setNodes, setSelectedNodeId]
+  );
+
+  const handleCreateCircleAt = useCallback(
+    (x: number, y: number, w: number, h: number) => {
+      const id = `circle-${Date.now()}`;
+      const newNode: Node = {
+        id,
+        type: "circle",
+        position: { x, y },
+        style: { width: w, height: h },
+        data: {
+          label: "Circle",
+          color: "rgba(99, 102, 241, 0.08)",
+          strokeColor: "#6366f1",
+          roughness: 1.8,
+          borderStyle: "solid",
+        },
+      };
+      setNodes((nds) => [...nds, newNode]);
+      setSelectedNodeId(id);
+      setActiveTool("select");
+    },
+    [setNodes, setSelectedNodeId]
+  );
+
+
+  const handleCreateTextAt = useCallback(
+    (pos: { x: number; y: number }) => {
+      const id = `text-${Date.now()}`;
+      const newNode: Node = {
+        id,
+        type: "text",
+        position: pos,
+        data: {
+          text: "Type something...",
+        },
+      };
+      setNodes((nds) => [...nds, newNode]);
+      setSelectedNodeId(id);
+      setActiveTool("select");
+    },
+    [setNodes, setSelectedNodeId]
+  );
+
+  const handleCreateProject = useCallback(() => {
+    const id = `proj-${Date.now()}`;
+    const newNode: Node = {
+      id,
+      type: "projectFrame",
+      position: { x: 180 + Math.random() * 40, y: 140 + Math.random() * 40 },
+      style: { width: 640, height: 420 },
+      data: {
+        title: "New Project Workspace",
+        goal: "Goal: Define milestone objectives",
+        accent: "emerald",
+        borderStyle: "dashed",
+      },
+    };
+    setNodes((nds) => [...nds, newNode]);
+    setSelectedNodeId(id);
+    setActiveTool("select");
+  }, [setNodes, setSelectedNodeId]);
+
+  const handleDeleteSelected = useCallback(() => {
+    const currentNodes = useFlowCanvasStore.getState().nodes;
+    const currentEdges = useFlowCanvasStore.getState().edges;
+
+    const selectedNodes = currentNodes.filter((n) => n.selected);
+    const selectedEdges = currentEdges.filter((e) => e.selected);
+
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
+
+    // 1. Collect all node IDs to delete (including child nodes if a parent projectFrame is deleted)
+    const allDeletedNodeIds = new Set<string>();
+    if (selectedNodes.length > 0) {
+      const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
+      currentNodes.forEach((n) => {
+        if (selectedNodeIds.has(n.id) || (n.parentId && selectedNodeIds.has(n.parentId))) {
+          allDeletedNodeIds.add(n.id);
+        }
+      });
+    }
+
+    // 2. Collect all edge IDs to delete (directly selected edges + edges attached to deleted nodes)
+    const allDeletedEdgeIds = new Set<string>(selectedEdges.map((e) => e.id));
+    if (allDeletedNodeIds.size > 0) {
+      currentEdges.forEach((e) => {
+        if (allDeletedNodeIds.has(e.source) || allDeletedNodeIds.has(e.target)) {
+          allDeletedEdgeIds.add(e.id);
+        }
+      });
+      setNodes((nds) => nds.filter((n) => !allDeletedNodeIds.has(n.id)));
+      if (allDeletedNodeIds.has(useFlowCanvasStore.getState().selectedNodeId || "")) {
+        setSelectedNodeId(null);
+      }
+    }
+
+    // 3. Delete matching edges
+    if (allDeletedEdgeIds.size > 0) {
+      setEdges((eds) => eds.filter((e) => !allDeletedEdgeIds.has(e.id)));
+    }
+  }, [setNodes, setEdges, setSelectedNodeId]);
+
+  const handleEscape = useCallback(() => {
+    setActiveTool("select");
+    setInlineChatNodeId(null);
+    boxDragStartRef.current = null;
+    setBoxPreviewRect(null);
+    isDrawingPencil.current = false;
+    setPencilPreviewSvgPath(null);
+    currentPencilFlowPoints.current = [];
+    currentPencilClientPoints.current = [];
+    setNodes((nds) =>
+      nds.map((n) => (n.selected ? { ...n, selected: false } : n))
+    );
+    setEdges((eds) =>
+      eds.map((e) => (e.selected ? { ...e, selected: false } : e))
+    );
+  }, [setNodes, setEdges]);
+
+  const handleCenterFront = useCallback(() => {
+    const currentNodes = useFlowCanvasStore.getState().nodes;
+    const selNode = currentNodes.find((n) => n.selected);
+    const currentEdges = useFlowCanvasStore.getState().edges;
+    const selEdge = currentEdges.find((e) => e.selected);
+
+    if (selNode) {
+      // 1. Center camera on the selected node
+      fitView({
+        nodes: [{ id: selNode.id }],
+        duration: 300,
+        maxZoom: 1.1,
+      });
+
+      // 2. Bring to front: elevate zIndex and move towards top of stacking order
+      setNodes((nds) => {
+        const target = nds.find((n) => n.id === selNode.id);
+        if (!target) return nds;
+
+        const without = nds.filter((n) => n.id !== selNode.id);
+        if (target.parentId) {
+          const parentIndex = without.findIndex((n) => n.id === target.parentId);
+          if (parentIndex !== -1) {
+            let lastSiblingIdx = parentIndex;
+            for (let i = parentIndex + 1; i < without.length; i++) {
+              if (without[i].parentId === target.parentId) {
+                lastSiblingIdx = i;
+              }
+            }
+            const res = [...without];
+            res.splice(lastSiblingIdx + 1, 0, {
+              ...target,
+              style: { ...target.style, zIndex: 1000 },
+            });
+            return res;
+          }
+        }
+        if (target.type === "projectFrame") {
+          // Keep project frames at base container level so child tasks stay above it
+          return [target, ...without];
+        }
+        return [...without, { ...target, style: { ...target.style, zIndex: 1000 } }];
+      });
+    } else if (selEdge) {
+      fitView({
+        nodes: [{ id: selEdge.source }, { id: selEdge.target }],
+        duration: 300,
+        maxZoom: 1.1,
+      });
+    } else {
+      fitView({ duration: 300 });
+    }
+  }, [fitView, setNodes]);
+
+  // Unified Keyboard Shortcuts Hook (disabled during modal dialogs)
+  useFlowCanvasShortcuts({
+    enabled: !reparentState?.isOpen,
+    onSelectTool: () => setActiveTool("select"),
+    onBoxTool: () => setActiveTool("box"),
+    onCircleTool: () => setActiveTool("circle"),
+    onTextTool: () => setActiveTool("text"),
+    onArrowTool: () => setActiveTool("arrow"),
+    onPencilTool: () => setActiveTool("pencil"),
+    onCreateTask: () => {
+      handleCreateTaskAt({
+        x: 400 + Math.random() * 40,
+        y: 260 + Math.random() * 40,
+      });
+    },
+    onCreateProject: handleCreateProject,
+    onFocusMode: () => {
+      const sel = nodes.find((n) => n.selected);
+      if (sel) {
+        window.dispatchEvent(
+          new CustomEvent("foqz:set-focus-target", { detail: { shapeId: sel.id } })
+        );
+      }
+    },
+    onCenterFront: handleCenterFront,
+    onInlineChat: () => {
+      const sel = nodes.find((n) => n.selected);
+      if (sel) {
+        setInlineChatNodeId((prev) => (prev === sel.id ? null : sel.id));
+      } else {
+        handleCenterFront();
+      }
+    },
+    onDeleteSelected: handleDeleteSelected,
+    onDuplicateSelected: () => useFlowCanvasStore.getState().duplicateSelected(),
+    onUndo: () => useFlowCanvasStore.temporal.getState().undo(),
+    onRedo: () => useFlowCanvasStore.temporal.getState().redo(),
+    onFitView: () => fitView({ duration: 300 }),
+    onToggleShortcutsModal: () => {
+      window.dispatchEvent(new CustomEvent("foqz:open-shortcuts"));
+    },
+    onEscape: handleEscape,
+  });
+
+  // Canvas Click Handler (Click-to-place for Task and Text)
+  const handlePaneClick = useCallback(
+    (event: React.MouseEvent) => {
+      const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+
+      if (activeTool === "task") {
+        handleCreateTaskAt(pos);
+      } else if (activeTool === "text") {
+        handleCreateTextAt(pos);
+      } else {
+        setEdges((eds) =>
+          eds.some((e) => e.selected)
+            ? eds.map((e) => (e.selected ? { ...e, selected: false } : e))
+            : eds
+        );
+      }
+    },
+    [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, setEdges]
+  );
+
+  // Edge Click Handler (Selects edge, deselects nodes)
+  const onEdgeClick = useCallback(
+    (_event: React.MouseEvent, edge: Edge) => {
+      setEdges((eds) =>
+        eds.map((e) => ({ ...e, selected: e.id === edge.id }))
+      );
+      setNodes((nds) =>
+        nds.map((n) => (n.selected ? { ...n, selected: false } : n))
+      );
+      setSelectedNodeId(null);
+    },
+    [setEdges, setNodes, setSelectedNodeId]
+  );
+
+  // Double Click Canvas to Create Text Note (strictly on canvas background)
+  const handlePaneDoubleClick = useCallback(
+    (event: React.MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target && target.classList.contains("react-flow__pane")) {
+        const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        handleCreateTextAt(pos);
+      }
+    },
+    [screenToFlowPosition, handleCreateTextAt]
+  );
+
+  // Pointer Down (Box/Circle Drag-to-size OR Pencil drawing)
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (activeTool === "pencil") {
+      isDrawingPencil.current = true;
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      const clientX = e.clientX - (containerRect?.left ?? 0);
+      const clientY = e.clientY - (containerRect?.top ?? 0);
+      const flowPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+
+      currentPencilFlowPoints.current = [flowPos];
+      currentPencilClientPoints.current = [[clientX, clientY]];
+      const stroke = getStroke(currentPencilClientPoints.current, {
+        size: 6,
+        thinning: 0.5,
+        smoothing: 0.5,
+        streamline: 0.5,
+      });
+      setPencilPreviewSvgPath(getSvgPathFromStroke(stroke));
+    } else if (activeTool === "box" || activeTool === "circle") {
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      const clientX = e.clientX - (containerRect?.left ?? 0);
+      const clientY = e.clientY - (containerRect?.top ?? 0);
+      const flowPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      boxDragStartRef.current = {
+        flow: flowPos,
+        client: { x: clientX, y: clientY },
+      };
+      setBoxPreviewRect({ x: clientX, y: clientY, w: 0, h: 0 });
+    }
+  };
+
+  // Pointer Move (Box/Circle Drag-to-size OR Pencil drawing)
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (activeTool === "pencil" && isDrawingPencil.current) {
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      const clientX = e.clientX - (containerRect?.left ?? 0);
+      const clientY = e.clientY - (containerRect?.top ?? 0);
+      const flowPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+
+      currentPencilFlowPoints.current.push(flowPos);
+      currentPencilClientPoints.current.push([clientX, clientY]);
+      const stroke = getStroke(currentPencilClientPoints.current, {
+        size: 6,
+        thinning: 0.5,
+        smoothing: 0.5,
+        streamline: 0.5,
+      });
+      setPencilPreviewSvgPath(getSvgPathFromStroke(stroke));
+    } else if ((activeTool === "box" || activeTool === "circle") && boxDragStartRef.current) {
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      const currentClientX = e.clientX - (containerRect?.left ?? 0);
+      const currentClientY = e.clientY - (containerRect?.top ?? 0);
+      const startClient = boxDragStartRef.current.client;
+
+      const x = Math.min(startClient.x, currentClientX);
+      const y = Math.min(startClient.y, currentClientY);
+      const w = Math.abs(currentClientX - startClient.x);
+      const h = Math.abs(currentClientY - startClient.y);
+      setBoxPreviewRect({ x, y, w, h });
+    }
+  };
+
+  // Pointer Up (Finalize Box/Circle Drag OR Pencil drawing)
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (activeTool === "pencil" && isDrawingPencil.current) {
+      isDrawingPencil.current = false;
+      setPencilPreviewSvgPath(null);
+      const rawPoints = [...currentPencilFlowPoints.current];
+      currentPencilFlowPoints.current = [];
+      currentPencilClientPoints.current = [];
+
+      if (rawPoints.length > 1) {
+        const finalId = `pencil-${Date.now()}`;
+        const xs = rawPoints.map((p) => p.x);
+        const ys = rawPoints.map((p) => p.y);
+        const minX = Math.min(...xs);
+        const minY = Math.min(...ys);
+
+        const newPencilNode: Node = {
+          id: finalId,
+          type: "pencil",
+          position: { x: minX, y: minY },
+          data: { points: rawPoints, color: "#ef4444", size: 6 },
+        };
+        setNodes((nds) => [...nds, newPencilNode]);
+      }
+      setActiveTool("select");
+    } else if ((activeTool === "box" || activeTool === "circle") && boxDragStartRef.current) {
+      const currentFlow = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const startFlow = boxDragStartRef.current.flow;
+      boxDragStartRef.current = null;
+      setBoxPreviewRect(null);
+
+      const dx = Math.abs(currentFlow.x - startFlow.x);
+      const dy = Math.abs(currentFlow.y - startFlow.y);
+
+      if (activeTool === "circle") {
+        if (dx < 6 && dy < 6) {
+          // Single click fallback: spawn default size circle centered at click
+          handleCreateCircleAt(startFlow.x - 80, startFlow.y - 80, 160, 160);
+        } else {
+          const x = Math.min(startFlow.x, currentFlow.x);
+          const y = Math.min(startFlow.y, currentFlow.y);
+          const w = Math.max(80, dx);
+          const h = Math.max(80, dy);
+          handleCreateCircleAt(x, y, w, h);
+        }
+      } else {
+        if (dx < 6 && dy < 6) {
+          // Single click fallback: spawn default size box centered at click
+          handleCreateBoxAt(startFlow.x - 110, startFlow.y - 70, 220, 140);
+        } else {
+          const x = Math.min(startFlow.x, currentFlow.x);
+          const y = Math.min(startFlow.y, currentFlow.y);
+          const w = Math.max(60, dx);
+          const h = Math.max(40, dy);
+          handleCreateBoxAt(x, y, w, h);
+        }
+      }
+    }
+  };
+
+
+  return (
+    <div
+      ref={containerRef}
+      className={`w-full h-full relative overflow-hidden bg-zinc-50 dark:bg-zinc-950 ${
+        activeTool !== "select" ? "cursor-crosshair" : "cursor-default"
+      }`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
+      {/* Vertical Icon-Only Toolbar on the Right (capsule pill, moves with Copilot drawer) */}
+      <div
+        className="absolute top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-1.5 p-1.5 rounded-full glass-panel shadow-2xl backdrop-blur-2xl backdrop-saturate-150 transition-all duration-200 select-none border border-white/60 dark:border-white/10"
+        style={{
+          right: "var(--tools-bar-right, 18px)",
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {/* 1. Select Tool */}
+        <button
+          type="button"
+          onClick={() => setActiveTool("select")}
+          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            activeTool === "select"
+              ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-md shadow-black/20 ring-1 ring-white/20"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 active:scale-95"
+          }`}
+          title="Select / Move Tool (V)"
+        >
+          <Pointer className="size-5" />
+        </button>
+
+        {/* Subtle separator */}
+        <div className="w-5 h-[1px] bg-black/[0.08] dark:bg-white/[0.12] my-0.5 rounded-full" />
+
+        {/* 2. Task Card Tool */}
+        <button
+          type="button"
+          onClick={() => setActiveTool("task")}
+          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            activeTool === "task"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-1 ring-white/25"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50/80 dark:hover:bg-blue-950/40 active:scale-95"
+          }`}
+          title="Task Card Tool (N) — Click canvas to place"
+        >
+          <CheckSquare className="size-5" />
+        </button>
+
+        {/* 3. 2D Sketch Box Tool (Square) */}
+        <button
+          type="button"
+          onClick={() => setActiveTool("box")}
+          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            activeTool === "box"
+              ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/30 ring-1 ring-white/25"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40 active:scale-95"
+          }`}
+          title="Sketch Box Tool (B) — Drag to size"
+        >
+          <Square className="size-5" />
+        </button>
+
+        {/* Circle Sketch Tool */}
+        <button
+          type="button"
+          onClick={() => setActiveTool("circle")}
+          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            activeTool === "circle"
+              ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-1 ring-white/25"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/40 active:scale-95"
+          }`}
+          title="Sketch Circle Tool (O) — Drag to size"
+        >
+          <Circle className="size-5" />
+        </button>
+
+        {/* 4. Text Tool */}
+        <button
+          type="button"
+          onClick={() => setActiveTool("text")}
+          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            activeTool === "text"
+              ? "bg-amber-600 text-white shadow-md shadow-amber-500/30 ring-1 ring-white/25"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/80 dark:hover:bg-amber-950/40 active:scale-95"
+          }`}
+          title="Text Note Tool (T) — Click canvas to place"
+        >
+          <TypeIcon className="size-5" />
+        </button>
+
+        {/* 5. Semantic Arrow / Connector Tool */}
+        <button
+          type="button"
+          onClick={() => setActiveTool("arrow")}
+          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            activeTool === "arrow"
+              ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-1 ring-white/25"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/40 active:scale-95"
+          }`}
+          title="Semantic Arrow Tool (A) — Drag between node handles"
+        >
+          <MoveRight className="size-5" />
+        </button>
+
+        {/* 6. Freehand Pencil */}
+        <button
+          type="button"
+          onClick={() => setActiveTool("pencil")}
+          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            activeTool === "pencil"
+              ? "bg-rose-600 text-white shadow-md shadow-rose-500/30 ring-1 ring-white/25"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50/80 dark:hover:bg-rose-950/40 active:scale-95"
+          }`}
+          title="Freehand Pencil Tool (P) — Draw anywhere"
+        >
+          <Pencil className="size-5" />
+        </button>
+      </div>
+
+      {/* Main React Flow Canvas */}
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onNodeDragStart={handleNodeDragStart}
+        onNodeDragStop={handleNodeDragStop}
+        onPaneClick={handlePaneClick}
+        onEdgeClick={onEdgeClick}
+        onDoubleClick={handlePaneDoubleClick}
+        connectionMode={ConnectionMode.Loose}
+        defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
+        fitView
+        zoomOnDoubleClick={false}
+        minZoom={0.2}
+        maxZoom={2.5}
+        deleteKeyCode={null}
+        multiSelectionKeyCode={MULTI_SELECTION_KEY_CODE}
+        proOptions={PRO_OPTIONS}
+        onlyRenderVisibleElements={true}
+        selectionOnDrag={activeTool === "select"}
+        panOnDrag={PAN_ON_DRAG}
+        panOnScroll={true}
+        panOnScrollSpeed={1.2}
+        panOnScrollMode={PanOnScrollMode.Free}
+        zoomOnPinch={true}
+        zoomOnScroll={false}
+        zoomActivationKeyCode={ZOOM_ACTIVATION_KEY_CODE}
+        panActivationKeyCode="Space"
+      >
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
+        <FlowZoomControls sidebarOpen={sidebarOpen} />
+        <FlowShapeMenu selectedNode={selectedNode} />
+      </ReactFlow>
+
+      {/* Live Freehand Pencil Preview Overlay (Smooth 60fps) */}
+      {pencilPreviewSvgPath && (
+        <svg className="absolute inset-0 pointer-events-none z-40 w-full h-full overflow-visible">
+          <path
+            d={pencilPreviewSvgPath}
+            fill="#ef4444"
+            stroke="#ef4444"
+            strokeWidth={0.5}
+          />
+        </svg>
+      )}
+
+      {/* Live Drag-to-size Box Preview Overlay */}
+      {boxPreviewRect && (
+        <div
+          className="absolute pointer-events-none border-2 border-dashed border-emerald-500 bg-emerald-500/10 rounded-xl z-40"
+          style={{
+            left: boxPreviewRect.x,
+            top: boxPreviewRect.y,
+            width: boxPreviewRect.w,
+            height: boxPreviewRect.h,
+          }}
+        />
+      )}
+
+      {/* Reparent Confirmation Modal */}
+      <ReparentConfirmModal
+        state={reparentState}
+        onConfirm={handleConfirmReparent}
+        onCancel={handleCancelReparent}
+      />
+
+      {/* In-Canvas Element AI Chat */}
+      {inlineChatNodeId && (
+        <ElementInlineChat
+          nodeId={inlineChatNodeId}
+          onClose={() => setInlineChatNodeId(null)}
+        />
+      )}
+    </div>
+  );
+}

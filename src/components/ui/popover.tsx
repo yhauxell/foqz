@@ -35,7 +35,7 @@ function PopoverContent({
       >
         <PopoverPrimitive.Popup
           className={cn(
-            "max-h-[min(var(--available-height),320px)] w-auto max-w-[min(calc(100vw-24px),320px)] origin-[var(--transform-origin)] rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none",
+            "max-h-[min(var(--available-height),320px)] w-auto max-w-[min(calc(100vw-24px),320px)] origin-[var(--transform-origin)] rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none transition-[transform,opacity] duration-150",
             "data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0 data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0",
             className
           )}

@@ -1,0 +1,210 @@
+export interface ShortcutCommand {
+  id: string;
+  name: string;
+  keys: string[];
+  keyDisplay: string;
+  category: "Tools" | "Create" | "Canvas & Navigation" | "Interactions";
+  description: string;
+}
+
+export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
+  // Tools
+  {
+    id: "tool-select",
+    name: "Select / Pan Tool",
+    keys: ["v", "1"],
+    keyDisplay: "V",
+    category: "Tools",
+    description: "Switch to select and canvas panning mode",
+  },
+  {
+    id: "tool-box",
+    name: "Hand-Drawn Sketch Box",
+    keys: ["b", "2"],
+    keyDisplay: "B",
+    category: "Tools",
+    description: "Drag to size a rough sketch box container",
+  },
+  {
+    id: "tool-circle",
+    name: "Circle Tool",
+    keys: ["o"],
+    keyDisplay: "O",
+    category: "Tools",
+    description: "Drag to size a rough sketch circle",
+  },
+  {
+    id: "tool-text",
+    name: "Text Note",
+    keys: ["t", "3"],
+    keyDisplay: "T",
+    category: "Tools",
+    description: "Click to place a text note on canvas",
+  },
+  {
+    id: "tool-arrow",
+    name: "Semantic Arrow / Connector",
+    keys: ["a", "4"],
+    keyDisplay: "A",
+    category: "Tools",
+    description: "Drag to connect elements with semantic relationship (blocks / depends / relates)",
+  },
+  {
+    id: "tool-pencil",
+    name: "Freehand Pencil",
+    keys: ["p", "5", "d"],
+    keyDisplay: "P",
+    category: "Tools",
+    description: "Draw calligraphic freehand pencil strokes",
+  },
+
+  // Actions & Create
+  {
+    id: "action-focus",
+    name: "Mono-Focus Mode",
+    keys: ["f"],
+    keyDisplay: "F",
+    category: "Create",
+    description: "Enter distraction-free focus mode on selected task card",
+  },
+  {
+    id: "action-inline-chat",
+    name: "In-Canvas AI Chat",
+    keys: ["c"],
+    keyDisplay: "C",
+    category: "Canvas & Navigation",
+    description: "Open in-canvas AI chat docked directly to selected element",
+  },
+  {
+    id: "action-center-front",
+    name: "Center & Front Element",
+    keys: ["shift+c"],
+    keyDisplay: "⇧C",
+    category: "Canvas & Navigation",
+    description: "Center camera on selected element and bring to front",
+  },
+  {
+    id: "create-task",
+    name: "New Task Card",
+    keys: ["n"],
+    keyDisplay: "N",
+    category: "Create",
+    description: "Spawn a new resizable sketchy task card",
+  },
+  {
+    id: "create-project",
+    name: "New Project Frame",
+    keys: ["meta+shift+p", "ctrl+shift+p", "alt+p"],
+    keyDisplay: "⌘⇧P",
+    category: "Create",
+    description: "Create a new glassmorphic project workspace container",
+  },
+
+  // Canvas & Navigation
+  {
+    id: "canvas-trackpad-pan",
+    name: "Two-Finger Pan",
+    keys: [],
+    keyDisplay: "2-Finger Swipe",
+    category: "Canvas & Navigation",
+    description: "Freely pan / move around the canvas in any direction without tools",
+  },
+  {
+    id: "canvas-trackpad-zoom",
+    name: "Pinch to Zoom",
+    keys: [],
+    keyDisplay: "Pinch / ⌘ Scroll",
+    category: "Canvas & Navigation",
+    description: "Smoothly zoom in and out with two-finger pinch or Cmd+Scroll",
+  },
+  {
+    id: "canvas-fit-view",
+    name: "Fit View to Canvas",
+    keys: ["0"],
+    keyDisplay: "0",
+    category: "Canvas & Navigation",
+    description: "Zoom to fit all nodes on screen",
+  },
+  {
+    id: "canvas-undo",
+    name: "Undo",
+    keys: ["meta+z", "ctrl+z"],
+    keyDisplay: "⌘Z",
+    category: "Canvas & Navigation",
+    description: "Undo the last action on the canvas",
+  },
+  {
+    id: "canvas-redo",
+    name: "Redo",
+    keys: ["meta+shift+z", "ctrl+shift+z", "meta+y", "ctrl+y"],
+    keyDisplay: "⌘⇧Z",
+    category: "Canvas & Navigation",
+    description: "Redo the previously undone action",
+  },
+  {
+    id: "canvas-duplicate",
+    name: "Duplicate Selected",
+    keys: ["meta+d", "ctrl+d"],
+    keyDisplay: "⌘D",
+    category: "Canvas & Navigation",
+    description: "Duplicate selected elements with an offset",
+  },
+  {
+    id: "canvas-delete",
+    name: "Delete Selected",
+    keys: ["delete", "backspace"],
+    keyDisplay: "Del / ⌫",
+    category: "Canvas & Navigation",
+    description: "Delete currently selected shapes and their edges",
+  },
+  {
+    id: "canvas-escape",
+    name: "Deselect / Cancel",
+    keys: ["escape"],
+    keyDisplay: "Esc",
+    category: "Canvas & Navigation",
+    description: "Clear selection and return to Select tool",
+  },
+  {
+    id: "canvas-help",
+    name: "Shortcuts Cheat Sheet",
+    keys: ["?", "shift+?"],
+    keyDisplay: "?",
+    category: "Canvas & Navigation",
+    description: "Open the keyboard shortcuts guide",
+  },
+
+  // Interactions
+  {
+    id: "interaction-double-click-canvas",
+    name: "Double-Click Canvas",
+    keys: [],
+    keyDisplay: "Double Click",
+    category: "Interactions",
+    description: "Quickly create a text note anywhere on empty canvas",
+  },
+  {
+    id: "interaction-double-click-node",
+    name: "Double-Click Node",
+    keys: [],
+    keyDisplay: "Double Click",
+    category: "Interactions",
+    description: "Inline edit task title, box text, or project name",
+  },
+  {
+    id: "interaction-drag-to-group",
+    name: "Drag into Project Frame",
+    keys: [],
+    keyDisplay: "Drag & Drop",
+    category: "Interactions",
+    description: "Automatically groups node as child of Project Frame",
+  },
+  {
+    id: "interaction-connect-handles",
+    name: "Connect Any Handle",
+    keys: [],
+    keyDisplay: "Drag Handle",
+    category: "Interactions",
+    description: "Universal loose connection with directional arrows",
+  },
+];
