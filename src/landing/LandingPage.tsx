@@ -57,7 +57,7 @@ export function LandingPage() {
           A quiet canvas for deep work — from the menu bar.
         </h1>
         <p className="mt-6 max-w-xl text-lg leading-relaxed text-zinc-400">
-          Toggle a frosted window when you need it, sketch and plan on a tldraw board, and keep timers
+          Toggle a frosted window when you need it, sketch and plan on a spatial canvas, and keep timers
           within reach. Built as a small desktop app you install yourself — no App Store required.
         </p>
 
@@ -160,7 +160,7 @@ export function LandingPage() {
             },
             {
               title: "Infinite board",
-              body: "Plan and sketch with tldraw — your snapshot stays on device.",
+              body: "Plan and sketch with tactile rough styling — your board stays on device.",
             },
             {
               title: "Focus timers",

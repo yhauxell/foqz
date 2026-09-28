@@ -29,7 +29,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { type Editor, type TLShapeId, useValue } from "tldraw";
 import { useOllama, type OllamaChatMessage } from "@/lib/ollama";
 import { runAgentLoop, type AgentToolCallEvent } from "@/lib/mcpAgentLoop";
 import { useFocusAppSettingsOptional } from "@/context/FocusAppSettingsContext";
@@ -37,34 +36,23 @@ import { getCachedAppSettings, patchCachedAppSettings } from "@/lib/appSettingsC
 import { resolveActiveAiConfig } from "@/lib/appSettings";
 import { OPENAI_DEFAULT_MODELS, GEMINI_DEFAULT_MODELS } from "@/lib/aiConnectors";
 import type { AiProviderName } from "@/lib/aiProvider";
-import { NATIVE_FOQZ_TOOLS, createCanvasToolExecutor } from "@/lib/canvasTools";
+import { NATIVE_FOQZ_TOOLS, createFlowCanvasToolExecutor } from "@/lib/canvasTools";
 import type { McpTool } from "@/lib/mcpTypes";
 import {
   FOQZ_SYSTEM_PROMPT,
-  findContainingProjectFrame,
   parseCanvasActions,
   parseOutputSegments,
-  spawnShapesOnCanvas,
-  spawnSingleShapeOnCanvas,
-  spawnWorkflowForProject,
   type SpawnableShape,
 } from "@/lib/canvasSpawner";
 import { CanvasActionList } from "@/components/CanvasActionList";
 import { renderMarkdownBlock } from "@/lib/markdown";
 import { MarkdownView } from "@/components/MarkdownView";
 import {
-  extractShapeContext,
-  getCanvasContext,
   getFlowCanvasContext,
   type ShapeContextItem,
 } from "@/lib/canvasContext";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
-import {
-  ACCENT_STYLES,
-  type ProjectAccent,
-  type TLProjectFrameShape,
-} from "@/shapes/projectFrame/ProjectFrameShapeUtil";
-import type { TLFocusTaskShape } from "@/shapes/focusTask/FocusTaskShapeUtil";
+import { ACCENT_STYLES, type ProjectAccent } from "@/types/canvas";
 
 export interface CopilotChatMessage {
   id: string;
@@ -78,15 +66,13 @@ export interface CopilotChatMessage {
 }
 
 interface CopilotDrawerProps {
-  editor: Editor | null;
   open: boolean;
   onClose: () => void;
-  selectedShapeId: TLShapeId | null;
+  selectedShapeId?: string | null;
   onOpenSettings?: (tab?: "general" | "workingHours" | "ai" | "mcp" | "data") => void;
 }
 
 export function CopilotDrawer({
-  editor,
   open,
   onClose,
   selectedShapeId,
@@ -237,80 +223,25 @@ export function CopilotDrawer({
     }
   }, [messages]);
 
-  // Synchronize store mutations only when drawer is open and actual document shapes change
-  useEffect(() => {
-    if (!editor || !open) return;
-
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const unlistenStore = editor.store.listen(
-      (entry) => {
-        const changes = entry.changes;
-        const hasShapeChange =
-          Object.keys(changes.added || {}).length > 0 ||
-          Object.keys(changes.removed || {}).length > 0 ||
-          Object.keys(changes.updated || {}).length > 0;
-
-        if (hasShapeChange) {
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(() => {
-            setStoreTick((t) => t + 1);
-          }, 300);
-        }
-      },
-      { scope: "document" },
-    );
-
-    return () => {
-      if (timer) clearTimeout(timer);
-      unlistenStore();
-    };
-  }, [editor, open]);
 
   const flowNodes = useFlowCanvasStore((s) => s.nodes);
+  const flowEdges = useFlowCanvasStore((s) => s.edges);
   const flowSelectedId = useFlowCanvasStore((s) => s.selectedNodeId);
   const flowCreateTask = useFlowCanvasStore((s) => s.createTask);
   const flowCreateProject = useFlowCanvasStore((s) => s.createProject);
   const flowSelectNode = useFlowCanvasStore((s) => s.setSelectedNodeId);
 
-  // Ensure external selectedShapeId is selected in the editor or flow
+  // Ensure external selectedShapeId is selected in React Flow
   useEffect(() => {
-    if (editor && selectedShapeId) {
-      if (!editor.getSelectedShapeIds().includes(selectedShapeId)) {
-        editor.select(selectedShapeId);
-      }
-    } else if (!editor && selectedShapeId) {
+    if (selectedShapeId) {
       flowSelectNode(selectedShapeId);
     }
-  }, [editor, selectedShapeId, flowSelectNode]);
+  }, [selectedShapeId, flowSelectNode]);
 
-  // Reactively track selected shapes and all shapes on the current page
-  const selectedShapes = useValue(
-    "selectedShapes",
-    () => (editor ? editor.getSelectedShapes() : []),
-    [editor],
-  );
-
-  const allPageShapes = useValue(
-    "allPageShapes",
-    () => (editor ? editor.getCurrentPageShapes() : []),
-    [editor],
-  );
-
-  // Extract human-readable text and context from all canvas shapes (tldraw or React Flow)
+  // Extract human-readable text and context from React Flow canvas
   const canvasCtx = useMemo(() => {
-    if (editor) {
-      return getCanvasContext(editor);
-    }
-    return getFlowCanvasContext(flowNodes, flowSelectedId);
-  }, [
-    editor,
-    selectedShapes,
-    allPageShapes,
-    selectedShapeId,
-    storeTick,
-    flowNodes,
-    flowSelectedId,
-  ]);
+    return getFlowCanvasContext(flowNodes, flowEdges, flowSelectedId);
+  }, [flowNodes, flowEdges, flowSelectedId]);
 
   const { selectedItems, selectedSummary, boardItems, boardSummary, primaryShape } =
     canvasCtx;
@@ -482,7 +413,7 @@ export function CopilotDrawer({
         contextMsg = `[Active Canvas Board Context (${boardItems.length} item${boardItems.length > 1 ? "s" : ""})]:\n${boardSummary}`;
       }
 
-      const localToolExecutor = createCanvasToolExecutor(editor, () => primaryShape);
+      const localToolExecutor = createFlowCanvasToolExecutor();
 
       // Refresh MCP tools immediately before running loop
       let currentMcpTools = mcpTools;
@@ -613,7 +544,6 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
       activeConfig,
       handleStop,
       selectedOllamaModel,
-      editor,
       primaryShape,
       mcpTools,
       messages,
@@ -625,82 +555,57 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
     (actions: SpawnableShape[]) => {
       if (!actions.length) return;
 
-      if (editor) {
-        const targetProject = findContainingProjectFrame(editor, primaryShape);
-        if (targetProject) {
-          const count = spawnWorkflowForProject(
-            editor,
-            targetProject,
-            actions,
-          );
-          setSpawnedCount(count);
-        } else {
-          const count = spawnShapesOnCanvas(editor, primaryShape, actions);
-          setSpawnedCount(count);
+      let spawned = 0;
+      const currentNodes = useFlowCanvasStore.getState().nodes;
+      const targetFrame = currentNodes.find(
+        (n) => n.id === flowSelectedId && n.type === "projectFrame"
+      );
+      for (const act of actions) {
+        if (act.type === "task") {
+          flowCreateTask({
+            title: act.title,
+            priority: (act.priority as any) ?? 3,
+            notes: act.notes,
+            parentId: targetFrame?.id,
+          });
+          spawned++;
+        } else if (act.type === "project") {
+          flowCreateProject({
+            title: act.title,
+            goal: act.notes,
+          });
+          spawned++;
         }
-      } else {
-        // React Flow Spawning
-        let spawned = 0;
-        const currentNodes = useFlowCanvasStore.getState().nodes;
-        const targetFrame = currentNodes.find(
-          (n) => n.id === flowSelectedId && n.type === "projectFrame"
-        );
-        for (const act of actions) {
-          if (act.type === "task") {
-            flowCreateTask({
-              title: act.title,
-              priority: (act.priority as any) ?? 3,
-              notes: act.notes,
-              parentId: targetFrame?.id,
-            });
-            spawned++;
-          } else if (act.type === "project") {
-            flowCreateProject({
-              title: act.title,
-              goal: act.notes,
-            });
-            spawned++;
-          }
-        }
-        setSpawnedCount(spawned);
       }
+      setSpawnedCount(spawned);
 
       setTimeout(() => setSpawnedCount(null), 3000);
     },
-    [editor, primaryShape, flowSelectedId, flowCreateTask, flowCreateProject],
+    [flowSelectedId, flowCreateTask, flowCreateProject],
   );
 
   // Spawn single item on canvas
   const handleSpawnSingle = useCallback(
-    (action: SpawnableShape, index: number) => {
-      if (editor) {
-        const targetProject = findContainingProjectFrame(editor, primaryShape);
-        if (targetProject) {
-          spawnWorkflowForProject(editor, targetProject, [action]);
-        } else {
-          spawnSingleShapeOnCanvas(editor, action, primaryShape, index);
-        }
-      } else {
-        const currentNodes = useFlowCanvasStore.getState().nodes;
-        const targetFrame = currentNodes.find(
-          (n) => n.id === flowSelectedId && n.type === "projectFrame"
-        );
-        if (action.type === "task") {
-          flowCreateTask({
-            title: action.title,
-            priority: (action.priority as any) ?? 3,
-            notes: action.notes,
-            parentId: targetFrame?.id,
-          });
-        } else if (action.type === "project") {
-          flowCreateProject({
-            title: action.title,
-            goal: action.notes,
-          });
-        }
+    (action: SpawnableShape, _index: number) => {
+      const currentNodes = useFlowCanvasStore.getState().nodes;
+      const targetFrame = currentNodes.find(
+        (n) => n.id === flowSelectedId && n.type === "projectFrame"
+      );
+      if (action.type === "task") {
+        flowCreateTask({
+          title: action.title,
+          priority: (action.priority as any) ?? 3,
+          notes: action.notes,
+          parentId: targetFrame?.id,
+        });
+      } else if (action.type === "project") {
+        flowCreateProject({
+          title: action.title,
+          goal: action.notes,
+        });
       }
     },
-    [editor, primaryShape, flowSelectedId, flowCreateTask, flowCreateProject],
+    [flowSelectedId, flowCreateTask, flowCreateProject],
   );
 
   if (!open) return null;
@@ -1172,9 +1077,9 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
               </span>
 
               <div className="flex items-center gap-1.5">
-                {singleShape.rawType === "focus-task" && (
+                {singleShape.rawType === "focusTask" && (
                   <span className="capitalize px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] border border-zinc-200 dark:border-zinc-700 font-mono">
-                    {(singleShape.shape as TLFocusTaskShape).props.status}
+                    {singleShape.shape?.data?.status || "open"}
                   </span>
                 )}
                 {singleShape.color && (
@@ -1223,7 +1128,7 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
                 </button>
                 <button
                   type="button"
-                  onClick={() => editor?.selectNone()}
+                  onClick={() => flowSelectNode(null)}
                   title="Deselect shape (Escape)"
                   className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors cursor-pointer"
                 >
@@ -1241,9 +1146,9 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
                       <p className="text-zinc-900 dark:text-zinc-100 font-medium leading-relaxed select-text line-clamp-4 whitespace-pre-wrap">
                         {singleShape.label}
                       </p>
-                      {singleShape.rawType === "focus-task" && (singleShape.shape as TLFocusTaskShape).props.notes && (
+                      {singleShape.rawType === "focusTask" && singleShape.shape?.data?.notes && (
                         <p className="text-[11px] text-zinc-500 dark:text-zinc-400 italic line-clamp-2 pt-1 border-t border-zinc-100 dark:border-zinc-800">
-                          {(singleShape.shape as TLFocusTaskShape).props.notes}
+                          {singleShape.shape?.data?.notes}
                         </p>
                       )}
                     </div>
@@ -1287,7 +1192,7 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
                         type="button"
                         onClick={() =>
                           handleSend(
-                            `Break down the goal "${(singleShape.shape as TLProjectFrameShape).props.goal || singleShape.label}" into a 4-5 step sequential task workflow. Output them in a \`\`\`canvas block.`,
+                            `Break down the goal "${singleShape.shape?.data?.goal || singleShape.label}" into a 4-5 step sequential task workflow. Output them in a \`\`\`canvas block.`,
                           )
                         }
                         className="w-full flex items-center justify-center gap-1.5 h-8 rounded-full bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-950 font-medium text-xs shadow-2xs transition-all cursor-pointer"
@@ -1305,31 +1210,6 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
                         className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
                       >
                         List milestones
-                      </button>
-                    </>
-                  ) : singleShape.rawType === "focus-timer" ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleSend(
-                            `Plan a focused, distraction-free roadmap for a ${(singleShape.shape.props as any).durationPreset || 25}-minute focus session.`,
-                          )
-                        }
-                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
-                      >
-                        Plan focus session
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleSend(
-                            `Suggest 3 quick micro-tasks that can be accomplished in ${(singleShape.shape.props as any).durationPreset || 25} minutes. Output them in a \`\`\`canvas block.`,
-                          )
-                        }
-                        className="h-6.5 px-3 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.08] hover:bg-white/95 dark:hover:bg-white/[0.15] text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
-                      >
-                        Quick tasks
                       </button>
                     </>
                   ) : singleShape.hasText ? (
@@ -1422,7 +1302,7 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
                 </button>
                 <button
                   type="button"
-                  onClick={() => editor?.selectNone()}
+                  onClick={() => flowSelectNode(null)}
                   title="Deselect all (Escape)"
                   className="inline-flex items-center gap-1 text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
                 >

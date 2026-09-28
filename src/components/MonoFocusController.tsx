@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { type Editor, type TLShapeId, useValue } from 'tldraw'
 import {
   Lock,
   Unlock,
@@ -17,15 +16,13 @@ import {
   ChevronRight,
   FolderGit2,
 } from 'lucide-react'
-import { extractTextFromShape } from '@/lib/canvasContext'
 import { evaluateUnlockFriction } from '@/lib/jev'
-import { findContainingProjectFrame } from '@/lib/canvasSpawner'
-import type { TLFocusTaskShape } from '@/shapes/focusTask/FocusTaskShapeUtil'
 import { renderMarkdownBlock, toggleCheckboxInMarkdown } from '@/lib/markdown'
+import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
 
 interface MonoFocusControllerProps {
-  editor: Editor | null
-  activeShapeId: TLShapeId | null
+  editor?: any
+  activeShapeId: string | null
   onClearFocus: () => void
 }
 
@@ -84,51 +81,53 @@ export function MonoFocusController({
 
   const holdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const activeShape = useValue(
-    'active focus shape',
-    () => {
-      if (!editor || !activeShapeId) return null
-      return editor.getShape(activeShapeId)
-    },
-    [editor, activeShapeId],
-  )
+  const flowNodes = useFlowCanvasStore((s) => s.nodes)
+  const flowNode = useMemo(() => {
+    if (!activeShapeId) return null
+    return flowNodes.find((n) => n.id === activeShapeId) || null
+  }, [flowNodes, activeShapeId])
 
   const shapeTitle = useMemo(() => {
-    if (!activeShape) return 'Untitled Focus'
-    return extractTextFromShape(activeShape) || 'Untitled Focus'
-  }, [activeShape])
+    if (flowNode) {
+      const d = (flowNode.data || {}) as Record<string, any>
+      return d.title || d.label || d.text || 'Untitled Focus'
+    }
+    return 'Untitled Focus'
+  }, [flowNode])
 
-  const isFocusTask = activeShape?.type === 'focus-task'
-  const taskShape = isFocusTask ? (activeShape as TLFocusTaskShape) : null
+  const isFocusTask = flowNode?.type === 'focusTask'
+  const flowTaskData = flowNode?.type === 'focusTask' ? (flowNode.data as Record<string, any>) : null
 
   // Resolve parent project frame if contained
   const containingProject = useMemo(() => {
-    if (!editor || !activeShape) return null
-    return findContainingProjectFrame(editor, activeShape)
-  }, [editor, activeShape])
+    if (flowNode) {
+      if (flowNode.parentId) {
+        const p = flowNodes.find((n) => n.id === flowNode.parentId && n.type === 'projectFrame')
+        if (p) return { id: p.id, title: (p.data?.title as string) || 'Project' }
+      }
+      return null
+    }
+    return null
+  }, [flowNode, flowNodes])
 
   // Camera lock: auto-zoom to the active shape when focus is initiated
   useEffect(() => {
-    if (!editor || !activeShapeId || !isLocked) return
+    if (!activeShapeId || !isLocked) return
 
-    const bounds = editor.getShapePageBounds(activeShapeId)
-    if (bounds) {
-      editor.zoomToBounds(bounds, {
-        targetZoom: 1.15,
-        animation: { duration: 400 },
-      })
-    }
-  }, [editor, activeShapeId, isLocked])
+    window.dispatchEvent(
+      new CustomEvent('foqz:flow-center-on', { detail: { id: activeShapeId } })
+    )
+  }, [activeShapeId, isLocked])
 
   // Initialize drafts from shape
   useEffect(() => {
-    if (taskShape) {
-      setTitleDraft(taskShape.props.title || '')
-      setNotesDraft(taskShape.props.notes || '')
-    } else if (activeShape) {
+    if (flowTaskData) {
+      setTitleDraft(flowTaskData.title || '')
+      setNotesDraft(flowTaskData.notes || '')
+    } else if (flowNode) {
       setTitleDraft(shapeTitle)
     }
-  }, [taskShape, activeShape, shapeTitle])
+  }, [flowTaskData, flowNode, shapeTitle])
 
   // Timer interval
   useEffect(() => {
@@ -160,7 +159,7 @@ export function MonoFocusController({
           return
         }
 
-        if (startTime === 0) {
+        if (startTime === 0 && !holdTimerRef.current) {
           startTime = Date.now()
           holdTimerRef.current = setInterval(() => {
             const elapsed = Date.now() - startTime
@@ -168,7 +167,10 @@ export function MonoFocusController({
             setHoldProgress(progress)
 
             if (progress >= 100) {
-              if (holdTimerRef.current) clearInterval(holdTimerRef.current)
+              if (holdTimerRef.current) {
+                clearInterval(holdTimerRef.current)
+                holdTimerRef.current = null
+              }
               handleForceUnlock()
             }
           }, 50)
@@ -193,7 +195,10 @@ export function MonoFocusController({
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
-      if (holdTimerRef.current) clearInterval(holdTimerRef.current)
+      if (holdTimerRef.current) {
+        clearInterval(holdTimerRef.current)
+        holdTimerRef.current = null
+      }
     }
   }, [activeShapeId, isLocked, showExitModal])
 
@@ -230,20 +235,16 @@ export function MonoFocusController({
   }
 
   const updateTaskProps = useCallback(
-    (patch: Partial<TLFocusTaskShape['props']>) => {
-      if (!editor || !activeShapeId || !taskShape) return
-      editor.updateShape({
-        id: activeShapeId,
-        type: 'focus-task',
-        props: { ...taskShape.props, ...patch },
-      })
+    (patch: Record<string, any>) => {
+      if (!activeShapeId) return
+      useFlowCanvasStore.getState().updateNodeData(activeShapeId, patch)
     },
-    [editor, activeShapeId, taskShape],
+    [activeShapeId],
   )
 
   const handleToggleDone = () => {
-    if (!taskShape) return
-    const nextStatus = taskShape.props.status === 'done' ? 'open' : 'done'
+    const curStatus = flowTaskData?.status || 'open'
+    const nextStatus = curStatus === 'done' ? 'open' : 'done'
     updateTaskProps({ status: nextStatus })
     if (nextStatus === 'done') {
       setIsRunning(false)
@@ -251,24 +252,21 @@ export function MonoFocusController({
   }
 
   const handleCyclePriority = () => {
-    if (!taskShape) return
-    const cur = taskShape.props.priority || 3
+    const cur = flowTaskData?.priority || 3
     const next = cur === 1 ? 2 : cur === 2 ? 3 : cur === 3 ? 4 : 1
     updateTaskProps({ priority: next })
   }
 
   const handleSaveTitle = () => {
     setIsEditingTitle(false)
-    if (taskShape && titleDraft.trim()) {
+    if (titleDraft.trim()) {
       updateTaskProps({ title: titleDraft.trim() })
     }
   }
 
   const handleSaveNotes = () => {
     setIsEditingNotes(false)
-    if (taskShape) {
-      updateTaskProps({ notes: notesDraft })
-    }
+    updateTaskProps({ notes: notesDraft })
   }
 
   const handleNotesCheckboxClick = (e: React.MouseEvent) => {
@@ -277,8 +275,9 @@ export function MonoFocusController({
       const idxStr = target.getAttribute('data-task-checkbox')
       if (idxStr !== null) {
         const idx = parseInt(idxStr, 10)
-        if (!isNaN(idx) && taskShape) {
-          const updated = toggleCheckboxInMarkdown(taskShape.props.notes || '', idx)
+        const currentNotes = flowTaskData?.notes || ''
+        if (!isNaN(idx)) {
+          const updated = toggleCheckboxInMarkdown(currentNotes, idx)
           updateTaskProps({ notes: updated })
           setNotesDraft(updated)
         }
@@ -307,15 +306,15 @@ export function MonoFocusController({
     )
   }
 
-  if (!activeShapeId || !activeShape) return null
+  if (!activeShapeId || (!activeShape && !flowNode)) return null
 
   const minutes = Math.floor(secondsRemaining / 60)
   const seconds = secondsRemaining % 60
   const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 
-  const currentPriority = taskShape?.props.priority || 3
+  const currentPriority = flowTaskData?.priority || taskShape?.props.priority || 3
   const priorityConfig = PRIORITY_CONFIG[currentPriority] || PRIORITY_CONFIG[3]
-  const isTaskDone = taskShape?.props.status === 'done'
+  const isTaskDone = (flowTaskData?.status || taskShape?.props.status) === 'done'
 
   const progressPercent = totalSeconds > 0 ? Math.min(100, Math.max(0, ((totalSeconds - secondsRemaining) / totalSeconds) * 100)) : 0
 
@@ -379,10 +378,10 @@ export function MonoFocusController({
               {containingProject ? (
                 <div
                   className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-300 border border-blue-500/20 truncate max-w-[240px]"
-                  title={`Belongs to Project: ${containingProject.props.title}`}
+                  title={`Belongs to Project: ${containingProject.title}`}
                 >
                   <FolderGit2 className="size-3 text-blue-400 shrink-0" />
-                  <span className="truncate">{containingProject.props.title}</span>
+                  <span className="truncate">{containingProject.title}</span>
                 </div>
               ) : (
                 <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
@@ -392,7 +391,7 @@ export function MonoFocusController({
             </div>
 
             {/* Right: Priority & Status Selectors */}
-            {taskShape && (
+            {isFocusTask && (
               <div className="flex items-center gap-2 shrink-0">
                 {/* Priority Pill */}
                 <button
@@ -540,7 +539,7 @@ export function MonoFocusController({
             </div>
 
             {/* Checklist & Notes Section */}
-            {taskShape && (
+            {isFocusTask && (
               <div className="space-y-2 pt-1 border-t border-zinc-800/80">
                 <div className="flex items-center justify-between text-xs text-zinc-400 font-medium">
                   <span>Action Items & Notes</span>
@@ -573,12 +572,12 @@ export function MonoFocusController({
                       </button>
                     </div>
                   </div>
-                ) : taskShape.props.notes?.trim() ? (
+                ) : (flowTaskData?.notes || taskShape?.props.notes)?.trim() ? (
                   <div
                     onClick={handleNotesCheckboxClick}
                     className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-xs text-zinc-200 max-h-44 overflow-y-auto leading-relaxed ai-markdown space-y-1.5 cursor-pointer"
                     dangerouslySetInnerHTML={{
-                      __html: renderMarkdownBlock(taskShape.props.notes),
+                      __html: renderMarkdownBlock((flowTaskData?.notes || taskShape?.props.notes) || ""),
                     }}
                   />
                 ) : (

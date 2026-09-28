@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import type { Editor, TLShapeId } from "tldraw";
 import {
   Plug,
   GitBranch,
@@ -24,13 +23,12 @@ import {
   ALL_PROJECT_ACCENTS,
   ACCENT_STYLES,
   type ProjectAccent,
-  type TLProjectFrameShape,
-} from "@/shapes/projectFrame/ProjectFrameShapeUtil";
+} from "@/types/canvas";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 
 interface ProjectConnectorsModalProps {
-  editor: Editor | null;
-  shapeId: TLShapeId | null;
+  editor?: any;
+  shapeId: string | null;
   onClose: () => void;
   initialTab?: "connectors" | "context";
 }
@@ -218,24 +216,13 @@ export function ProjectConnectorsModal({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const flowNodes = useFlowCanvasStore((s) => s.nodes);
-  const flowNode = !editor && shapeId ? flowNodes.find((n) => n.id === shapeId) : null;
+  const flowNode = shapeId ? flowNodes.find((n) => n.id === shapeId) : null;
 
   const shape = useMemo(() => {
-    if (editor && shapeId) {
-      try {
-        const s = editor.getShape(shapeId);
-        if (s && s.type === "project-frame") {
-          return s as TLProjectFrameShape;
-        }
-      } catch {
-        // Shape may have been deleted
-      }
-      return null;
-    }
-    if (!editor && shapeId && flowNode && flowNode.type === "projectFrame") {
+    if (shapeId && flowNode && flowNode.type === "projectFrame") {
       const data = flowNode.data || {};
       return {
-        id: flowNode.id as TLShapeId,
+        id: flowNode.id,
         type: "project-frame",
         props: {
           title: (data.title as string) || "Project",
@@ -245,10 +232,10 @@ export function ProjectConnectorsModal({
           projectContext: (data.projectContext as string) || "",
           readmeCachedAt: data.readmeCachedAt as number | undefined,
         },
-      } as unknown as TLProjectFrameShape;
+      };
     }
     return null;
-  }, [editor, shapeId, flowNode]);
+  }, [shapeId, flowNode]);
 
   const [activeTab, setActiveTab] = useState<"connectors" | "context">(initialTab);
   const [accentDraft, setAccentDraft] = useState<ProjectAccent>("blue");
@@ -379,27 +366,11 @@ export function ProjectConnectorsModal({
     const projectContextData = projectContextDraft.trim() || undefined;
     const readmeCachedAtData = lastSyncedAtDraft || shape.props.readmeCachedAt;
 
-    if (!editor) {
-      useFlowCanvasStore.getState().updateNodeData(shapeId, {
-        accent: accentDraft,
-        connectors: connectorsData,
-        projectContext: projectContextData,
-        readmeCachedAt: readmeCachedAtData,
-      });
-      onClose();
-      return;
-    }
-
-    editor.updateShape({
-      id: shapeId,
-      type: "project-frame",
-      props: {
-        ...shape.props,
-        accent: accentDraft,
-        connectors: connectorsData,
-        projectContext: projectContextData,
-        readmeCachedAt: readmeCachedAtData,
-      },
+    useFlowCanvasStore.getState().updateNodeData(shapeId, {
+      accent: accentDraft,
+      connectors: connectorsData,
+      projectContext: projectContextData,
+      readmeCachedAt: readmeCachedAtData,
     });
     onClose();
   };
@@ -407,24 +378,10 @@ export function ProjectConnectorsModal({
   const handleDisconnectRepo = () => {
     setGithubRepoDraft("");
     if (!shapeId) return;
-    if (!editor) {
-      useFlowCanvasStore.getState().updateNodeData(shapeId, {
-        connectors: {
-          ...(shape.props.connectors || {}),
-          githubRepo: undefined,
-        },
-      });
-      return;
-    }
-    editor.updateShape({
-      id: shapeId,
-      type: "project-frame",
-      props: {
-        ...shape.props,
-        connectors: {
-          ...shape.props.connectors,
-          githubRepo: undefined,
-        },
+    useFlowCanvasStore.getState().updateNodeData(shapeId, {
+      connectors: {
+        ...(shape.props.connectors || {}),
+        githubRepo: undefined,
       },
     });
   };
@@ -954,7 +911,7 @@ export function ProjectConnectorsModal({
                 <textarea
                   value={projectContextDraft}
                   onChange={(e) => setProjectContextDraft(e.target.value)}
-                  placeholder={`# Project Architecture & Stack\n- Vite + React 19 + tldraw + Electron\n- Strict TypeScript, Tailwind CSS\n\n# Core Goals\n- Infinite canvas desktop command center\n\n# AI Directives\n- When triaging tasks, prioritize launch blockers and performance\n- Ground code suggestions in existing codebase patterns`}
+                  placeholder={`# Project Architecture & Stack\n- Vite + React 19 + React Flow + Electron\n- Strict TypeScript, Tailwind CSS\n\n# Core Goals\n- Infinite canvas desktop command center\n\n# AI Directives\n- When triaging tasks, prioritize launch blockers and performance\n- Ground code suggestions in existing codebase patterns`}
                   rows={11}
                   className="w-full p-3 rounded-xl bg-zinc-50/50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all resize-y leading-relaxed"
                 />

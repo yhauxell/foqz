@@ -3,7 +3,7 @@ import { Handle, Position, NodeResizer, type NodeProps, type Node } from "@xyflo
 import rough from "roughjs";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
-export interface BoxNodeData {
+export interface CircleNodeData {
   label?: string;
   color?: string;
   strokeColor?: string;
@@ -13,23 +13,23 @@ export interface BoxNodeData {
   [key: string]: unknown;
 }
 
-export type BoxNodeType = Node<BoxNodeData, "box">;
+export type CircleNodeType = Node<CircleNodeData, "circle">;
 
-export const BoxNode = memo(function BoxNode({
+export const CircleNode = memo(function CircleNode({
   id,
   data,
   selected,
-  width = 220,
-  height = 140,
-}: NodeProps<BoxNodeType>) {
+  width = 160,
+  height = 160,
+}: NodeProps<CircleNodeType>) {
   const [isEditing, setIsEditing] = useState(false);
   const [val, setVal] = useState(data.label || "Double-click to write");
   const svgRef = React.useRef<SVGSVGElement | null>(null);
 
-  const w = Math.max(60, width);
-  const h = Math.max(40, height);
-  const stroke = data.strokeColor || "#3b82f6";
-  const fill = data.color || "rgba(59, 130, 246, 0.08)";
+  const w = Math.max(80, width);
+  const h = Math.max(80, height);
+  const stroke = data.strokeColor || "#6366f1";
+  const fill = data.color || "rgba(99, 102, 241, 0.08)";
   const fillStyle = data.fillStyle || "hachure";
 
   React.useEffect(() => {
@@ -48,6 +48,9 @@ export const BoxNode = memo(function BoxNode({
         id.split("").reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0)
       ) || 1;
 
+    const cx = w / 2;
+    const cy = h / 2;
+
     const fillOptions =
       fillStyle === "none"
         ? {}
@@ -58,7 +61,7 @@ export const BoxNode = memo(function BoxNode({
             hachureGap: 6,
           };
 
-    const node = rc.rectangle(3, 3, w - 6, h - 6, {
+    const node = rc.ellipse(cx, cy, w - 6, h - 6, {
       seed: nodeSeed,
       roughness: data.roughness ?? 1.8,
       stroke,
@@ -72,7 +75,7 @@ export const BoxNode = memo(function BoxNode({
   return (
     <div
       className={`relative w-full h-full flex items-center justify-center select-none ${
-        selected ? "ring-2 ring-blue-500/80 rounded-xl" : ""
+        selected ? "ring-2 ring-indigo-500/80 rounded-full" : ""
       }`}
       style={{ contain: "layout style" }}
       onDoubleClick={(e) => {
@@ -80,32 +83,32 @@ export const BoxNode = memo(function BoxNode({
         setIsEditing(true);
       }}
     >
-      <NodeResizer minWidth={80} minHeight={40} isVisible={selected} />
+      <NodeResizer minWidth={80} minHeight={80} isVisible={selected} />
 
       {/* 4 Multi-Directional Handles on all sides */}
       <Handle
         type="source"
         id="top"
         position={Position.Top}
-        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-indigo-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
       />
       <Handle
         type="source"
         id="right"
         position={Position.Right}
-        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-indigo-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
       />
       <Handle
         type="source"
         id="bottom"
         position={Position.Bottom}
-        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-indigo-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
       />
       <Handle
         type="source"
         id="left"
         position={Position.Left}
-        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-indigo-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
       />
 
       {/* Rough.js Hand-drawn sketch SVG */}

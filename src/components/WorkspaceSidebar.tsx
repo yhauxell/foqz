@@ -7,23 +7,14 @@ import {
   Plus,
   PanelLeftClose,
   Target,
-  Layers,
   ChevronRight,
   Compass,
 } from "lucide-react";
-import {
-  createShapeId,
-  type Editor,
-  type TLShapeId,
-} from "tldraw";
-import type { TLFocusTaskShape } from "@/shapes/focusTask/FocusTaskShapeUtil";
-import type { TLProjectFrameShape } from "@/shapes/projectFrame/ProjectFrameShapeUtil";
 import { renderMarkdownInline } from "@/lib/markdown";
 import { Button } from "@/components/ui/button";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 
 interface WorkspaceSidebarProps {
-  editor: Editor | null;
   open: boolean;
   onToggle: () => void;
   onOpenCopilot: (shapeId?: string) => void;
@@ -32,7 +23,6 @@ interface WorkspaceSidebarProps {
 type TaskFilter = "all" | "active" | "todo" | "done";
 
 export function WorkspaceSidebar({
-  editor,
   open,
   onToggle,
   onOpenCopilot,
@@ -45,24 +35,8 @@ export function WorkspaceSidebar({
   const flowCreateProject = useFlowCanvasStore((s) => s.createProject);
   const flowSelectNode = useFlowCanvasStore((s) => s.setSelectedNodeId);
 
-  // Read all shapes from canvas (tldraw or React Flow)
+  // Read all tasks and projects from React Flow nodes
   const { tasks, projects } = useMemo(() => {
-    if (editor) {
-      const shapes = editor.getCurrentPageShapes();
-      const t: TLFocusTaskShape[] = [];
-      const p: TLProjectFrameShape[] = [];
-
-      for (const s of shapes) {
-        if (s.type === "focus-task") {
-          t.push(s as TLFocusTaskShape);
-        } else if (s.type === "project-frame") {
-          p.push(s as TLProjectFrameShape);
-        }
-      }
-      return { tasks: t, projects: p };
-    }
-
-    // React Flow Fallback
     const t: any[] = [];
     const p: any[] = [];
     for (const n of flowNodes) {
@@ -93,7 +67,7 @@ export function WorkspaceSidebar({
       }
     }
     return { tasks: t, projects: p };
-  }, [editor, editor?.getCurrentPageShapes(), flowNodes]);
+  }, [flowNodes]);
 
   const doneCount = tasks.filter((t) => t.props.status === "done").length;
   const doingCount = tasks.filter((t) => t.props.status === "doing").length;
@@ -112,89 +86,39 @@ export function WorkspaceSidebar({
   // Jump to shape on infinite canvas
   const handleJumpToShape = useCallback(
     (shapeId: string) => {
-      if (editor) {
-        editor.select(shapeId as TLShapeId);
-        editor.zoomToSelection({ animation: { duration: 260 } });
-      } else {
-        flowSelectNode(shapeId);
-        window.dispatchEvent(
-          new CustomEvent("foqz:flow-center-on", { detail: { id: shapeId } })
-        );
-      }
+      flowSelectNode(shapeId);
+      window.dispatchEvent(
+        new CustomEvent("foqz:flow-center-on", { detail: { id: shapeId } })
+      );
     },
-    [editor, flowSelectNode]
+    [flowSelectNode]
   );
 
   // Jump to project frame
   const handleJumpToProject = useCallback(
     (projectId: string) => {
-      if (editor) {
-        const bounds = editor.getShapePageBounds(projectId as TLShapeId);
-        if (bounds) {
-          editor.select(projectId as TLShapeId);
-          editor.zoomToBounds(bounds, { animation: { duration: 300 }, inset: 80 });
-        }
-      } else {
-        flowSelectNode(projectId);
-        window.dispatchEvent(
-          new CustomEvent("foqz:flow-center-on", { detail: { id: projectId } })
-        );
-      }
+      flowSelectNode(projectId);
+      window.dispatchEvent(
+        new CustomEvent("foqz:flow-center-on", { detail: { id: projectId } })
+      );
     },
-    [editor, flowSelectNode]
+    [flowSelectNode]
   );
 
   // Quick add project
   const handleAddProject = useCallback(() => {
-    if (editor) {
-      const center = editor.getViewportPageBounds().center;
-      const id = createShapeId();
-      editor.createShape({
-        id,
-        type: "project-frame",
-        x: center.x - 360,
-        y: center.y - 230,
-        props: {
-          w: 720,
-          h: 460,
-          title: "New Project",
-          goal: "Goal: Launch milestone by Friday",
-          accent: "blue",
-        },
-      });
-      editor.select(id);
-    } else {
-      flowCreateProject({
-        title: "New Project",
-        goal: "Goal: Define new workspace milestone",
-      });
-    }
-  }, [editor, flowCreateProject]);
+    flowCreateProject({
+      title: "New Project",
+      goal: "Goal: Define new workspace milestone",
+    });
+  }, [flowCreateProject]);
 
   // Quick add task
   const handleAddTask = useCallback(() => {
     const title = quickTitle.trim() || "New task";
-    if (editor) {
-      const center = editor.getViewportPageBounds().center;
-      const id = createShapeId();
-      editor.createShape({
-        id,
-        type: "focus-task",
-        x: center.x - 130,
-        y: center.y - 42,
-        props: {
-          w: 260,
-          h: 84,
-          title,
-          status: "open",
-        },
-      });
-      editor.select(id);
-    } else {
-      flowCreateTask({ title });
-    }
+    flowCreateTask({ title });
     setQuickTitle("");
-  }, [editor, quickTitle, flowCreateTask]);
+  }, [quickTitle, flowCreateTask]);
 
   if (!open) return null;
 

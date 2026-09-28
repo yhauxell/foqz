@@ -2,10 +2,14 @@ import React from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { FlowCanvasApp } from "./FlowCanvas";
 
-export function FlowCanvasAppWrapper() {
+interface FlowCanvasAppWrapperProps {
+  sidebarOpen?: boolean;
+}
+
+export function FlowCanvasAppWrapper({ sidebarOpen = true }: FlowCanvasAppWrapperProps) {
   return (
     <ReactFlowProvider>
-      <FlowCanvasApp />
+      <FlowCanvasApp sidebarOpen={sidebarOpen} />
     </ReactFlowProvider>
   );
 }

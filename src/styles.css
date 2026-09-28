@@ -8,7 +8,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /**
- * Frosted glass panel chrome (matches tldraw menu/toolbar + `.focus-floating-panel`).
+ * Frosted glass panel chrome.
  * Compose with radius/spacing: `className="glass-panel rounded-2xl p-3 …"`.
  */
 .glass-panel {
@@ -57,11 +57,6 @@ html.dark .glass-panel {
   }
 }
 
-/* Allow floating UI panels (sidebars, zoom controls, HUDs) to sample and blur canvas shapes */
-.tl-canvas,
-.tl-overlays {
-  contain: layout size !important;
-}
 
 
 /* ⌘K command palette: inset search strip + list (pairs with `glass-panel` on the shell) */
@@ -100,7 +95,7 @@ html.dark .glass-panel {
 }
 
 /*
-  Focus overlay z-index ladder (above tldraw canvas; below popovers at 10050+).
+  Focus overlay z-index ladder (above canvas; below popovers at 10050+).
   --z-focus-timer-dim: subtle overlay when a timer runs
   --z-focus-floating: quick capture + try bar dock
   --z-focus-sidebar: task list drawer
@@ -198,38 +193,7 @@ html.dark .canvas {
   background: #09090b;
 }
 
-/* Hide floating tldraw menu zone (Ideas bar / hamburger / quick actions) — integrated into TopbarBoardMenu */
-.tl-container .tlui-menu-zone,
-.tlui-menu-zone {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-}
 
-.tl-container.tl-theme__dark .tlui-menu-zone {
-  border: none;
-  border-radius: 20px;
-  background: rgb(24 24 27 / 42%);
-  backdrop-filter: blur(28px) saturate(1.35);
-  -webkit-backdrop-filter: blur(28px) saturate(1.35);
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 8%) inset,
-    0 12px 40px rgb(0 0 0 / 35%);
-}
-
-.tl-container.tl-theme__light .tlui-menu-zone *[data-state="open"]::after,
-.tl-container.tl-theme__light
-  .tlui-menu-zone
-  *[data-state="open"]:not(:hover)::after {
-  opacity: 0.45;
-}
-
-.tl-container.tl-theme__dark .tlui-menu-zone *[data-state="open"]::after,
-.tl-container.tl-theme__dark
-  .tlui-menu-zone
-  *[data-state="open"]:not(:hover)::after {
-  opacity: 0.35;
-}
 
 /*
  * Task Markdown Rendering Styles (Title & Body)
@@ -522,322 +486,7 @@ html.dark .canvas {
   border-top-color: rgba(255, 255, 255, 0.12);
 }
 
-/* Bottom tool strip — same glass as .focus-floating-panel */
-.tl-container.tl-theme__light .tlui-toolbar__tools {
-  background: rgb(255 255 255 / 46%);
-  backdrop-filter: blur(28px) saturate(1.35);
-  -webkit-backdrop-filter: blur(28px) saturate(1.35);
-  border: 1px solid rgb(255 255 255 / 58%);
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 55%) inset,
-    0 12px 40px rgb(0 0 0 / 9%),
-    0 4px 16px rgb(0 0 0 / 5%);
-}
 
-.tl-container.tl-theme__dark .tlui-toolbar__tools {
-  background: rgb(24 24 27 / 42%);
-  backdrop-filter: blur(28px) saturate(1.35);
-  -webkit-backdrop-filter: blur(28px) saturate(1.35);
-  border: 1px solid rgb(255 255 255 / 12%);
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 8%) inset,
-    0 12px 40px rgb(0 0 0 / 35%);
-}
-
-.tl-container.tl-theme__light .tlui-toolbar__extras__controls {
-  background: rgb(255 255 255 / 46%);
-  backdrop-filter: blur(28px) saturate(1.35);
-  -webkit-backdrop-filter: blur(28px) saturate(1.35);
-  border: 1px solid rgb(255 255 255 / 58%);
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 55%) inset,
-    0 8px 28px rgb(0 0 0 / 8%),
-    0 2px 12px rgb(0 0 0 / 5%);
-}
-
-.tl-container.tl-theme__dark .tlui-toolbar__extras__controls {
-  background: rgb(24 24 27 / 42%);
-  backdrop-filter: blur(28px) saturate(1.35);
-  -webkit-backdrop-filter: blur(28px) saturate(1.35);
-  border: 1px solid rgb(255 255 255 / 12%);
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 8%) inset,
-    0 8px 28px rgb(0 0 0 / 28%);
-}
-
-.tl-container.tl-theme__light .tlui-toolbar *[data-state="open"]::after,
-.tl-container.tl-theme__light
-  .tlui-toolbar
-  *[data-state="open"]:not(:hover)::after {
-  opacity: 0.45;
-}
-
-.tl-container.tl-theme__dark .tlui-toolbar *[data-state="open"]::after,
-.tl-container.tl-theme__dark
-  .tlui-toolbar
-  *[data-state="open"]:not(:hover)::after {
-  opacity: 0.35;
-}
-
-/*
- * Desktop: Vertical main tool bar placed on the RIGHT side.
- * Moves with the right sidebar (CopilotDrawer) when open.
- */
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) {
-  display: block;
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-
-/* Position the main tool bar vertically on the right */
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-layout__bottom {
-  position: absolute !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-  right: var(--tools-bar-right, 18px) !important;
-  left: auto !important;
-  bottom: auto !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: center !important;
-  align-items: center !important;
-  pointer-events: none !important;
-  z-index: 150 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  width: auto !important;
-  transition: right 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
-}
-
-.app.app--copilot-open .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-layout__bottom {
-  right: var(--tools-bar-right, 412px) !important;
-}
-
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-layout__bottom__main {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  pointer-events: auto !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  width: auto !important;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar {
-  width: auto !important;
-  max-width: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  flex-grow: 0 !important;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__inner {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: auto !important;
-  gap: 6px !important;
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__left {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: auto !important;
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
-/* Vertical Capsule Pill */
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  width: 48px !important;
-  min-width: 48px !important;
-  max-width: 48px !important;
-  box-sizing: border-box !important;
-  padding: 6px !important;
-  border-radius: 9999px !important;
-  max-height: calc(100vh - 120px) !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-  gap: 4px !important;
-  margin: 0 !important;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools::-webkit-scrollbar {
-  display: none !important;
-}
-
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-toolbar__tools__list {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  width: 36px !important;
-  min-width: 36px !important;
-  max-width: 36px !important;
-  margin: 0 auto !important;
-  padding: 0 !important;
-  gap: 4px !important;
-}
-
-/* All buttons in the vertical tools pill: strict 36px circular buttons */
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button,
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool,
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-toolbar__overflow {
-  position: relative !important;
-  width: 36px !important;
-  height: 36px !important;
-  min-width: 36px !important;
-  min-height: 36px !important;
-  max-width: 36px !important;
-  max-height: 36px !important;
-  box-sizing: border-box !important;
-  margin: 0 auto !important;
-  padding: 0 !important;
-  border-radius: 9999px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  flex-shrink: 0 !important;
-  left: auto !important;
-  right: auto !important;
-  top: auto !important;
-  bottom: auto !important;
-}
-
-/* Reset tldraw nth-of-type margins */
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool:nth-of-type(1),
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool:nth-last-of-type(1) {
-  margin: 0 auto !important;
-}
-
-/* Active and Hover pseudo-elements: exact 100% concentric circle */
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button::before,
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button::after,
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool::before,
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool::after,
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-toolbar__overflow::before,
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-toolbar__overflow::after {
-  position: absolute !important;
-  inset: 0 !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border-radius: 9999px !important;
-  box-sizing: border-box !important;
-}
-
-/* Centered icon inside buttons */
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button .tlui-icon {
-  width: 18px !important;
-  height: 18px !important;
-  min-width: 18px !important;
-  min-height: 18px !important;
-  margin: auto !important;
-  display: block !important;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button:focus-visible,
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__tools .tlui-button__tool:focus-visible {
-  border-radius: 9999px !important;
-  outline-offset: -2px !important;
-}
-
-/* Extras / lock button */
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras {
-  position: relative !important;
-  top: 0 !important;
-  height: auto !important;
-  width: auto !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  margin: 0 0 6px 0 !important;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras:empty {
-  display: none !important;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  margin: 0 auto !important;
-  border-radius: 9999px !important;
-  padding: 4px !important;
-  width: auto !important;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls .tlui-button,
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls .tlui-button::before,
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls .tlui-button::after {
-  width: 30px !important;
-  height: 30px !important;
-  min-width: 30px !important;
-  min-height: 30px !important;
-  padding: 0 !important;
-  margin: 0 auto !important;
-  border-radius: 9999px !important;
-}
-
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls .tlui-button::before,
-.app .tl-container .tlui-layout:not(.tlui-layout__mobile) .tlui-toolbar__extras__controls .tlui-button::after {
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-}
-
-/* Contextual Selection HUD is rendered dynamically via ContextualSelectionHud.tsx */
-
-/* Help menu pinned to bottom left */
-.app
-  .tl-container
-  .tlui-layout:not(.tlui-layout__mobile)
-  .tlui-help-menu {
-  position: absolute;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  left: 12px;
-  top: auto;
-  right: auto;
-  z-index: 100;
-  pointer-events: auto;
-}
-
-/* Hide legacy tldraw minimap and navigation panel to prevent overlay collisions */
-.tlui-navigation-panel,
-.tlui-minimap {
-  display: none !important;
-  pointer-events: none !important;
-}
 
 
 /* Task list drawer: same glass language as `glass-panel` + .focus-board-tracked-row */
@@ -1364,7 +1013,7 @@ html.dark .canvas {
   opacity: 0.55;
 }
 
-/* Task card — borderless shell, soft shadow, priority-tinted surface; UI font matches tldraw panels */
+/* Task card — borderless shell, soft shadow, priority-tinted surface */
 .focus-task-shell {
   position: relative;
   box-sizing: border-box;
@@ -1380,8 +1029,7 @@ html.dark .canvas {
     0 1px 2px rgb(0 0 0 / 4%),
     0 16px 48px rgb(0 0 0 / 7%),
     0 40px 80px rgb(0 0 0 / 5%);
-  /* tldraw sets --font-body on some surfaces; --tl-font-sans is always on .tl-container */
-  font-family: var(--font-body, var(--tl-font-sans)), system-ui, sans-serif;
+  font-family: var(--font-body, system-ui), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 12px;
   font-weight: 500;
   line-height: 1.5;
@@ -2064,4 +1712,67 @@ html.dark .canvas {
   html {
     @apply font-sans;
   }
+}
+
+/* React Flow canvas stacking fixes:
+   1. Ensure project frames stay behind tasks, notes, and sketch boxes, even when selected.
+   2. Ensure edge labels and interactive menus float above all nodes. */
+.react-flow__node-projectFrame {
+  z-index: 0 !important;
+}
+.react-flow__node-projectFrame.selected {
+  z-index: 1 !important;
+}
+.react-flow__node-focusTask,
+.react-flow__node-box,
+.react-flow__node-circle,
+.react-flow__node-text,
+.react-flow__node-pencil {
+  z-index: 10;
+}
+.react-flow__node-focusTask.selected,
+.react-flow__node-box.selected,
+.react-flow__node-circle.selected,
+.react-flow__node-text.selected,
+.react-flow__node-pencil.selected {
+  z-index: 20;
+}
+
+.react-flow__edgelabel-renderer {
+  z-index: 1001 !important;
+  pointer-events: none;
+}
+
+/* Hide React Flow watermark attribution in bottom-right */
+.react-flow__attribution {
+  display: none !important;
+}
+
+/* Edge Animation Keyframes:
+   - In case of solid: smooth pulse fading to half opacity / color in-out
+   - In case of dashed/dotted: continuous flowing motion along path (36px common multiple of 9 & 6) */
+@keyframes pulse-edge-solid {
+  0%, 100% {
+    opacity: 1;
+    stroke-opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+    stroke-opacity: 0.35;
+  }
+}
+
+@keyframes dash-edge-flow {
+  from {
+    stroke-dashoffset: 36;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Neutralize React Flow's default .animated path rule which forces stroke-dasharray: 5 and dashdraw */
+.react-flow__edge.animated path.react-flow__edge-path {
+  stroke-dasharray: inherit;
+  animation: inherit;
 }

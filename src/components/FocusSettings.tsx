@@ -25,8 +25,7 @@ import {
   testJevConnection,
 } from "@/lib/aiConnectors";
 import { useCallback, useEffect, useState } from "react";
-import type { TLShapeId } from "tldraw";
-import { getSnapshot, loadSnapshot, useEditor, useValue } from "tldraw";
+import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 
 function AiConnectorCard({
   icon: Icon,
@@ -167,24 +166,6 @@ function ToggleRowControl(
     </div>
   );
 }
-
-export function FocusColorSchemeSync() {
-  const editor = useEditor();
-  const { settings } = useFocusAppSettings();
-  const isDark = useValue("isDark", () => editor.user.getIsDarkMode(), [editor]);
-
-  useEffect(() => {
-    editor.user.updateUserPreferences({ colorScheme: settings.colorScheme });
-  }, [editor, settings.colorScheme]);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", isDark);
-    document.body.classList.toggle("dark", isDark);
-  }, [isDark]);
-
-  return null;
-}
-
 function parsePresetsText(s: string): number[] {
   return s
     .split(/[,\s]+/)
@@ -217,20 +198,12 @@ export function FocusSettings({
   open,
   onClose,
   initialTab = "general",
-  editor: externalEditor,
 }: {
   open: boolean;
   onClose: () => void;
   initialTab?: SettingsTab;
-  editor?: Editor | null;
+  editor?: any;
 }) {
-  let editor: Editor | null = externalEditor ?? null;
-  try {
-    const internalEditor = useEditor();
-    if (!editor) editor = internalEditor;
-  } catch {
-    // Outside Tldraw context (e.g. React Flow PoC mode)
-  }
   const { settings, update } = useFocusAppSettings();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [shortcutDraft, setShortcutDraft] = useState(settings.globalToggleShortcut);
@@ -490,34 +463,47 @@ export function FocusSettings({
   }, [update, presetsDraft, settings]);
 
   const exportBoard = useCallback(async () => {
-    if (!editor) return;
     setSaveError(null);
-    const snapshot = getSnapshot(editor.store);
-    const r = await window.focusStore?.exportBoardToFile?.(snapshot);
-    if (r && !r.ok && !r.canceled)
-      setSaveError(r.error ?? "Export failed");
-  }, [editor]);
+    try {
+      const { nodes, edges } = useFlowCanvasStore.getState();
+      const data = JSON.stringify({ nodes, edges, version: 1, exportedAt: Date.now() }, null, 2);
+      const blob = new Blob([data], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `foqz-board-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Export failed");
+    }
+  }, []);
 
   const importBoard = useCallback(async () => {
-    if (!editor) return;
     setSaveError(null);
-    const r = await window.focusStore?.importBoardFromFile?.();
-    if (!r || r.canceled) return;
-    if (!r.ok || !("snapshot" in r)) {
-      setSaveError(r.error ?? "Import failed");
-      return;
-    }
     try {
-      loadSnapshot(editor.store, r.snapshot as never);
-      const snapshot = getSnapshot(editor.store);
-      await window.focusStore?.saveSnapshot?.(snapshot);
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json,application/json";
+      input.onchange = async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed.nodes)) {
+          useFlowCanvasStore.getState().setNodes(parsed.nodes);
+        }
+        if (Array.isArray(parsed.edges)) {
+          useFlowCanvasStore.getState().setEdges(parsed.edges);
+        }
+      };
+      input.click();
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Import failed");
     }
-  }, [editor]);
+  }, []);
 
   const resetBoard = useCallback(async () => {
-    if (!editor) return;
     if (
       !window.confirm(
         "Erase everything on this board? This cannot be undone.",
@@ -526,21 +512,12 @@ export function FocusSettings({
       return;
     setSaveError(null);
     try {
-      await window.focusStore?.clearBoardFile?.();
-      editor.run(() => {
-        for (const page of editor.getPages()) {
-          for (const id of [...editor.getSortedChildIdsForParent(page.id)]) {
-            editor.deleteShape(id as TLShapeId);
-          }
-        }
-      });
-      const snapshot = getSnapshot(editor.store);
-      await window.focusStore?.saveSnapshot?.(snapshot);
+      useFlowCanvasStore.getState().resetBoard();
       onClose();
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Reset failed");
     }
-  }, [editor, onClose]);
+  }, [onClose]);
 
   if (!open) return null;
 
@@ -1253,7 +1230,6 @@ export function FocusSettings({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={!isElectron}
                   onClick={() => void exportBoard()}
                 >
                   Export…
@@ -1267,7 +1243,6 @@ export function FocusSettings({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={!isElectron}
                   onClick={() => void importBoard()}
                 >
                   Import…
@@ -1278,7 +1253,6 @@ export function FocusSettings({
                   type="button"
                   variant="destructive"
                   size="sm"
-                  disabled={!isElectron}
                   onClick={() => void resetBoard()}
                 >
                   Reset board…

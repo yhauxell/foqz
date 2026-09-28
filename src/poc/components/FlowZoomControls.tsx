@@ -1,6 +1,7 @@
 import React from "react";
 import { useReactFlow } from "@xyflow/react";
-import { Minus, Plus, Maximize2 } from "lucide-react";
+import { Minus, Plus, Maximize2, Undo2, Redo2 } from "lucide-react";
+import { useFlowCanvasStore, useTemporalFlowStore } from "../store/flowCanvasStore";
 
 interface FlowZoomControlsProps {
   sidebarOpen?: boolean;
@@ -8,6 +9,20 @@ interface FlowZoomControlsProps {
 
 export function FlowZoomControls({ sidebarOpen = false }: FlowZoomControlsProps) {
   const { zoomIn, zoomOut, fitView, zoomTo } = useReactFlow();
+
+  // Subscribe to temporal history state for live disabled/active button states
+  const pastCount = useTemporalFlowStore((state) => state.pastStates.length);
+  const futureCount = useTemporalFlowStore((state) => state.futureStates.length);
+  const canUndo = pastCount > 0;
+  const canRedo = futureCount > 0;
+
+  const handleUndo = () => {
+    useFlowCanvasStore.temporal.getState().undo();
+  };
+
+  const handleRedo = () => {
+    useFlowCanvasStore.temporal.getState().redo();
+  };
 
   return (
     <div
@@ -21,6 +36,36 @@ export function FlowZoomControls({ sidebarOpen = false }: FlowZoomControlsProps)
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
+      <button
+        type="button"
+        title="Undo (⌘Z)"
+        disabled={!canUndo}
+        onClick={handleUndo}
+        className={`size-5 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+          canUndo
+            ? "hover:bg-black/5 dark:hover:bg-white/10 text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white"
+            : "text-zinc-300 dark:text-zinc-600 cursor-not-allowed"
+        }`}
+      >
+        <Undo2 className="size-3" />
+      </button>
+
+      <button
+        type="button"
+        title="Redo (⌘⇧Z)"
+        disabled={!canRedo}
+        onClick={handleRedo}
+        className={`size-5 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+          canRedo
+            ? "hover:bg-black/5 dark:hover:bg-white/10 text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white"
+            : "text-zinc-300 dark:text-zinc-600 cursor-not-allowed"
+        }`}
+      >
+        <Redo2 className="size-3" />
+      </button>
+
+      <div className="w-[1px] h-3 bg-zinc-300 dark:bg-zinc-700 mx-0.5" />
+
       <button
         type="button"
         title="Zoom Out"
@@ -52,7 +97,7 @@ export function FlowZoomControls({ sidebarOpen = false }: FlowZoomControlsProps)
 
       <button
         type="button"
-        title="Fit All Nodes"
+        title="Fit All Nodes (0)"
         onClick={() => fitView({ padding: 0.2 })}
         className="size-5 rounded-full flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
       >

@@ -1,12 +1,16 @@
-import React, { memo, useState, useEffect, useRef } from "react";
+import React, { memo, useState, useEffect, useRef, useCallback } from "react";
 import { NodeResizer, Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
-import { Check, FileText } from "lucide-react";
-import { renderMarkdownInline } from "@/lib/markdown";
+import { Check, FileText, Plus } from "lucide-react";
+import {
+  renderMarkdownInline,
+  renderMarkdownBlock,
+  toggleCheckboxInMarkdown,
+} from "@/lib/markdown";
 import {
   focusTaskShellColorForPriority,
   type TaskPaperTheme,
-} from "@/shapes/focusTask/FocusTaskShapeUtil";
+} from "@/types/canvas";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 export interface FocusTaskNodeData {
@@ -33,18 +37,54 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   id,
   data,
   selected,
-  width = 260,
-  height = 82,
+  width = 280,
+  height = 90,
 }: NodeProps<FocusTaskNodeType>) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(data.title || "");
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState(data.notes || "");
+
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const titleTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const notesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
   const isDone = data.status === "done";
   const priorityHex = focusTaskShellColorForPriority(data.priority || 3);
   const theme = PAPER_COLORS[data.paper || "cream"] || PAPER_COLORS.cream;
 
   const w = Math.max(200, width);
-  const h = Math.max(70, height);
+  const h = Math.max(76, height);
+
+  // Auto-resize title textarea to content
+  useEffect(() => {
+    if (isEditingTitle && titleTextareaRef.current) {
+      const el = titleTextareaRef.current;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    }
+  }, [isEditingTitle]);
+
+  // Auto-resize notes textarea to content
+  useEffect(() => {
+    if (isEditingNotes && notesTextareaRef.current) {
+      const el = notesTextareaRef.current;
+      el.style.height = "auto";
+      el.style.height = `${Math.max(48, el.scrollHeight)}px`;
+      el.focus();
+    }
+  }, [isEditingNotes]);
+
+  // Sync state if props change from outside
+  useEffect(() => {
+    setTitleDraft(data.title || "");
+  }, [data.title]);
+
+  useEffect(() => {
+    setNotesDraft(data.notes || "");
+  }, [data.notes]);
 
   // Render Rough.js hand-drawn card container and checkbox box
   useEffect(() => {
@@ -58,8 +98,14 @@ export const FocusTaskNode = memo(function FocusTaskNode({
     if (borderStyle === "dashed") dashArray = [6, 4];
     else if (borderStyle === "dotted") dashArray = [2, 4];
 
+    const nodeSeed =
+      Math.abs(
+        id.split("").reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0)
+      ) || 1;
+
     // 1. Organic Hand-drawn Card Background & Border
     const cardRect = rc.rectangle(3, 3, w - 6, h - 6, {
+      seed: nodeSeed,
       roughness: 1.2,
       stroke: isDone ? "#94a3b8" : "#475569",
       strokeWidth: 1.5,
@@ -72,6 +118,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
     // 2. Hand-drawn Left Priority Accent Tab
     const barHeight = Math.min(32, Math.max(20, h - 24));
     const priorityBar = rc.rectangle(4, 8, 4, barHeight, {
+      seed: nodeSeed + 1,
       roughness: 1.0,
       stroke: priorityHex,
       strokeWidth: 2,
@@ -82,20 +129,46 @@ export const FocusTaskNode = memo(function FocusTaskNode({
 
     // 3. Hand-drawn Checkbox outline
     const checkOutline = rc.rectangle(16, 12, 16, 16, {
+      seed: nodeSeed + 2,
       roughness: 1.4,
       stroke: isDone ? "#16a34a" : "#64748b",
       strokeWidth: 1.5,
       fill: isDone ? "rgba(22, 163, 74, 0.15)" : "transparent",
     });
     svg.appendChild(checkOutline);
-  }, [w, h, isDone, priorityHex, theme.fill, data.borderStyle]);
+  }, [id, w, h, isDone, priorityHex, theme.fill, data.borderStyle]);
 
   const toggleStatus = (e: React.MouseEvent) => {
     e.stopPropagation();
     const nextStatus = data.status === "done" ? "open" : "done";
-    data.status = nextStatus;
     useFlowCanvasStore.getState().updateNodeData(id, { status: nextStatus });
-    setTitleDraft((d) => d);
+  };
+
+  const handleSaveTitle = useCallback(() => {
+    setIsEditingTitle(false);
+    useFlowCanvasStore.getState().updateNodeData(id, { title: titleDraft.trim() });
+  }, [id, titleDraft]);
+
+  const handleSaveNotes = useCallback(() => {
+    setIsEditingNotes(false);
+    useFlowCanvasStore.getState().updateNodeData(id, { notes: notesDraft.trim() });
+  }, [id, notesDraft]);
+
+  // Handle interactive markdown checkbox clicks inside task notes
+  const handleNotesCheckboxClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target && target.tagName === "INPUT" && target.getAttribute("type") === "checkbox") {
+      e.stopPropagation();
+      const idxStr = target.getAttribute("data-task-checkbox");
+      if (idxStr !== null) {
+        const idx = parseInt(idxStr, 10);
+        if (!isNaN(idx)) {
+          const updated = toggleCheckboxInMarkdown(data.notes || notesDraft, idx);
+          setNotesDraft(updated);
+          useFlowCanvasStore.getState().updateNodeData(id, { notes: updated });
+        }
+      }
+    }
   };
 
   return (
@@ -103,19 +176,36 @@ export const FocusTaskNode = memo(function FocusTaskNode({
       className={`relative w-full h-full select-none ${
         selected ? "ring-2 ring-blue-500/80 rounded-lg" : ""
       }`}
+      onDoubleClick={(e) => e.stopPropagation()}
       style={{ contain: "layout style" }}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        setIsEditing(true);
-      }}
     >
-      <NodeResizer minWidth={200} minHeight={70} isVisible={selected} />
+      <NodeResizer minWidth={200} minHeight={76} isVisible={selected} />
 
-      {/* 4 Handles for Connecting Tasks to other shapes / boxes / text */}
-      <Handle type="target" position={Position.Top} className="!w-2.5 !h-2.5 !bg-zinc-400" />
-      <Handle type="target" position={Position.Left} className="!w-2.5 !h-2.5 !bg-zinc-400" />
-      <Handle type="source" position={Position.Right} className="!w-2.5 !h-2.5 !bg-zinc-400" />
-      <Handle type="source" position={Position.Bottom} className="!w-2.5 !h-2.5 !bg-zinc-400" />
+      {/* 4 Multi-Directional Handles on all sides */}
+      <Handle
+        type="source"
+        id="top"
+        position={Position.Top}
+        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+      />
+      <Handle
+        type="source"
+        id="right"
+        position={Position.Right}
+        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+      />
+      <Handle
+        type="source"
+        id="bottom"
+        position={Position.Bottom}
+        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+      />
+      <Handle
+        type="source"
+        id="left"
+        position={Position.Left}
+        className="!w-2.5 !h-2.5 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+      />
 
       {/* Rough.js Organic Sketch Container */}
       <svg
@@ -126,7 +216,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
       />
 
       {/* Card Content Overlay */}
-      <div className="relative z-10 flex items-start gap-2.5 px-4 pt-3 h-full">
+      <div className="relative z-10 flex items-start gap-2.5 px-4 pt-3 pb-2.5 h-full overflow-hidden">
         {/* Checkbox Click Target (overlaps the hand-drawn checkbox SVG) */}
         <button
           type="button"
@@ -139,34 +229,43 @@ export const FocusTaskNode = memo(function FocusTaskNode({
         </button>
 
         {/* Task Title & Notes */}
-        <div className="flex-1 min-w-0 pr-1">
-          {isEditing ? (
-            <input
-              type="text"
+        <div className="flex-1 min-w-0 pr-1 flex flex-col justify-start">
+          {/* Natural In-Place Title Editing */}
+          {isEditingTitle ? (
+            <textarea
+              ref={titleTextareaRef}
               value={titleDraft}
-              autoFocus
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={() => {
-                setIsEditing(false);
-                data.title = titleDraft;
-                useFlowCanvasStore.getState().updateNodeData(id, { title: titleDraft });
+              rows={1}
+              onChange={(e) => {
+                setTitleDraft(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = `${e.target.scrollHeight}px`;
               }}
+              onBlur={handleSaveTitle}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  setIsEditing(false);
-                  data.title = titleDraft;
-                  useFlowCanvasStore.getState().updateNodeData(id, { title: titleDraft });
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSaveTitle();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setTitleDraft(data.title || "");
+                  setIsEditingTitle(false);
                 }
               }}
-              className="w-full bg-transparent border-b border-blue-500 outline-none text-[13px] text-zinc-900 dark:text-zinc-100"
+              className="w-full bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none text-[13px] leading-snug font-medium text-zinc-900 dark:text-zinc-100 shadow-none focus:ring-0"
               style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
             />
           ) : (
             <div
-              className={`text-[13px] leading-snug break-words ${
-                isDone ? "line-through text-zinc-400 dark:text-zinc-500" : "text-zinc-800 dark:text-zinc-100"
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                setIsEditingTitle(true);
+              }}
+              className={`text-[13px] leading-snug break-words cursor-text ${
+                isDone ? "line-through text-zinc-400 dark:text-zinc-500" : "text-zinc-800 dark:text-zinc-100 font-medium"
               }`}
               style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+              title="Double click to edit title"
             >
               {data.title || titleDraft ? (
                 <span
@@ -180,15 +279,66 @@ export const FocusTaskNode = memo(function FocusTaskNode({
             </div>
           )}
 
-          {data.notes && (
+          {/* Task Body / Notes (Markdown Formatted in View, Raw Markdown in Edit) */}
+          {isEditingNotes ? (
+            <div className="mt-2 pt-1 border-t border-zinc-200/60 dark:border-zinc-800/60">
+              <textarea
+                ref={notesTextareaRef}
+                value={notesDraft}
+                rows={2}
+                placeholder="- [ ] Checklist or notes..."
+                onChange={(e) => {
+                  setNotesDraft(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${Math.max(48, e.target.scrollHeight)}px`;
+                }}
+                onBlur={handleSaveNotes}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    handleSaveNotes();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setNotesDraft(data.notes || "");
+                    setIsEditingNotes(false);
+                  }
+                }}
+                className="w-full bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none text-[11px] leading-relaxed text-zinc-800 dark:text-zinc-200 font-mono shadow-none focus:ring-0 placeholder:text-zinc-400 placeholder:italic"
+                style={{ fontFamily: "'Shantell Sans', monospace, sans-serif" }}
+              />
+              <div className="text-[9px] text-zinc-400 font-mono flex items-center justify-between mt-0.5 select-none">
+                <span>Markdown enabled</span>
+                <span>⌘↵ to save</span>
+              </div>
+            </div>
+          ) : data.notes ? (
             <div
-              className="mt-1 flex items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400"
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                setIsEditingNotes(true);
+              }}
+              onClick={handleNotesCheckboxClick}
+              className="mt-1.5 pt-1 border-t border-zinc-200/60 dark:border-zinc-800/60 text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-300 break-words cursor-text max-h-[140px] overflow-y-auto task-notes-content"
+              style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+              title="Double click to edit notes (Markdown supported)"
+              dangerouslySetInnerHTML={{
+                __html: renderMarkdownBlock(data.notes),
+              }}
+            />
+          ) : selected ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsEditingNotes(true);
+              }}
+              className="mt-1.5 pt-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 flex items-center gap-1 cursor-pointer transition-colors"
               style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
             >
-              <FileText className="size-3 shrink-0" />
-              <span className="truncate">{data.notes}</span>
-            </div>
-          )}
+              <Plus className="size-3" />
+              <span>Add notes / checklist...</span>
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

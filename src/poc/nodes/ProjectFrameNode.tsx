@@ -5,7 +5,7 @@ import { GitBranch, Sparkles } from "lucide-react";
 import {
   ACCENT_STYLES,
   type ProjectAccent,
-} from "@/shapes/projectFrame/ProjectFrameShapeUtil";
+} from "@/types/canvas";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 export interface ProjectFrameNodeData {
@@ -65,8 +65,14 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
     if (borderStyle === "dashed") dashArray = [6, 4];
     else if (borderStyle === "dotted") dashArray = [2, 4];
 
+    const nodeSeed =
+      Math.abs(
+        id.split("").reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0)
+      ) || 1;
+
     // 1. Hand-drawn outer frame container
     const outerRect = rc.rectangle(3, 3, w - 6, h - 6, {
+      seed: nodeSeed,
       roughness: 1.5,
       stroke: accent.dotHex || "#3b82f6",
       strokeWidth: 2,
@@ -77,12 +83,13 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
 
     // 2. Hand-drawn header divider line
     const headerLine = rc.line(4, 48, w - 4, 48, {
+      seed: nodeSeed + 1,
       roughness: 1.8,
       stroke: accent.dotHex || "#3b82f6",
       strokeWidth: 1.5,
     });
     svg.appendChild(headerLine);
-  }, [w, h, accent.dotHex, data.borderStyle]);
+  }, [id, w, h, accent.dotHex, data.borderStyle]);
 
   return (
     <div
@@ -105,8 +112,31 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
         className="absolute inset-0 overflow-visible pointer-events-none"
       />
 
-      <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-zinc-400" />
-      <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-zinc-400" />
+      {/* 4 Multi-Directional Handles on all sides */}
+      <Handle
+        type="source"
+        id="top"
+        position={Position.Top}
+        className="!w-3 !h-3 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-125 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+      />
+      <Handle
+        type="source"
+        id="right"
+        position={Position.Right}
+        className="!w-3 !h-3 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-125 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+      />
+      <Handle
+        type="source"
+        id="bottom"
+        position={Position.Bottom}
+        className="!w-3 !h-3 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-125 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+      />
+      <Handle
+        type="source"
+        id="left"
+        position={Position.Left}
+        className="!w-3 !h-3 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-125 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
+      />
 
       {/* Frame Header Content */}
       <div className="relative z-10 flex items-center justify-between px-5 pt-3.5 pb-2">
@@ -123,13 +153,11 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
               onChange={(e) => setTitleVal(e.target.value)}
               onBlur={() => {
                 setIsEditingTitle(false);
-                data.title = titleVal;
                 useFlowCanvasStore.getState().updateNodeData(id, { title: titleVal });
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   setIsEditingTitle(false);
-                  data.title = titleVal;
                   useFlowCanvasStore.getState().updateNodeData(id, { title: titleVal });
                 }
               }}
@@ -183,13 +211,11 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
             onChange={(e) => setGoalVal(e.target.value)}
             onBlur={() => {
               setIsEditingGoal(false);
-              data.goal = goalVal;
               useFlowCanvasStore.getState().updateNodeData(id, { goal: goalVal });
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 setIsEditingGoal(false);
-                data.goal = goalVal;
                 useFlowCanvasStore.getState().updateNodeData(id, { goal: goalVal });
               }
             }}

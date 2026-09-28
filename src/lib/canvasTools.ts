@@ -1,18 +1,10 @@
-import type { Editor, TLShape } from 'tldraw'
 import type { McpTool, McpToolCallResult } from './mcpTypes'
-import {
-  findContainingProjectFrame,
-  spawnShapesOnCanvas,
-  spawnWorkflowForProject,
-  type SpawnableShape,
-} from './canvasSpawner'
-import { getCanvasContext, extractTextFromShape, getProjectFrameContents } from './canvasContext'
+import { getFlowCanvasContext, getFlowProjectFrameContents } from './canvasContext'
 import { prioritizeDailyFocusSlot, auditPortfolioProjects } from './jev'
-import type { TLProjectFrameShape } from '@/shapes/projectFrame/ProjectFrameShapeUtil'
-import type { TLFocusTaskShape } from '@/shapes/focusTask/FocusTaskShapeUtil'
+import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
 
 /**
- * Built-in native tools exposed by the Foqz spatial canvas.
+ * Built-in native tools exposed by the Foqz spatial canvas (React Flow).
  */
 export const NATIVE_FOQZ_TOOLS: McpTool[] = [
   {
@@ -59,54 +51,12 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
                 type: 'string',
                 description: 'Optional task details or markdown notes',
               },
-              minutes: {
-                type: 'number',
-                description: 'Estimated focus time in minutes (e.g. 25)',
-              },
             },
             required: ['title'],
           },
         },
       },
       required: ['tasks'],
-    },
-  },
-  {
-    serverName: 'foqz',
-    name: 'create_timer',
-    description: 'Place a focus countdown timer on the canvas.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        minutes: {
-          type: 'number',
-          description: 'Focus timer duration in minutes (e.g. 15, 25, 50)',
-          default: 25,
-        },
-      },
-      required: ['minutes'],
-    },
-  },
-  {
-    serverName: 'foqz',
-    name: 'add_sticky_note',
-    description:
-      'Add a colorful sticky note on the canvas for brainstorming, tips, or documentation.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        text: {
-          type: 'string',
-          description: 'Text content of the sticky note',
-        },
-        color: {
-          type: 'string',
-          description: 'Note color: yellow, blue, green, pink, violet, grey',
-          enum: ['yellow', 'blue', 'green', 'pink', 'violet', 'grey'],
-          default: 'yellow',
-        },
-      },
-      required: ['text'],
     },
   },
   {
@@ -159,27 +109,16 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
 ]
 
 /**
- * Creates a tool executor bound to the active tldraw Editor.
+ * Creates a tool executor bound to the React Flow store.
  */
-export function createCanvasToolExecutor(
-  editor: Editor | null,
-  getPrimaryShape?: () => TLShape | null | undefined,
-) {
+export function createFlowCanvasToolExecutor() {
   return async (
     toolName: string,
     args: Record<string, any>,
     _serverName?: string,
   ): Promise<McpToolCallResult> => {
-    if (!editor) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: 'Canvas editor is not mounted or available.' },
-        ],
-      }
-    }
-
-    const primaryShape = getPrimaryShape ? getPrimaryShape() : null
+    const store = useFlowCanvasStore.getState()
+    const { nodes, edges, selectedNodeId, createTask } = store
     const normalizedName = toolName.replace(/^(foqz[_:]+)/, '')
 
     switch (normalizedName) {
@@ -208,24 +147,19 @@ export function createCanvasToolExecutor(
           }
         }
 
-        const spawnActions: SpawnableShape[] = rawTasks.map((t: any) => ({
-          type: 'task',
-          title: String(t.title || 'Untitled Task'),
-          priority: typeof t.priority === 'number' ? t.priority : 3,
-          text: t.notes ? String(t.notes) : undefined,
-          minutes: typeof t.minutes === 'number' ? t.minutes : undefined,
-        }))
+        const selectedFrame = nodes.find(
+          (n) => n.id === selectedNodeId && n.type === 'projectFrame'
+        )
 
         let count = 0
-        const targetProject = findContainingProjectFrame(editor, primaryShape)
-        if (targetProject) {
-          count = spawnWorkflowForProject(
-            editor,
-            targetProject,
-            spawnActions,
-          )
-        } else {
-          count = spawnShapesOnCanvas(editor, primaryShape, spawnActions)
+        for (const t of rawTasks) {
+          createTask({
+            title: String(t.title || 'Untitled Task'),
+            priority: typeof t.priority === 'number' ? t.priority : 3,
+            notes: t.notes ? String(t.notes) : undefined,
+            parentId: selectedFrame?.id,
+          })
+          count++
         }
 
         return {
@@ -239,45 +173,8 @@ export function createCanvasToolExecutor(
         }
       }
 
-      case 'create_timer': {
-        const minutes = typeof args.minutes === 'number' ? args.minutes : 25
-        const spawnActions: SpawnableShape[] = [{ type: 'timer', minutes }]
-        const targetProject = findContainingProjectFrame(editor, primaryShape)
-        const count = targetProject
-          ? spawnWorkflowForProject(editor, targetProject, spawnActions)
-          : spawnShapesOnCanvas(editor, primaryShape, spawnActions)
-        return {
-          isError: false,
-          content: [
-            {
-              type: 'text',
-              text: `Created ${minutes}m focus timer on canvas.`,
-            },
-          ],
-        }
-      }
-
-      case 'add_sticky_note': {
-        const text = String(args.text || '')
-        const color = args.color || 'yellow'
-        const spawnActions: SpawnableShape[] = [{ type: 'note', text, color }]
-        const targetProject = findContainingProjectFrame(editor, primaryShape)
-        const count = targetProject
-          ? spawnWorkflowForProject(editor, targetProject, spawnActions)
-          : spawnShapesOnCanvas(editor, primaryShape, spawnActions)
-        return {
-          isError: false,
-          content: [
-            {
-              type: 'text',
-              text: `Added sticky note to canvas.`,
-            },
-          ],
-        }
-      }
-
       case 'get_canvas_summary': {
-        const ctx = getCanvasContext(editor)
+        const ctx = getFlowCanvasContext(nodes, edges, selectedNodeId)
         const summary =
           args.scope === 'selected' && ctx.selectedSummary
             ? ctx.selectedSummary
@@ -305,11 +202,9 @@ export function createCanvasToolExecutor(
           }
         }
 
-        const ctx = getCanvasContext(editor)
+        const ctx = getFlowCanvasContext(nodes, edges, selectedNodeId)
         const currentGoal =
           args.criteria ||
-          ctx.activeTask?.title ||
-          (primaryShape ? extractTextFromShape(primaryShape) : '') ||
           ctx.boardSummary ||
           'Execute core product milestones with minimal blast radius'
 
@@ -332,7 +227,7 @@ export function createCanvasToolExecutor(
             ],
           }
         } catch (jevErr: any) {
-          // Heuristic ranking fallback if TypeSafe key is offline or unconfigured
+          // Heuristic ranking fallback
           const fallback = candidateItems
             .map((item, i) => {
               const priorityNumber = i === 0 ? 1 : i === 1 ? 2 : 3
@@ -353,10 +248,7 @@ export function createCanvasToolExecutor(
       }
 
       case 'jev_audit_portfolio': {
-        const pageShapes = editor.getCurrentPageShapes()
-        const projectFrames = pageShapes.filter(
-          (s): s is TLProjectFrameShape => s.type === 'project-frame',
-        )
+        const projectFrames = nodes.filter((n) => n.type === 'projectFrame')
 
         if (projectFrames.length === 0) {
           return {
@@ -370,32 +262,34 @@ export function createCanvasToolExecutor(
           }
         }
 
-        // Build PortfolioProjectInput for each project frame
         const projectsInput = projectFrames.map((pf) => {
-          const contents = getProjectFrameContents(editor, pf.id)
-          const tasksInFrame = (contents?.containedShapes || [])
-            .map((c) => c.shape)
-            .filter((s): s is TLFocusTaskShape => s.type === 'focus-task')
+          const contents = getFlowProjectFrameContents(nodes, pf.id)
+          const tasksInFrame = (contents?.containedShapes || []).filter(
+            (c) => c.type === 'focusTask'
+          )
 
-          const doneTasks = tasksInFrame.filter((t) => t.props.status === 'done').length
+          const doneTasks = tasksInFrame.filter(
+            (t) => t.shape?.data?.status === 'done'
+          ).length
           const openTasks = tasksInFrame
-            .filter((t) => t.props.status !== 'done')
+            .filter((t) => t.shape?.data?.status !== 'done')
             .map((t) => ({
               id: t.id,
-              title: t.props.title || 'Untitled Task',
-              priority: t.props.priority || 3,
-              notes: t.props.notes,
+              title: t.shape?.data?.title || 'Untitled Task',
+              priority: t.shape?.data?.priority || 3,
+              notes: t.shape?.data?.notes,
             }))
 
+          const d = pf.data || {}
           return {
             id: pf.id,
-            title: pf.props.title || 'Untitled Project',
-            goal: pf.props.goal || '',
-            projectContext: pf.props.projectContext,
+            title: d.title || 'Untitled Project',
+            goal: d.goal || '',
+            projectContext: d.projectContext,
             totalTasks: tasksInFrame.length,
             doneTasks,
             openTasks,
-            connectors: pf.props.connectors,
+            connectors: d.connectors,
           }
         })
 
@@ -415,7 +309,6 @@ export function createCanvasToolExecutor(
             ],
           }
         } catch (err: any) {
-          // Fallback heuristic evaluation if Jev API key is missing
           const fallback = projectsInput
             .map((p, idx) => {
               return `• **#${idx + 1}**: **${p.title}** (${p.doneTasks}/${p.totalTasks} Done) — Goal: "${p.goal || 'No goal set'}"`
