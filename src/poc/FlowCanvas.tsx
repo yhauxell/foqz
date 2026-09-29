@@ -509,23 +509,24 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   );
 
   const handleCreateProject = useCallback(() => {
-    const id = `proj-${Date.now()}`;
-    const newNode: Node = {
-      id,
-      type: "projectFrame",
-      position: { x: 180 + Math.random() * 40, y: 140 + Math.random() * 40 },
-      style: { width: 640, height: 420 },
-      data: {
-        title: "New Project Workspace",
-        goal: "Goal: Define milestone objectives",
-        accent: "emerald",
-        borderStyle: "dashed",
-      },
-    };
-    setNodes((nds) => [...nds, newNode]);
-    setSelectedNodeId(id);
+    const id = useFlowCanvasStore.getState().createProject({
+      title: "New Project",
+      goal: "Milestone goal & focus direction",
+      accent: "blue",
+    });
+    window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
     setActiveTool("select");
-  }, [setNodes, setSelectedNodeId]);
+  }, []);
+
+  const handleCreateTask = useCallback(() => {
+    const id = useFlowCanvasStore.getState().createTask({
+      title: "New Task",
+      status: "open",
+      priority: 3,
+    });
+    window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
+    setActiveTool("select");
+  }, []);
 
   const handleDeleteSelected = useCallback(() => {
     const currentNodes = useFlowCanvasStore.getState().nodes;
@@ -647,12 +648,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     onTextTool: () => setActiveTool("text"),
     onArrowTool: () => setActiveTool("arrow"),
     onPencilTool: () => setActiveTool("pencil"),
-    onCreateTask: () => {
-      handleCreateTaskAt({
-        x: 400 + Math.random() * 40,
-        y: 260 + Math.random() * 40,
-      });
-    },
+    onCreateTask: handleCreateTask,
     onCreateProject: handleCreateProject,
     onFocusMode: () => {
       const sel = nodes.find((n) => n.selected);

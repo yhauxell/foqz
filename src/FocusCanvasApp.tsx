@@ -115,27 +115,7 @@ function FocusCanvasAppInner() {
     };
   }, []);
 
-  // Quick Action: Create new Project Frame at viewport center
-  const handleCreateProject = useCallback(() => {
-    const id = useFlowCanvasStore.getState().createProject({
-      title: "New Project",
-      goal: "Goal: Launch milestone by Friday",
-      accent: "blue",
-    });
-    window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
-  }, []);
-
-  // Quick Action: Create new Task at viewport center
-  const handleCreateTask = useCallback(() => {
-    const id = useFlowCanvasStore.getState().createTask({
-      title: "New Task",
-      status: "open",
-      priority: 3,
-    });
-    window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
-  }, []);
-
-  // Global Keyboard Shortcuts
+  // Global Shell Keyboard Shortcuts (Canvas shortcuts are managed by useFlowCanvasShortcuts)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       // Spotlight: Cmd+K / Ctrl+K
@@ -145,7 +125,7 @@ function FocusCanvasAppInner() {
         return;
       }
 
-      // Ignore single-key shortcuts if typing in an input or textarea
+      // Ignore if typing in an input or textarea
       const target = e.target as HTMLElement | null;
       if (
         target &&
@@ -155,38 +135,6 @@ function FocusCanvasAppInner() {
           Boolean(target.closest?.("[contenteditable='true']")))
       ) {
         return;
-      }
-
-      if (e.key === "f" || e.key === "F") {
-        e.preventDefault();
-        if (activeFocusShapeId) {
-          setActiveFocusShapeId(null);
-          return;
-        }
-
-        const primaryId = useFlowCanvasStore.getState().selectedNodeId;
-        if (primaryId) {
-          setActiveFocusShapeId(primaryId);
-          return;
-        }
-
-        // If no node selected, focus on active/doing or open task
-        const nodes = useFlowCanvasStore.getState().nodes;
-        const targetTask =
-          nodes.find((n) => n.type === "focusTask" && (n.data as any)?.status === "doing") ||
-          nodes.find((n) => n.type === "focusTask" && (n.data as any)?.status === "open") ||
-          nodes.find((n) => n.type === "focusTask");
-
-        if (targetTask) {
-          useFlowCanvasStore.getState().setSelectedNodeId(targetTask.id);
-          setActiveFocusShapeId(targetTask.id);
-        } else {
-          window.dispatchEvent(new CustomEvent("foqz:flow-fit-view"));
-        }
-        return;
-      } else if (e.key === "?" && !(e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setShortcutsOpen((v) => !v);
       }
 
       const mod = e.metaKey || e.ctrlKey;
@@ -216,32 +164,11 @@ function FocusCanvasAppInner() {
         );
         return;
       }
-
-      // New Project Frame (Cmd+Shift+P, Option+Cmd+N, or Option+P)
-      if (
-        (mod && e.shiftKey && e.key.toLowerCase() === "p") ||
-        (mod && e.altKey && e.key.toLowerCase() === "n") ||
-        (!mod && e.altKey && e.key.toLowerCase() === "p")
-      ) {
-        e.preventDefault();
-        handleCreateProject();
-        return;
-      }
-
-      // New Task (Cmd+N, Cmd+Shift+N)
-      if (
-        (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") ||
-        (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "n")
-      ) {
-        e.preventDefault();
-        handleCreateTask();
-        return;
-      }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleCreateProject, handleCreateTask]);
+  }, []);
 
   return (
     <div className="app bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
