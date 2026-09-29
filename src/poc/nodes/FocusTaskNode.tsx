@@ -1,7 +1,7 @@
 import React, { memo, useState, useEffect, useRef, useCallback } from "react";
 import { NodeResizer, Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
-import { Check, FileText, Plus } from "lucide-react";
+import { Check, FileText, Plus, Play, Pause, Target } from "lucide-react";
 import {
   renderMarkdownInline,
   renderMarkdownBlock,
@@ -55,6 +55,51 @@ export const FocusTaskNode = memo(function FocusTaskNode({
 
   const w = Math.max(200, width);
   const h = Math.max(76, height);
+
+  const activeFocusNodeId = useFlowCanvasStore((s) => s.activeFocusNodeId);
+  const isTimerRunning = useFlowCanvasStore((s) => s.isTimerRunning);
+  const timerSecondsRemaining = useFlowCanvasStore((s) => s.timerSecondsRemaining);
+  const setActiveFocusNodeId = useFlowCanvasStore((s) => s.setActiveFocusNodeId);
+  const setIsTimerRunning = useFlowCanvasStore((s) => s.setIsTimerRunning);
+  const setTimerSecondsRemaining = useFlowCanvasStore((s) => s.setTimerSecondsRemaining);
+
+  const isFocusTarget = id === activeFocusNodeId;
+  const isDoing = data.status === "doing";
+
+  // Clock countdown tick when this node is the active focus target
+  useEffect(() => {
+    if (!isFocusTarget || !isTimerRunning) return;
+    const interval = setInterval(() => {
+      setTimerSecondsRemaining((prev) => {
+        if (prev <= 1) {
+          setIsTimerRunning(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isFocusTarget, isTimerRunning, setTimerSecondsRemaining, setIsTimerRunning]);
+
+  const formattedTimer = useMemo(() => {
+    const mins = Math.floor(timerSecondsRemaining / 60);
+    const secs = timerSecondsRemaining % 60;
+    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+  }, [timerSecondsRemaining]);
+
+  const toggleTimer = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsTimerRunning((prev) => !prev);
+  };
+
+  const handleStartFocus = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setActiveFocusNodeId(id);
+    useFlowCanvasStore.getState().updateNodeData(id, { status: "doing" });
+    window.dispatchEvent(
+      new CustomEvent("foqz:set-focus-target", { detail: { shapeId: id } })
+    );
+  };
 
   // Auto-resize title textarea to content
   useEffect(() => {
@@ -173,8 +218,12 @@ export const FocusTaskNode = memo(function FocusTaskNode({
 
   return (
     <div
-      className={`relative w-full h-full select-none ${
-        selected ? "ring-2 ring-blue-500/80 rounded-lg" : ""
+      className={`group relative w-full h-full select-none ${
+        isFocusTarget
+          ? "ring-2 ring-rose-500 rounded-lg shadow-lg shadow-rose-500/10"
+          : selected
+          ? "ring-2 ring-blue-500/80 rounded-lg"
+          : ""
       }`}
       onDoubleClick={(e) => e.stopPropagation()}
       style={{ contain: "layout style" }}
@@ -230,54 +279,89 @@ export const FocusTaskNode = memo(function FocusTaskNode({
 
         {/* Task Title & Notes */}
         <div className="flex-1 min-w-0 pr-1 flex flex-col justify-start">
-          {/* Natural In-Place Title Editing */}
-          {isEditingTitle ? (
-            <textarea
-              ref={titleTextareaRef}
-              value={titleDraft}
-              rows={1}
-              onChange={(e) => {
-                setTitleDraft(e.target.value);
-                e.target.style.height = "auto";
-                e.target.style.height = `${e.target.scrollHeight}px`;
-              }}
-              onBlur={handleSaveTitle}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSaveTitle();
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  setTitleDraft(data.title || "");
-                  setIsEditingTitle(false);
-                }
-              }}
-              className="w-full bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none text-[13px] leading-snug font-medium text-zinc-900 dark:text-zinc-100 shadow-none focus:ring-0"
-              style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
-            />
-          ) : (
-            <div
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                setIsEditingTitle(true);
-              }}
-              className={`text-[13px] leading-snug break-words cursor-text ${
-                isDone ? "line-through text-zinc-400 dark:text-zinc-500" : "text-zinc-800 dark:text-zinc-100 font-medium"
-              }`}
-              style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
-              title="Double click to edit title"
-            >
-              {data.title || titleDraft ? (
-                <span
-                  dangerouslySetInnerHTML={{
-                    __html: renderMarkdownInline(data.title || titleDraft),
+          {/* Header Row: Title & Active Timer / Focus Target Button */}
+          <div className="flex items-start justify-between gap-1.5 mb-0.5">
+            <div className="flex-1 min-w-0">
+              {/* Natural In-Place Title Editing */}
+              {isEditingTitle ? (
+                <textarea
+                  ref={titleTextareaRef}
+                  value={titleDraft}
+                  rows={1}
+                  onChange={(e) => {
+                    setTitleDraft(e.target.value);
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${e.target.scrollHeight}px`;
                   }}
+                  onBlur={handleSaveTitle}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSaveTitle();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setTitleDraft(data.title || "");
+                      setIsEditingTitle(false);
+                    }
+                  }}
+                  className="w-full bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none text-[13px] leading-snug font-medium text-zinc-900 dark:text-zinc-100 shadow-none focus:ring-0"
+                  style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
                 />
               ) : (
-                <span className="text-zinc-400 italic">Double-click to write task</span>
+                <div
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditingTitle(true);
+                  }}
+                  className={`text-[13px] leading-snug break-words cursor-text ${
+                    isDone ? "line-through text-zinc-400 dark:text-zinc-500" : "text-zinc-800 dark:text-zinc-100 font-medium"
+                  }`}
+                  style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+                  title="Double click to edit title"
+                >
+                  {data.title || titleDraft ? (
+                    <span
+                      dangerouslySetInnerHTML={{
+                        __html: renderMarkdownInline(data.title || titleDraft),
+                      }}
+                    />
+                  ) : (
+                    <span className="text-zinc-400 italic">Double-click to write task</span>
+                  )}
+                </div>
               )}
             </div>
-          )}
+
+            {/* Timer or Focus Button */}
+            {isFocusTarget ? (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-[10px] font-mono font-semibold shrink-0 select-none shadow-2xs"
+                title="Active Focus Timer"
+              >
+                <span className={`size-1.5 rounded-full bg-rose-500 ${isTimerRunning ? 'animate-ping' : ''}`} />
+                <span>{formattedTimer}</span>
+                <button
+                  type="button"
+                  onClick={toggleTimer}
+                  className="hover:scale-110 active:scale-95 transition-transform cursor-pointer ml-0.5"
+                  title={isTimerRunning ? "Pause timer" : "Resume timer"}
+                >
+                  {isTimerRunning ? <Pause className="size-2.5" /> : <Play className="size-2.5" />}
+                </button>
+              </div>
+            ) : selected || isDoing ? (
+              <button
+                type="button"
+                onClick={handleStartFocus}
+                className="opacity-85 hover:opacity-100 hover:scale-105 active:scale-95 transition-all px-1.5 py-0.5 rounded bg-zinc-200/70 dark:bg-zinc-800 text-[9px] font-medium text-zinc-600 dark:text-zinc-300 hover:text-rose-500 shrink-0 flex items-center gap-1 cursor-pointer select-none"
+                title="Start Focus Session on this task (F)"
+              >
+                <Target className="size-2.5 text-rose-500" />
+                <span>Focus</span>
+              </button>
+            ) : null}
+          </div>
 
           {/* Task Body / Notes (Markdown Formatted in View, Raw Markdown in Edit) */}
           {isEditingNotes ? (

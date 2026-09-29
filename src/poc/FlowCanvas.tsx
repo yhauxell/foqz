@@ -69,7 +69,7 @@ const DEFAULT_EDGE_OPTIONS = {
 };
 const MULTI_SELECTION_KEY_CODE = ["Meta", "Control", "Shift"];
 const ZOOM_ACTIVATION_KEY_CODE = ["Meta", "Control"];
-const PAN_ON_DRAG: (number | boolean)[] = [1, 2];
+const PAN_ON_DRAG: number[] = [1, 2];
 
 export type ActiveTool = "select" | "task" | "box" | "circle" | "text" | "arrow" | "pencil";
 
@@ -132,19 +132,20 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     const handleFitView = () => fitView({ duration: 300 });
     const handleZoomReset = () => fitView({ duration: 300, maxZoom: 1, minZoom: 1 });
     const handleOpenInlineChat = (e: any) => {
-      if (e.detail?.shapeId) {
-        setInlineChatNodeId(e.detail.shapeId);
-      }
+      const id = e.detail?.nodeId || e.detail?.shapeId || "__canvas__";
+      setInlineChatNodeId(id);
     };
 
     window.addEventListener("foqz:flow-center-on", handleCenterOn as EventListener);
     window.addEventListener("foqz:flow-fit-view", handleFitView);
+    window.addEventListener("foqz:fit-view", handleFitView);
     window.addEventListener("foqz:flow-zoom-fit", handleFitView);
     window.addEventListener("foqz:flow-zoom-reset", handleZoomReset);
     window.addEventListener("foqz:open-inline-chat", handleOpenInlineChat as EventListener);
     return () => {
       window.removeEventListener("foqz:flow-center-on", handleCenterOn as EventListener);
       window.removeEventListener("foqz:flow-fit-view", handleFitView);
+      window.removeEventListener("foqz:fit-view", handleFitView);
       window.removeEventListener("foqz:flow-zoom-fit", handleFitView);
       window.removeEventListener("foqz:flow-zoom-reset", handleZoomReset);
       window.removeEventListener("foqz:open-inline-chat", handleOpenInlineChat as EventListener);
@@ -215,13 +216,13 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   );
 
   // Track initial node position on drag start to restore on cancel
-  const handleNodeDragStart = useCallback((_event: React.MouseEvent, node: Node) => {
+  const handleNodeDragStart = useCallback((_event: MouseEvent | TouchEvent, node: Node) => {
     dragStartPosRef.current = { id: node.id, position: { ...node.position } };
   }, []);
 
   // Reparenting & Detach Logic on Node Drag Stop
   const handleNodeDragStop = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
+    (_event: MouseEvent | TouchEvent, node: Node) => {
       if (node.type === "projectFrame") return;
 
       const currentNodes = useFlowCanvasStore.getState().nodes;
@@ -655,10 +656,18 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     onCreateProject: handleCreateProject,
     onFocusMode: () => {
       const sel = nodes.find((n) => n.selected);
-      if (sel) {
+      const targetId =
+        sel?.id ||
+        nodes.find((n) => n.type === "focusTask" && (n.data as any)?.status === "doing")?.id ||
+        nodes.find((n) => n.type === "focusTask" && (n.data as any)?.status === "open")?.id ||
+        nodes.find((n) => n.type === "focusTask")?.id;
+
+      if (targetId) {
         window.dispatchEvent(
-          new CustomEvent("foqz:set-focus-target", { detail: { shapeId: sel.id } })
+          new CustomEvent("foqz:set-focus-target", { detail: { shapeId: targetId } })
         );
+      } else {
+        fitView({ duration: 300 });
       }
     },
     onCenterFront: handleCenterFront,
@@ -982,6 +991,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         onConnect={onConnect}
         onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
+        onNodeClick={(_event, node) => setSelectedNodeId(node.id)}
         onPaneClick={handlePaneClick}
         onEdgeClick={onEdgeClick}
         onDoubleClick={handlePaneDoubleClick}
