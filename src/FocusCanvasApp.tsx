@@ -25,7 +25,8 @@ export function FocusCanvasApp() {
 
 function FocusCanvasAppInner() {
   const flowSelectedNodeId = useFlowCanvasStore((s) => s.selectedNodeId);
-  const [activeFocusShapeId, setActiveFocusShapeId] = useState<string | null>(null);
+  const storeActiveFocusNodeId = useFlowCanvasStore((s) => s.activeFocusNodeId);
+  const isTimerRunning = useFlowCanvasStore((s) => s.isTimerRunning);
   const [connectorsShapeId, setConnectorsShapeId] = useState<string | null>(null);
   const [connectorsInitialTab, setConnectorsInitialTab] = useState<"connectors" | "context">("connectors");
   const [spotlightOpen, setSpotlightOpen] = useState(false);
@@ -78,7 +79,9 @@ function FocusCanvasAppInner() {
       const shapeId = e.detail?.shapeId || (typeof e.detail === "string" ? e.detail : null);
       if (shapeId) {
         useFlowCanvasStore.getState().setSelectedNodeId(shapeId);
-        setActiveFocusShapeId((prev) => (prev === shapeId ? null : shapeId));
+        useFlowCanvasStore.getState().setActiveFocusNodeId(shapeId);
+      } else {
+        useFlowCanvasStore.getState().setActiveFocusNodeId(null);
       }
     };
 
@@ -114,6 +117,21 @@ function FocusCanvasAppInner() {
       window.removeEventListener("foqz:open-shortcuts", onOpenShortcutsEvent);
     };
   }, []);
+
+  // Global focus countdown runner: single source of truth across all components
+  useEffect(() => {
+    if (!storeActiveFocusNodeId || !isTimerRunning) return;
+    const interval = setInterval(() => {
+      useFlowCanvasStore.getState().setTimerSecondsRemaining((prev) => {
+        if (prev <= 1) {
+          useFlowCanvasStore.getState().setIsTimerRunning(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [storeActiveFocusNodeId, isTimerRunning]);
 
   // Global Shell Keyboard Shortcuts (Canvas shortcuts are managed by useFlowCanvasShortcuts)
   useEffect(() => {
@@ -270,10 +288,16 @@ function FocusCanvasAppInner() {
           <WaypointRail />
 
           {/* Universal Shell Overlays */}
-          <ErrorBoundary onReset={() => setActiveFocusShapeId(null)}>
+          <ErrorBoundary onReset={() => useFlowCanvasStore.getState().setActiveFocusNodeId(null)}>
             <MonoFocusController
-              activeShapeId={activeFocusShapeId}
-              onClearFocus={() => setActiveFocusShapeId(null)}
+              activeShapeId={storeActiveFocusNodeId}
+              onClearFocus={() => {
+                useFlowCanvasStore.getState().setActiveFocusNodeId(null);
+                useFlowCanvasStore.getState().setIsTimerRunning(false);
+                window.dispatchEvent(
+                  new CustomEvent("foqz:set-focus-target", { detail: { shapeId: null } })
+                );
+              }}
             />
           </ErrorBoundary>
 

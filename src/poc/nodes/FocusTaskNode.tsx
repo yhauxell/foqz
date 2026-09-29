@@ -1,7 +1,7 @@
 import React, { memo, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { NodeResizer, Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
-import { Check, FileText, Plus, Play, Pause, Target } from "lucide-react";
+import { Check, FileText, Plus, Play, Pause, Target, X, Lock } from "lucide-react";
 import {
   renderMarkdownInline,
   renderMarkdownBlock,
@@ -108,21 +108,6 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   const isFocusTarget = id === activeFocusNodeId;
   const isDoing = data.status === "doing";
 
-  // Clock countdown tick when this node is the active focus target
-  useEffect(() => {
-    if (!isFocusTarget || !isTimerRunning) return;
-    const interval = setInterval(() => {
-      setTimerSecondsRemaining((prev) => {
-        if (prev <= 1) {
-          setIsTimerRunning(false);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isFocusTarget, isTimerRunning, setTimerSecondsRemaining, setIsTimerRunning]);
-
   const formattedTimer = useMemo(() => {
     const mins = Math.floor(timerSecondsRemaining / 60);
     const secs = timerSecondsRemaining % 60;
@@ -137,11 +122,45 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   const handleStartFocus = (e: React.MouseEvent) => {
     e.stopPropagation();
     setActiveFocusNodeId(id);
+    setIsTimerRunning(true);
+    if (timerSecondsRemaining <= 0) {
+      setTimerSecondsRemaining(25 * 60);
+    }
     useFlowCanvasStore.getState().updateNodeData(id, { status: "doing" });
     window.dispatchEvent(
       new CustomEvent("foqz:set-focus-target", { detail: { shapeId: id } })
     );
   };
+
+  const handleStopFocus = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setActiveFocusNodeId(null);
+    setIsTimerRunning(false);
+    window.dispatchEvent(
+      new CustomEvent("foqz:set-focus-target", { detail: { shapeId: null } })
+    );
+  };
+
+  const handleOpenLockedFocus = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.dispatchEvent(
+      new CustomEvent("foqz:set-focus-target", { detail: { shapeId: id } })
+    );
+  };
+
+  // Auto-expand card height when notes/checkpoints are present
+  useEffect(() => {
+    if (data.notes && data.notes.trim().length > 0) {
+      const lines = (data.notes.match(/\n/g) || []).length + 1;
+      const neededH = Math.max(130, Math.min(380, 84 + lines * 24));
+      const curH = Number(height || 82);
+      if (curH < neededH) {
+        useFlowCanvasStore.getState().setNodes((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, style: { ...n.style, height: neededH } } : n))
+        );
+      }
+    }
+  }, [id, data.notes, height]);
 
   // Auto-resize title textarea to content
   useEffect(() => {
@@ -395,6 +414,22 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                   title={isTimerRunning ? "Pause timer" : "Resume timer"}
                 >
                   {isTimerRunning ? <Pause className="size-2.5" /> : <Play className="size-2.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenLockedFocus}
+                  className="hover:scale-110 active:scale-95 text-rose-500 hover:text-rose-700 dark:hover:text-rose-300 transition-all p-0.5 cursor-pointer ml-0.5"
+                  title="Open Fullscreen Locked Focus (F)"
+                >
+                  <Lock className="size-2.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStopFocus}
+                  className="hover:scale-110 active:scale-95 text-rose-500 hover:text-rose-700 dark:hover:text-rose-300 transition-all p-0.5 cursor-pointer ml-0.5"
+                  title="Exit Focus Session (Stop Timer)"
+                >
+                  <X className="size-2.5 stroke-[2.5]" />
                 </button>
               </div>
             ) : selected || isDoing ? (

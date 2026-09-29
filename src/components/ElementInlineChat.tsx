@@ -17,6 +17,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   MessageSquare,
+  CheckSquare,
+  Check,
 } from 'lucide-react'
 import { useReactFlow, type Node, type Edge } from '@xyflow/react'
 import { useOllama } from '@/lib/ollama'
@@ -42,6 +44,30 @@ export interface ElementAiMessage {
   timestamp: number
   executedTools?: AgentToolCallEvent[]
   activeTool?: string | null
+}
+
+function extractCheckpoints(text: string): string[] {
+  const lines = text.split('\n')
+  const results: string[] = []
+  for (const rawLine of lines) {
+    const line = rawLine.trim()
+    if (/^[-*]\s+\[[ xX]?\]\s+/.test(line)) {
+      results.push(line)
+    } else if (/^\d+\.\s+\[[ xX]?\]\s+/.test(line)) {
+      results.push(line.replace(/^\d+\.\s+/, '- '))
+    }
+  }
+  if (results.length === 0) {
+    const bulletLines = lines
+      .map((l) => l.trim())
+      .filter((l) => /^[-*]\s+[a-zA-Z0-9`"']/.test(l))
+    if (bulletLines.length >= 2 && /criteria|acceptance|checklist|steps|tasks|checkpoints/i.test(text)) {
+      for (const bl of bulletLines) {
+        results.push(bl.replace(/^[-*]\s+/, '- [ ] '))
+      }
+    }
+  }
+  return results
 }
 
 function JevEvaluationCard({
@@ -233,6 +259,7 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   const node = useFlowCanvasStore((s) => (isCanvasScope ? null : s.nodes.find((n) => n.id === nodeId)))
   const allNodes = useFlowCanvasStore((s) => s.nodes)
   const allEdges = useFlowCanvasStore((s) => s.edges)
+  const activeFocusNodeId = useFlowCanvasStore((s) => s.activeFocusNodeId)
 
   // Fetch MCP tools
   useEffect(() => {
@@ -607,6 +634,33 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     [isCanvasScope, containingProject, node]
   )
 
+  const [appliedMsgIds, setAppliedMsgIds] = useState<Record<string, boolean>>({})
+
+  const handleApplyCheckpoints = useCallback(
+    (msgId: string, checkpoints: string[]) => {
+      if (!node) return
+      const store = useFlowCanvasStore.getState()
+      const existingNotes = ((node.data as any)?.notes as string) || ''
+      const newItems = checkpoints.join('\n')
+      const mergedNotes = existingNotes ? `${existingNotes}\n\n${newItems}` : newItems
+
+      store.updateNodeData(node.id, {
+        notes: mergedNotes,
+      })
+
+      const lineCount = mergedNotes.split('\n').filter(Boolean).length
+      const autoHeight = Math.max(84, 84 + lineCount * 24)
+      store.setNodes((nodes) =>
+        nodes.map((n) =>
+          n.id === node.id ? { ...n, style: { ...n.style, height: autoHeight } } : n
+        )
+      )
+
+      setAppliedMsgIds((prev) => ({ ...prev, [msgId]: true }))
+    },
+    [node]
+  )
+
   const handleClearChat = useCallback(() => {
     if (isStreaming) {
       setIsStreaming(false)
@@ -633,6 +687,10 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
       text = `Set priority of this task to P${prioNum} using update_node.`
     } else if (text === '/focus' || text.startsWith('/focus ')) {
       text = 'Start a 25-minute focus session on this task using start_focus_session.'
+    } else if (text === '/stop' || text === '/unfocus' || text === '/exitfocus') {
+      text = 'Stop the active focus session and unlock canvas using stop_focus_session.'
+    } else if (text === '/criteria' || text.startsWith('/criteria ')) {
+      text = `Use update_node(nodeId: "${node?.id}", appendNotes: "...") to directly append 3 concrete acceptance criteria checkpoints ("- [ ] ...") to this task's notes.`
     } else if (text.startsWith('/rename')) {
       const newTitle = text.replace(/^\/rename\s*/, '').trim()
       text = newTitle
@@ -847,7 +905,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
         top: currentY,
         width: isMaximized ? modalSize.width : modalSize.width,
         height: isMaximized ? modalSize.height : modalSize.height,
-        zIndex: 6000,
+        zIndex: 6500,
       }}
       className="glass-panel flex flex-col rounded-3xl shadow-2xl border border-white/60 dark:border-zinc-800 backdrop-blur-2xl text-zinc-900 dark:text-zinc-100 select-none animate-in fade-in zoom-in-95 duration-150 overflow-hidden font-sans"
       onPointerDown={(e) => e.stopPropagation()}
@@ -1077,6 +1135,31 @@ Do NOT just passively describe what could be done — when the user asks to modi
                     }
                     return null
                   })}
+
+                  {/* 1-Click Checkpoints Ingestion for Focus Task */}
+                  {isTask && (() => {
+                    const checkpoints = extractCheckpoints(m.content)
+                    if (checkpoints.length === 0) return null
+                    return (
+                      <div className="pt-2 border-t border-black/[0.06] dark:border-white/[0.08]">
+                        {appliedMsgIds[m.id] ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/60 select-none">
+                            <Check className="size-3" />
+                            <span>Checkpoints applied to card</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleApplyCheckpoints(m.id, checkpoints)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-100 transition-colors shadow-2xs cursor-pointer select-none"
+                          >
+                            <CheckSquare className="size-3 text-emerald-400 dark:text-emerald-600" />
+                            <span>Apply {checkpoints.length} Checkpoints to Card</span>
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -1113,11 +1196,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
             </button>
             <button
               type="button"
-              onClick={() =>
-                handleSend(
-                  'Add a checklist of concrete acceptance criteria to this task notes using update_node appendNotes.'
-                )
-              }
+              onClick={() => handleSend('/criteria')}
               className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer"
             >
               📝 Criteria
@@ -1130,18 +1209,45 @@ Do NOT just passively describe what could be done — when the user asks to modi
               <Target className="size-2.5 text-rose-500" />
               <span>P1 Urgent</span>
             </button>
-            <button
-              type="button"
-              onClick={() =>
-                handleSend(
-                  'Start a 25-minute focus session on this task using start_focus_session.'
-                )
-              }
-              className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
-            >
-              <Lock className="size-2.5 text-blue-500" />
-              <span>Focus 25m</span>
-            </button>
+            {activeFocusNodeId === node?.id ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent('foqz:set-focus-target', {
+                        detail: { shapeId: node.id },
+                      })
+                    )
+                  }}
+                  className="px-2 py-0.5 rounded-full border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900 text-[10px] text-blue-700 dark:text-blue-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  <Lock className="size-2.5 text-blue-600" />
+                  <span>Locked Focus</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSend('/stop')}
+                  className="px-2 py-0.5 rounded-full border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900 text-[10px] text-rose-700 dark:text-rose-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  <X className="size-2.5 text-rose-600" />
+                  <span>Exit Focus</span>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() =>
+                  handleSend(
+                    'Start a 25-minute focus session on this task using start_focus_session.'
+                  )
+                }
+                className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
+              >
+                <Lock className="size-2.5 text-blue-500" />
+                <span>Focus 25m</span>
+              </button>
+            )}
           </div>
         )}
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white/80 dark:bg-zinc-900/80 border border-black/[0.08] dark:border-white/[0.1] shadow-2xs">

@@ -267,6 +267,16 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
       },
     },
   },
+  {
+    serverName: 'foqz',
+    name: 'stop_focus_session',
+    description:
+      'Stops and exits the active focus session, resetting timers and unlocking the canvas.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ]
 
 /**
@@ -542,6 +552,18 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
         }
 
         liveStore.updateNodeData(targetId, patch)
+
+        if (patch.notes && targetNode.type === 'focusTask') {
+          const currentH = Number(targetNode.style?.height ?? targetNode.height ?? 82)
+          const lines = (patch.notes.match(/\n/g) || []).length + 1
+          const neededH = Math.max(currentH, Math.min(380, 84 + lines * 24))
+          if (neededH > currentH) {
+            liveStore.setNodes((prev) =>
+              prev.map((n) => (n.id === targetId ? { ...n, style: { ...n.style, height: neededH } } : n))
+            )
+          }
+        }
+
         const updatedTitle = patch.title || (targetNode.data as any)?.title || targetId
 
         return {
@@ -788,6 +810,11 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
         liveStore.setActiveFocusNodeId(targetId)
         liveStore.setTimerSecondsRemaining(durationMinutes * 60)
         liveStore.setIsTimerRunning(true)
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('foqz:set-focus-target', { detail: { shapeId: targetId } })
+          )
+        }
 
         return {
           isError: false,
@@ -795,6 +822,29 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
             {
               type: 'text',
               text: `Started ${durationMinutes}-minute focus session on task "${(targetNode.data as any)?.title || targetId}".`,
+            },
+          ],
+        }
+      }
+
+      case 'stop_focus_session': {
+        const liveStore = useFlowCanvasStore.getState()
+        const prevTarget = liveStore.activeFocusNodeId
+        liveStore.setActiveFocusNodeId(null)
+        liveStore.setIsTimerRunning(false)
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('foqz:set-focus-target', { detail: { shapeId: null } })
+          )
+        }
+        return {
+          isError: false,
+          content: [
+            {
+              type: 'text',
+              text: prevTarget
+                ? `Exited active focus session on task "${prevTarget}". Canvas unlocked.`
+                : 'Exited active focus session. Canvas unlocked.',
             },
           ],
         }

@@ -414,6 +414,7 @@ When you receive tool execution results, summarize them naturally for the user i
           toolName === 'expand_task' ||
           toolName === 'connect_nodes' ||
           toolName === 'start_focus_session' ||
+          toolName === 'stop_focus_session' ||
           toolName === 'delete_node' ||
           NATIVE_FOQZ_TOOLS.some((t) => t.name === toolName)
 

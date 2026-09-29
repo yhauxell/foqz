@@ -67,8 +67,8 @@ export function MonoFocusController({
 }: MonoFocusControllerProps) {
   const [isLocked, setIsLocked] = useState(true)
   const [totalSeconds, setTotalSeconds] = useState(25 * 60)
-  const [secondsRemaining, setSecondsRemaining] = useState(25 * 60)
-  const [isRunning, setIsRunning] = useState(true)
+  const secondsRemaining = useFlowCanvasStore((s) => s.timerSecondsRemaining)
+  const isRunning = useFlowCanvasStore((s) => s.isTimerRunning)
   const [showExitModal, setShowExitModal] = useState(false)
   const [exitReason, setExitReason] = useState('')
   const [isEvaluatingExit, setIsEvaluatingExit] = useState(false)
@@ -119,7 +119,20 @@ export function MonoFocusController({
     )
   }, [activeShapeId, isLocked])
 
-  // Initialize drafts from shape
+  // Initialize drafts from shape and sync totalSeconds from canvas store
+  useEffect(() => {
+    if (activeShapeId) {
+      setIsLocked(true)
+      setShowExitModal(false)
+      setExitFeedback(null)
+      setExitReason('')
+      const storeSec = useFlowCanvasStore.getState().timerSecondsRemaining
+      if (typeof storeSec === 'number' && storeSec > 0) {
+        setTotalSeconds(Math.max(storeSec, 25 * 60))
+      }
+    }
+  }, [activeShapeId])
+
   useEffect(() => {
     if (isEditingTitle || isEditingNotes) return
     if (flowTaskData) {
@@ -129,23 +142,6 @@ export function MonoFocusController({
       setTitleDraft(shapeTitle)
     }
   }, [flowTaskData, flowNode, shapeTitle, isEditingTitle, isEditingNotes])
-
-  // Timer interval
-  useEffect(() => {
-    if (!isRunning || secondsRemaining <= 0) return
-
-    const interval = setInterval(() => {
-      setSecondsRemaining((prev) => {
-        if (prev <= 1) {
-          setIsRunning(false)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [isRunning, secondsRemaining])
 
   // Keydown listener for Esc: hold to escape
   useEffect(() => {
@@ -206,6 +202,8 @@ export function MonoFocusController({
   const handleForceUnlock = () => {
     setShowExitModal(false)
     setIsLocked(false)
+    useFlowCanvasStore.getState().setActiveFocusNodeId(null)
+    useFlowCanvasStore.getState().setIsTimerRunning(false)
     onClearFocus()
   }
 
@@ -219,6 +217,8 @@ export function MonoFocusController({
       if (evalRes.isLegitimate) {
         setShowExitModal(false)
         setIsLocked(false)
+        useFlowCanvasStore.getState().setActiveFocusNodeId(null)
+        useFlowCanvasStore.getState().setIsTimerRunning(false)
         onClearFocus()
       } else {
         setExitFeedback(
@@ -229,6 +229,8 @@ export function MonoFocusController({
       // Fallback if no API key: allow unlock
       setShowExitModal(false)
       setIsLocked(false)
+      useFlowCanvasStore.getState().setActiveFocusNodeId(null)
+      useFlowCanvasStore.getState().setIsTimerRunning(false)
       onClearFocus()
     } finally {
       setIsEvaluatingExit(false)
@@ -248,7 +250,7 @@ export function MonoFocusController({
     const nextStatus = curStatus === 'done' ? 'open' : 'done'
     updateTaskProps({ status: nextStatus })
     if (nextStatus === 'done') {
-      setIsRunning(false)
+      useFlowCanvasStore.getState().setIsTimerRunning(false)
     }
   }
 
@@ -288,14 +290,14 @@ export function MonoFocusController({
 
   const handleAddMinutes = (min: number) => {
     const addSec = min * 60
-    setSecondsRemaining((prev) => prev + addSec)
+    useFlowCanvasStore.getState().setTimerSecondsRemaining((prev) => prev + addSec)
     setTotalSeconds((prev) => prev + addSec)
   }
 
   const handleResetTimer = () => {
-    setSecondsRemaining(25 * 60)
+    useFlowCanvasStore.getState().setTimerSecondsRemaining(25 * 60)
     setTotalSeconds(25 * 60)
-    setIsRunning(true)
+    useFlowCanvasStore.getState().setIsTimerRunning(true)
   }
 
   const handleOpenInlineChat = () => {
@@ -490,7 +492,7 @@ export function MonoFocusController({
                 {/* Play / Pause Toggle */}
                 <button
                   type="button"
-                  onClick={() => setIsRunning(!isRunning)}
+                  onClick={() => useFlowCanvasStore.getState().setIsTimerRunning(!isRunning)}
                   className="size-10 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white flex items-center justify-center transition-all shadow-md cursor-pointer shrink-0"
                   title={isRunning ? 'Pause Timer' : 'Resume Timer'}
                 >
