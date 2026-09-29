@@ -9,6 +9,7 @@ const {
   globalShortcut,
   dialog,
   session,
+  shell,
 } = require('electron')
 const fs = require('node:fs/promises')
 const fsSync = require('node:fs')
@@ -25,14 +26,40 @@ let mainWindow
 let tray
 let animating = false
 
-/** Auto-update via electron-updater (publish config baked at build time, or FOCUS_UPDATE_URL). Dev / unpackaged: no-op. */
-function setupAutoUpdater() {
-  if (!app.isPackaged) return
-  if (process.env.FOCUS_SKIP_UPDATER === '1') return
+/** Auto-update via electron-updater (publish config baked at build time, or FOCUS_UPDATE_URL). */
+let autoUpdaterInstance = null
+let isManualCheck = false
+let updaterState = {
+  status: 'idle', // 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'dev-mode'
+  currentVersion: app.getVersion(),
+  isPackaged: app.isPackaged,
+  updateInfo: null,
+  error: null,
+  progress: null,
+  lastChecked: null,
+}
+
+function sendUpdaterState() {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+    mainWindow.webContents.send('updater:status-changed', {
+      ...updaterState,
+      currentVersion: app.getVersion(),
+      isPackaged: app.isPackaged,
+    })
+  }
+}
+
+function getAutoUpdater() {
+  if (autoUpdaterInstance) return autoUpdaterInstance
+  if (process.env.FOCUS_SKIP_UPDATER === '1') return null
   const genericUrl = process.env.FOCUS_UPDATE_URL
   const bakedConfigPath = path.join(process.resourcesPath, 'app-update.yml')
   const hasBakedFeed = fsSync.existsSync(bakedConfigPath)
-  if (!genericUrl && !hasBakedFeed) return
+  if (!app.isPackaged && !process.env.FOCUS_FORCE_DEV_UPDATER) {
+    return null
+  }
+  if (!genericUrl && !hasBakedFeed && !process.env.FOCUS_FORCE_DEV_UPDATER) return null
+
   try {
     const { autoUpdater } = require('electron-updater')
     autoUpdater.autoDownload = true
@@ -40,13 +67,143 @@ function setupAutoUpdater() {
     if (genericUrl) {
       autoUpdater.setFeedURL({ provider: 'generic', url: genericUrl })
     }
-    autoUpdater.on('error', (err) => {
-      console.error('[updater]', err?.message || err)
+
+    autoUpdater.on('checking-for-update', () => {
+      updaterState.status = 'checking'
+      updaterState.error = null
+      updaterState.lastChecked = new Date().toISOString()
+      sendUpdaterState()
     })
-    void autoUpdater.checkForUpdatesAndNotify()
+
+    autoUpdater.on('update-available', (info) => {
+      updaterState.status = 'available'
+      updaterState.updateInfo = info
+      updaterState.error = null
+      sendUpdaterState()
+    })
+
+    autoUpdater.on('download-progress', (progressObj) => {
+      updaterState.status = 'downloading'
+      updaterState.progress = {
+        percent: Math.round(progressObj.percent),
+        bytesPerSecond: progressObj.bytesPerSecond,
+        transferred: progressObj.transferred,
+        total: progressObj.total,
+      }
+      sendUpdaterState()
+    })
+
+    autoUpdater.on('update-not-available', (info) => {
+      updaterState.status = 'not-available'
+      updaterState.updateInfo = info
+      updaterState.progress = null
+      updaterState.error = null
+      sendUpdaterState()
+      if (isManualCheck) {
+        isManualCheck = false
+        dialog.showMessageBox(mainWindow || undefined, {
+          type: 'info',
+          title: 'Foqz Update',
+          message: 'You’re up to date!',
+          detail: `Foqz ${app.getVersion()} is currently the newest version available.`,
+        }).catch(() => {})
+      }
+    })
+
+    autoUpdater.on('update-downloaded', (info) => {
+      updaterState.status = 'downloaded'
+      updaterState.updateInfo = info
+      updaterState.progress = null
+      sendUpdaterState()
+      if (isManualCheck) {
+        isManualCheck = false
+        dialog.showMessageBox(mainWindow || undefined, {
+          type: 'info',
+          title: 'Update Ready',
+          message: `Foqz ${info?.version || ''} has been downloaded.`,
+          detail: 'Restart Foqz now to apply the update.',
+          buttons: ['Restart & Install', 'Later'],
+          defaultId: 0,
+          cancelId: 1,
+        }).then((res) => {
+          if (res.response === 0) {
+            autoUpdater.quitAndInstall()
+          }
+        }).catch(() => {})
+      }
+    })
+
+    autoUpdater.on('error', (err) => {
+      const errMsg = err?.message || String(err)
+      console.error('[updater]', errMsg)
+      updaterState.status = 'error'
+      updaterState.error = errMsg
+      updaterState.progress = null
+      sendUpdaterState()
+      if (isManualCheck) {
+        isManualCheck = false
+        dialog.showMessageBox(mainWindow || undefined, {
+          type: 'warning',
+          title: 'Update Check Failed',
+          message: 'Unable to check for updates.',
+          detail: errMsg,
+        }).catch(() => {})
+      }
+    })
+
+    autoUpdaterInstance = autoUpdater
+    return autoUpdaterInstance
   } catch (e) {
     console.error('[updater] init failed', e)
+    return null
   }
+}
+
+async function checkForUpdates(manual = false) {
+  isManualCheck = manual
+  const updater = getAutoUpdater()
+  if (!updater) {
+    if (!app.isPackaged) {
+      updaterState.status = 'dev-mode'
+      updaterState.error = null
+      updaterState.currentVersion = app.getVersion()
+      sendUpdaterState()
+      if (manual) {
+        dialog.showMessageBox(mainWindow || undefined, {
+          type: 'info',
+          title: 'Development Mode',
+          message: 'Running in development mode',
+          detail: `Version: ${app.getVersion()} (unpackaged). Auto-updater is active in packaged production builds.`,
+        }).catch(() => {})
+      }
+      return { ok: false, status: 'dev-mode', currentVersion: app.getVersion() }
+    }
+    updaterState.status = 'error'
+    updaterState.error = 'Update feed is not configured.'
+    sendUpdaterState()
+    return { ok: false, error: 'Update feed is not configured.' }
+  }
+
+  try {
+    updaterState.status = 'checking'
+    updaterState.error = null
+    updaterState.lastChecked = new Date().toISOString()
+    sendUpdaterState()
+    const result = await updater.checkForUpdates()
+    return { ok: true, updateInfo: result?.updateInfo, status: updaterState.status }
+  } catch (err) {
+    const errMsg = err?.message || String(err)
+    updaterState.status = 'error'
+    updaterState.error = errMsg
+    sendUpdaterState()
+    return { ok: false, error: errMsg }
+  }
+}
+
+function setupAutoUpdater() {
+  if (!app.isPackaged) return
+  if (process.env.FOCUS_SKIP_UPDATER === '1') return
+  void checkForUpdates(false)
 }
 
 /** When false, first `before-quit` may be deferred so the renderer can stop timers and save. */
@@ -452,6 +609,13 @@ function createTray() {
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Toggle Foqz', click: toggleWindow },
     { type: 'separator' },
+    {
+      label: 'Check for Updates...',
+      click: () => {
+        void checkForUpdates(true)
+      },
+    },
+    { type: 'separator' },
     { label: 'Quit', role: 'quit' },
   ])
 
@@ -534,6 +698,30 @@ ipcMain.handle('tray:setTooltip', (_event, text) => {
 
 ipcMain.handle('settings:get', async () => {
   return appSettings
+})
+
+ipcMain.handle('updater:check', async () => {
+  return checkForUpdates(false)
+})
+
+ipcMain.handle('updater:getState', () => {
+  return {
+    ...updaterState,
+    currentVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+  }
+})
+
+ipcMain.handle('updater:quitAndInstall', () => {
+  if (autoUpdaterInstance) {
+    autoUpdaterInstance.quitAndInstall()
+    return { ok: true }
+  }
+  return { ok: false, error: 'Updater not initialized' }
+})
+
+ipcMain.handle('app:getVersion', () => {
+  return { version: app.getVersion(), isPackaged: app.isPackaged }
 })
 
 ipcMain.on('focus:shutdown-ready', () => {
@@ -671,6 +859,13 @@ function setupAppMenu() {
             submenu: [
               { label: 'About Foqz', role: 'about' },
               { type: 'separator' },
+              {
+                label: 'Check for Updates...',
+                click: () => {
+                  void checkForUpdates(true)
+                },
+              },
+              { type: 'separator' },
               { role: 'services' },
               { type: 'separator' },
               { label: 'Hide Foqz', role: 'hide' },
@@ -719,6 +914,34 @@ function setupAppMenu() {
               { role: 'window' },
             ]
           : [{ role: 'close' }]),
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        ...(!isMac
+          ? [
+              {
+                label: 'Check for Updates...',
+                click: () => {
+                  void checkForUpdates(true)
+                },
+              },
+              { type: 'separator' },
+            ]
+          : []),
+        {
+          label: 'GitHub Repository',
+          click: () => {
+            void shell.openExternal('https://github.com/yhauxell/foqz')
+          },
+        },
+        {
+          label: 'Release Notes',
+          click: () => {
+            void shell.openExternal('https://github.com/yhauxell/foqz/releases')
+          },
+        },
       ],
     },
   ]

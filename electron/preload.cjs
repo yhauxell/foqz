@@ -22,6 +22,17 @@ contextBridge.exposeInMainWorld('focusStore', {
   jev: {
     evaluate: (req, options) => ipcRenderer.invoke('jev:evaluate', { req, options }),
   },
+  updater: {
+    check: () => ipcRenderer.invoke('updater:check'),
+    getState: () => ipcRenderer.invoke('updater:getState'),
+    quitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
+    onStatusChange: (callback) => {
+      const listener = (_event, state) => callback(state)
+      ipcRenderer.on('updater:status-changed', listener)
+      return () => ipcRenderer.removeListener('updater:status-changed', listener)
+    },
+  },
+  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   /**
    * Register cleanup before the app process exits (Electron `before-quit`).
    * Invoke `handler` (may be async), then notify main so `app.quit()` can finish.

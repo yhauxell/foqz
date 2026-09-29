@@ -7,6 +7,7 @@ import {
   AlertCircle,
   Bot,
   CheckCircle2,
+  Download,
   Eye,
   EyeOff,
   RefreshCw,
@@ -248,6 +249,46 @@ export function FocusSettings({
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const isElectron = typeof window.focusStore?.getSettings === "function";
+
+  const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  useEffect(() => {
+    if (!window.focusStore?.updater) return;
+
+    window.focusStore.updater
+      .getState()
+      .then((st) => {
+        setUpdaterState(st);
+      })
+      .catch(() => {});
+
+    const unsubscribe = window.focusStore.updater.onStatusChange((st) => {
+      setUpdaterState(st);
+      if (st.status !== "checking") {
+        setCheckingUpdate(false);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  const handleCheckForUpdates = useCallback(async () => {
+    if (!window.focusStore?.updater) return;
+    setCheckingUpdate(true);
+    try {
+      await window.focusStore.updater.check();
+    } catch {
+      setCheckingUpdate(false);
+    }
+  }, []);
+
+  const handleRestartAndInstall = useCallback(async () => {
+    if (!window.focusStore?.updater) return;
+    await window.focusStore.updater.quitAndInstall();
+  }, []);
 
   useEffect(() => {
     setShortcutDraft(settings.globalToggleShortcut);
@@ -761,6 +802,126 @@ export function FocusSettings({
                   <option value="dark">Dark</option>
                 </select>
               </Row>
+            </Section>
+
+            <Section title="About & Updates">
+              <div className="rounded-xl border border-border/80 bg-card/40 p-4 space-y-3 shadow-2xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-xs tracking-wider border border-primary/20 shrink-0">
+                      FQ
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm text-foreground">Foqz</span>
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-medium bg-muted text-foreground border border-border/60">
+                          v{updaterState?.currentVersion || "0.2.0"}
+                        </span>
+                        {updaterState?.isPackaged === false && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                            Dev
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {!isElectron ? (
+                          "Running in web browser. Desktop updates are delivered via GitHub Releases."
+                        ) : updaterState?.status === "checking" || checkingUpdate ? (
+                          "Checking for updates..."
+                        ) : updaterState?.status === "available" ? (
+                          `Update v${updaterState.updateInfo?.version || ""} available! Downloading in background...`
+                        ) : updaterState?.status === "downloading" ? (
+                          `Downloading update v${updaterState.updateInfo?.version || ""} (${updaterState.progress?.percent ?? 0}%)...`
+                        ) : updaterState?.status === "downloaded" ? (
+                          `Foqz v${updaterState.updateInfo?.version || ""} has been downloaded and is ready to install.`
+                        ) : updaterState?.status === "not-available" ? (
+                          "Foqz is up to date."
+                        ) : updaterState?.status === "dev-mode" ? (
+                          "Running unpackaged in development mode."
+                        ) : updaterState?.status === "error" ? (
+                          <span className="text-red-500">
+                            Check failed: {updaterState.error || "Unknown error"}
+                          </span>
+                        ) : (
+                          "Automatic background updates are enabled."
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 sm:ml-auto">
+                    {updaterState?.status === "downloaded" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-medium cursor-pointer shadow-xs"
+                        onClick={handleRestartAndInstall}
+                      >
+                        <Download className="size-3.5" />
+                        <span>Restart & Install</span>
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={
+                          !isElectron ||
+                          checkingUpdate ||
+                          updaterState?.status === "checking" ||
+                          updaterState?.status === "downloading"
+                        }
+                        onClick={handleCheckForUpdates}
+                        className="gap-1.5 cursor-pointer shadow-2xs"
+                      >
+                        <RefreshCw
+                          className={`size-3.5 ${
+                            checkingUpdate ||
+                            updaterState?.status === "checking" ||
+                            updaterState?.status === "downloading"
+                              ? "animate-spin text-primary"
+                              : ""
+                          }`}
+                        />
+                        <span>
+                          {checkingUpdate || updaterState?.status === "checking"
+                            ? "Checking..."
+                            : updaterState?.status === "downloading"
+                            ? "Downloading..."
+                            : "Check for updates"}
+                        </span>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Download progress bar */}
+                {updaterState?.status === "downloading" && updaterState.progress ? (
+                  <div className="w-full bg-muted/60 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-primary h-1.5 transition-all duration-300 rounded-full"
+                      style={{ width: `${Math.max(5, updaterState.progress.percent)}%` }}
+                    />
+                  </div>
+                ) : null}
+
+                {/* Footer info: last checked and release link */}
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground/80 pt-2 border-t border-border/50">
+                  <span>
+                    {updaterState?.lastChecked
+                      ? `Last checked: ${new Date(updaterState.lastChecked).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                      : "Checks automatically on start"}
+                  </span>
+                  <a
+                    href="https://github.com/yhauxell/foqz/releases"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:underline font-medium inline-flex items-center gap-1"
+                  >
+                    View release notes
+                  </a>
+                </div>
+              </div>
             </Section>
             </>
             ) : null}
