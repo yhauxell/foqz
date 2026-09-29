@@ -74,6 +74,23 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
   useOutsideClick(colorRef, closeColor);
   useOutsideClick(borderRef, closeBorder);
 
+  // handleCenter must be declared BEFORE the early return so hook count stays
+  // consistent across renders (moving selectedNode from non-null → null would
+  // otherwise skip this useCallback, causing "Rendered fewer hooks" crash).
+  const handleCenter = useCallback(
+    (e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      if (!selectedNode) return;
+      fitView({
+        nodes: [{ id: selectedNode.id }],
+        duration: 300,
+        maxZoom: 1.15,
+        padding: 0.25,
+      });
+    },
+    [fitView, selectedNode]
+  );
+
   if (!selectedNode) return null;
 
   // Derive current color hex from node type
@@ -150,20 +167,6 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     useFlowCanvasStore.getState().deleteNode(selectedNode.id);
     deleteElements({ nodes: [{ id: selectedNode.id }] }).catch(() => {});
   };
-
-  const handleCenter = useCallback(
-    (e?: React.MouseEvent) => {
-      if (e) e.stopPropagation();
-      fitView({
-        nodes: [{ id: selectedNode.id }],
-        duration: 300,
-        maxZoom: 1.15,
-        padding: 0.25,
-      });
-    },
-    [fitView, selectedNode.id]
-  );
-
   const nodeInternal = getInternalNode(selectedNode.id);
   const nodeAbsY = nodeInternal?.internals?.positionAbsolute?.y ?? selectedNode.position.y;
   const toolbarPosition = nodeAbsY < 70 ? Position.Bottom : Position.Top;
