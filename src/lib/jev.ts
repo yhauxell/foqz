@@ -565,3 +565,106 @@ export async function evaluateUnlockFriction(
     probability: prob,
   }
 }
+
+export interface TaskActionabilityResult {
+  isActionable: boolean
+  probability: number
+  blastRadius: 'critical_blocker' | 'high_leverage' | 'internal_cleanup' | 'low_priority'
+  clarityScore: number
+  critique: string
+}
+
+/**
+ * Assesses whether a task is concrete, atomic, and execution-ready, or needs breakdown.
+ */
+export async function evaluateTaskActionability(
+  task: { title: string; notes?: string },
+  options?: { apiKey?: string; baseUrl?: string },
+): Promise<TaskActionabilityResult> {
+  const state = {
+    task_title: task.title,
+    task_notes: task.notes || 'No extra notes or checkpoints provided.',
+  }
+
+  const questions: Record<string, JevQuestion> = {
+    actionability: {
+      type: 'noul',
+      instructions:
+        'Is `task_title` a concrete, self-contained, and immediately executable next step for a 25-minute focus session? If it is a broad topic, vague goal, epic, or nebulous placeholder without concrete action, it is not actionable.',
+      criteria: {
+        true: 'Concrete, verifiable next step with clear completion condition',
+        false: 'Vague, ambiguous, or multi-day epic that needs decomposition',
+      },
+    },
+    blast_radius: {
+      type: 'choice',
+      instructions: 'What is the risk or blast radius of this task?',
+      criteria: {
+        critical_blocker: 'Production blocker or blocking dependencies',
+        high_leverage: 'Core feature deliverable or key milestone',
+        internal_cleanup: 'Code cleanup, styling, or documentation',
+        low_priority: 'Nice-to-have or exploratory note',
+      },
+    },
+    clarity: {
+      type: 'score',
+      instructions: 'How clearly defined are the acceptance criteria and boundaries of this task?',
+      criteria: [
+        'Vague, ambiguous, or no criteria',
+        'Moderately clear, requires minor interpretation',
+        'Crystal clear with specific checkpoints or steps',
+      ],
+    },
+  }
+
+  try {
+    const result = await evaluateJev({ state, questions }, options)
+    const prob = (result.answers.actionability as JevNoulAnswer)?.noul ?? 0.5
+    const blast = ((result.answers.blast_radius as JevChoiceAnswer)?.choice || 'high_leverage') as any
+    const clarity = (result.answers.clarity as JevScoreAnswer)?.score ?? 1
+
+    const percentage = Math.round(prob * 100)
+    const isAct = percentage >= 70
+
+    let critique = ''
+    if (percentage >= 70) {
+      critique = 'Concrete, atomic, and self-contained. Ready to execute in a single focus sprint without distraction.'
+    } else if (percentage >= 40) {
+      critique = 'Moderately clear, but borders on multiple steps. Consider adding 2-3 acceptance criteria checkpoints or breaking down.'
+    } else {
+      critique = 'Broad or ambiguous. Starting this directly risks wandering or context-debt. Break it down into 3 concrete steps before focusing.'
+    }
+
+    return {
+      isActionable: isAct,
+      probability: percentage,
+      blastRadius: blast,
+      clarityScore: clarity,
+      critique,
+    }
+  } catch {
+    // Resilient local heuristic fallback if TypeSafe API key is not configured or offline
+    const words = task.title.trim().split(/\s+/).length
+    const hasNotes = Boolean(task.notes && task.notes.trim().length > 10)
+    const isActionWord = /^(fix|implement|create|add|update|remove|refactor|design|write|build|setup|test)/i.test(
+      task.title
+    )
+
+    let score = 50
+    if (isActionWord) score += 20
+    if (hasNotes) score += 20
+    if (words >= 4 && words <= 12) score += 10
+    score = Math.min(95, Math.max(15, score))
+
+    return {
+      isActionable: score >= 70,
+      probability: score,
+      blastRadius: 'high_leverage',
+      clarityScore: score >= 70 ? 2 : 1,
+      critique:
+        score >= 70
+          ? 'Well-scoped action item with clear intent. Ready for a focus sprint.'
+          : 'Could benefit from concrete acceptance criteria checkpoints before starting.',
+    }
+  }
+}

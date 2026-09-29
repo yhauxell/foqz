@@ -84,12 +84,13 @@ function JevEvaluationCard({
   const isActionable =
     content.includes('Actionable**: Yes') ||
     content.includes('Actionable: Yes') ||
-    content.includes('✅ Yes')
+    content.includes('✅ Yes') ||
+    content.includes('✅ This task is concrete')
 
   const probMatch = content.match(/(\d+)%\s*probability/)
   const probability = probMatch ? parseInt(probMatch[1], 10) : (isActionable ? 85 : 15)
 
-  const riskMatch = content.match(/`([^`]+)`/)
+  const riskMatch = content.match(/Blast Radius\*?\*?:\s*`([^`]+)`/i) || content.match(/`([^`]+)`/)
   const risk = riskMatch ? riskMatch[1].replace(/_/g, ' ') : 'medium risk'
 
   return (
@@ -498,7 +499,17 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   }
 
   // Conversation history in node.data.aiMessages (or boardAiMessages for canvas scope)
-  const [boardAiMessages, setBoardAiMessages] = useState<ElementAiMessage[]>([])
+  const BOARD_CHAT_STORAGE_KEY = 'foqz_board_ai_messages'
+
+  const [boardAiMessages, setBoardAiMessages] = useState<ElementAiMessage[]>(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const saved = localStorage.getItem('foqz_board_ai_messages')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
 
   const messages: ElementAiMessage[] = useMemo(() => {
     if (isCanvasScope) return boardAiMessages
@@ -510,6 +521,9 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     (newMessages: ElementAiMessage[]) => {
       if (isCanvasScope) {
         setBoardAiMessages(newMessages)
+        try {
+          localStorage.setItem('foqz_board_ai_messages', JSON.stringify(newMessages))
+        } catch {}
         return
       }
       if (!node) return
@@ -704,13 +718,20 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
       setActiveTool(null)
     }
     saveMessages([])
-  }, [isStreaming, saveMessages])
+    if (isCanvasScope) {
+      try {
+        localStorage.removeItem('foqz_board_ai_messages')
+      } catch {}
+    }
+  }, [isStreaming, saveMessages, isCanvasScope])
 
   const handleSend = async (overridePrompt?: string) => {
     let text = (overridePrompt || prompt).trim()
     if (!text || (!node && !isCanvasScope) || isStreaming) return
 
-    if (text === '/expand' || text.startsWith('/expand ')) {
+    if (text === '/eval' || text === '/evaluate' || text.startsWith('/eval ') || text.startsWith('/evaluate ')) {
+      text = `Evaluate this task actionability, clarity score, and blast radius using the jev_evaluate_task tool. Present the verdict clearly.`
+    } else if (text === '/expand' || text.startsWith('/expand ')) {
       const extra = text.replace(/^\/expand\s*/, '').trim()
       text = extra
         ? `Break this task down into subtasks and link them using expand_task: ${extra}`
@@ -854,6 +875,7 @@ You have ACTIVE MUTATION TOOLS to directly manipulate the spatial canvas:
 - To break this task down into subtasks, invoke the \`expand_task\` tool with concrete steps (e.g. \`expand_task(taskId: "${node?.id}", subtasks: [...])\`). This automatically creates child cards positioned below this task and connects them with dependency edges.
 - To connect this task to other nodes, invoke the \`connect_nodes\` tool.
 - To launch a focused work session on this task, invoke \`start_focus_session(taskId: "${node?.id}", durationMinutes: 25)\`.
+- To evaluate whether this task is concrete and ready for execution or too broad, invoke \`jev_evaluate_task(taskId: "${node?.id}")\`.
 - To remove this task or any node, invoke \`delete_node(nodeId: "${node?.id}")\`.
 
 Do NOT just passively describe what could be done — when the user asks to modify, decompose, prioritize, or start the task, directly invoke your native tools!`
@@ -1066,6 +1088,14 @@ Do NOT just passively describe what could be done — when the user asks to modi
                 <>
                   <button
                     type="button"
+                    onClick={() => handleSend('/eval')}
+                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Target className="size-3 text-blue-500" />
+                    <span>🎯 Evaluate Actionability</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleSend('Break this task down into 3 concrete subtasks and link them using expand_task.')}
                     className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
                   >
@@ -1159,6 +1189,26 @@ Do NOT just passively describe what could be done — when the user asks to modi
                 <div className="space-y-2">
                   {parseOutputSegments(m.content).map((seg, sIdx) => {
                     if (seg.type === 'text') {
+                      const hasJevInTools = m.executedTools?.some(
+                        (evt) => evt.toolName === 'jev_evaluate_task'
+                      )
+                      const isJevEval =
+                        !hasJevInTools &&
+                        isTask &&
+                        (seg.content.includes('Evaluation Verdict') ||
+                          (seg.content.includes('Actionable') && seg.content.includes('Blast Radius')))
+                      if (isJevEval) {
+                        return (
+                          <div key={sIdx} className="space-y-2">
+                            <JevEvaluationCard
+                              content={seg.content}
+                              onDeconstruct={() => handleSend('/expand')}
+                              onFocus={() => handleSend('/focus')}
+                            />
+                            <MarkdownView content={seg.content} />
+                          </div>
+                        )
+                      }
                       return <MarkdownView key={sIdx} content={seg.content} />
                     }
                     if (seg.type === 'canvas') {
@@ -1185,7 +1235,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
                     return null
                   })}
 
-                  {/* Executed Tools Diffs (e.g. update_node) */}
+                  {/* Executed Tools Diffs & Jev Evaluations */}
                   {m.executedTools && m.executedTools.length > 0 && (
                     <div className="space-y-1.5 pt-1">
                       {m.executedTools
@@ -1197,6 +1247,21 @@ Do NOT just passively describe what could be done — when the user asks to modi
                             nodeId={node?.id}
                           />
                         ))}
+
+                      {m.executedTools
+                        .filter((evt) => evt.toolName === 'jev_evaluate_task')
+                        .map((evt, eIdx) => {
+                          const evalText =
+                            evt.result?.content?.find((c) => c.type === 'text')?.text || ''
+                          return (
+                            <JevEvaluationCard
+                              key={eIdx}
+                              content={evalText}
+                              onDeconstruct={() => handleSend('/expand')}
+                              onFocus={() => handleSend('/focus')}
+                            />
+                          )
+                        })}
                     </div>
                   )}
 
@@ -1250,6 +1315,14 @@ Do NOT just passively describe what could be done — when the user asks to modi
       <div className="p-2.5 border-t border-black/[0.06] dark:border-white/[0.08] bg-white/40 dark:bg-white/[0.02] shrink-0 space-y-1.5">
         {isTask && !isStreaming && (
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+            <button
+              type="button"
+              onClick={() => handleSend('/eval')}
+              className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <Target className="size-2.5 text-blue-500" />
+              <span>Evaluate</span>
+            </button>
             <button
               type="button"
               onClick={() => handleSend('/expand')}

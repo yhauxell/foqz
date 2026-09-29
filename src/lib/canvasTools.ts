@@ -1,7 +1,11 @@
 import type { Edge } from '@xyflow/react'
 import type { McpTool, McpToolCallResult } from './mcpTypes'
 import { getFlowCanvasContext, getFlowProjectFrameContents } from './canvasContext'
-import { prioritizeDailyFocusSlot, auditPortfolioProjects } from './jev'
+import {
+  prioritizeDailyFocusSlot,
+  auditPortfolioProjects,
+  evaluateTaskActionability,
+} from './jev'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
 
 /**
@@ -275,6 +279,22 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
     inputSchema: {
       type: 'object',
       properties: {},
+    },
+  },
+  {
+    serverName: 'foqz',
+    name: 'jev_evaluate_task',
+    description:
+      'Runs a TypeSafe Jev System One actionability judgment on a task card to evaluate whether it is ready for execution (0-100%) or needs decomposition.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: {
+          type: 'string',
+          description:
+            'Optional ID of task to evaluate. Defaults to currently selected task.',
+        },
+      },
     },
   },
 ]
@@ -847,6 +867,43 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
                 : 'Exited active focus session. Canvas unlocked.',
             },
           ],
+        }
+      }
+
+      case 'jev_evaluate_task': {
+        const liveStore = useFlowCanvasStore.getState()
+        const targetId = args.taskId || args.nodeId || defaultNodeId || liveStore.selectedNodeId
+        if (!targetId) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'No taskId specified and no task currently selected to evaluate.' }],
+          }
+        }
+        const targetNode = liveStore.nodes.find((n) => n.id === targetId)
+        if (!targetNode) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Task "${targetId}" not found on canvas to evaluate.` }],
+          }
+        }
+
+        const taskData = (targetNode.data || {}) as Record<string, any>
+        const evalRes = await evaluateTaskActionability({
+          title: taskData.title || targetId,
+          notes: taskData.notes,
+        })
+
+        const textOutput = `### Evaluation Verdict for "${taskData.title || targetId}"
+- **Actionable**: ${evalRes.isActionable ? 'Yes' : 'No'} (${evalRes.probability}% probability)
+- **Blast Radius**: \`${evalRes.blastRadius}\`
+- **Readiness Score**: ${evalRes.clarityScore}/2
+- **Critique**: ${evalRes.critique}
+
+${evalRes.isActionable ? '✅ This task is concrete and ready for a 25-minute focus session.' : '⚠️ This task is broad or ambiguous. Recommended: break it into 3 concrete steps.'}`
+
+        return {
+          isError: false,
+          content: [{ type: 'text', text: textOutput }],
         }
       }
 
