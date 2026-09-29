@@ -6,7 +6,7 @@ interface FlowCanvasAppWrapperProps {
   sidebarOpen?: boolean;
 }
 
-export function FlowCanvasAppWrapper({ sidebarOpen = true }: FlowCanvasAppWrapperProps) {
+export function FlowCanvasAppWrapper({ sidebarOpen = false }: FlowCanvasAppWrapperProps) {
   return (
     <ReactFlowProvider>
       <FlowCanvasApp sidebarOpen={sidebarOpen} />

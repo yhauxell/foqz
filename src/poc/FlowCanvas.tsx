@@ -1011,7 +1011,13 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         zoomActivationKeyCode={ZOOM_ACTIVATION_KEY_CODE}
         panActivationKeyCode="Space"
       >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={24}
+          size={1.3}
+          color="#94a3b8"
+          className="opacity-45 dark:opacity-25"
+        />
         <FlowZoomControls sidebarOpen={sidebarOpen} />
         <FlowShapeMenu selectedNode={selectedNode} />
       </ReactFlow>
