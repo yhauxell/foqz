@@ -19,14 +19,20 @@ import {
   MessageSquare,
   CheckSquare,
   Check,
+  Cpu,
+  Flag,
+  Edit3,
 } from 'lucide-react'
 import { useReactFlow, type Node, type Edge } from '@xyflow/react'
 import { useOllama } from '@/lib/ollama'
 import { useFocusAppSettingsOptional } from '@/context/FocusAppSettingsContext'
-import { getCachedAppSettings } from '@/lib/appSettingsCache'
+import { getCachedAppSettings, patchCachedAppSettings } from '@/lib/appSettingsCache'
 import { resolveActiveAiConfig } from '@/lib/appSettings'
 import { runAgentLoop, type AgentToolCallEvent } from '@/lib/mcpAgentLoop'
 import { NATIVE_FOQZ_TOOLS, createFlowCanvasToolExecutor } from '@/lib/canvasTools'
+import { OPENAI_DEFAULT_MODELS, GEMINI_DEFAULT_MODELS } from '@/lib/aiConnectors'
+import type { AiProviderName } from '@/lib/aiProvider'
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import {
   FOQZ_SYSTEM_PROMPT,
   parseOutputSegments,
@@ -198,10 +204,75 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   const [expandedToolIds, setExpandedToolIds] = useState<Set<string>>(new Set())
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const { selectedModel, online } = useOllama()
+  const { selectedModel, setSelectedModel, online, models } = useOllama()
   const appSettingsCtx = useFocusAppSettingsOptional()
   const settings = appSettingsCtx?.settings || getCachedAppSettings()
   const activeConfig = resolveActiveAiConfig(settings)
+
+  const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const [selectedCmdIndex, setSelectedCmdIndex] = useState(0)
+
+  const activeModelLabel = useMemo(() => {
+    if (activeConfig.provider === 'ollama') {
+      return selectedModel || settings.ollamaDefaultModel || 'qwen2.5-coder:7b'
+    }
+    if (activeConfig.provider === 'openai') {
+      return settings.openaiDefaultModel || 'gpt-4o-mini'
+    }
+    if (activeConfig.provider === 'gemini') {
+      return settings.geminiDefaultModel || 'gemini-2.0-flash'
+    }
+    return activeConfig.model
+  }, [activeConfig, selectedModel, settings])
+
+  const isAiReady = useMemo(() => {
+    if (activeConfig.provider === 'ollama') return online
+    if (activeConfig.provider === 'openai') return Boolean(settings.openaiApiKey?.trim())
+    if (activeConfig.provider === 'gemini') return Boolean(settings.geminiApiKey?.trim())
+    return Boolean(activeConfig.apiKey)
+  }, [activeConfig, online, settings])
+
+  const handleSelectProvider = useCallback(
+    (prov: AiProviderName) => {
+      if (appSettingsCtx?.update) {
+        appSettingsCtx.update({ activeAiProvider: prov })
+      }
+      patchCachedAppSettings({ activeAiProvider: prov })
+    },
+    [appSettingsCtx]
+  )
+
+  const handleSelectModel = useCallback(
+    (prov: AiProviderName, modelName: string) => {
+      if (prov === 'openai') {
+        if (appSettingsCtx?.update) {
+          appSettingsCtx.update({ activeAiProvider: 'openai', openaiDefaultModel: modelName })
+        }
+        patchCachedAppSettings({ activeAiProvider: 'openai', openaiDefaultModel: modelName })
+        try {
+          localStorage.setItem('foqz_openai_model', modelName)
+        } catch {}
+      } else if (prov === 'gemini') {
+        if (appSettingsCtx?.update) {
+          appSettingsCtx.update({ activeAiProvider: 'gemini', geminiDefaultModel: modelName })
+        }
+        patchCachedAppSettings({ activeAiProvider: 'gemini', geminiDefaultModel: modelName })
+        try {
+          localStorage.setItem('foqz_gemini_model', modelName)
+        } catch {}
+      } else if (prov === 'ollama') {
+        setSelectedModel(modelName)
+        if (appSettingsCtx?.update) {
+          appSettingsCtx.update({ activeAiProvider: 'ollama', ollamaDefaultModel: modelName })
+        }
+        patchCachedAppSettings({ activeAiProvider: 'ollama', ollamaDefaultModel: modelName })
+        try {
+          localStorage.setItem('foqz_ollama_model', modelName)
+        } catch {}
+      }
+    },
+    [appSettingsCtx, setSelectedModel]
+  )
 
   const DEFAULT_WIDTH = 440
   const DEFAULT_HEIGHT = 480
@@ -955,6 +1026,156 @@ Do NOT just passively describe what could be done — when the user asks to modi
   const isTask = node?.type === 'focusTask'
   const isProject = node?.type === 'projectFrame'
 
+  const slashCommands = useMemo(() => {
+    if (isCanvasScope) {
+      return [
+        {
+          cmd: '/runway',
+          label: '/runway',
+          desc: "Stage Today's Runway with top focus tasks",
+          icon: <Sparkles className="size-3 text-rose-500" />,
+          prompt: "Stage Today's Runway frame with the top 2-3 critical path focus tasks.",
+          autoExecute: true,
+        },
+        {
+          cmd: '/audit',
+          label: '/audit',
+          desc: 'Audit highest-leverage task across all projects',
+          icon: <Target className="size-3 text-violet-500" />,
+          prompt: 'Audit my projects and backlog: what is my single highest-leverage task today?',
+          autoExecute: true,
+        },
+        {
+          cmd: '/focus',
+          label: '/focus',
+          desc: 'Start 25-minute Pomodoro focus session',
+          icon: <Lock className="size-3 text-blue-500" />,
+          prompt: '/focus',
+          autoExecute: true,
+        },
+      ]
+    }
+
+    if (isTask) {
+      return [
+        {
+          cmd: '/eval',
+          label: '/eval',
+          desc: 'Evaluate task actionability & blast radius (Jev)',
+          icon: <Target className="size-3 text-blue-500" />,
+          prompt: '/eval',
+          autoExecute: true,
+        },
+        {
+          cmd: '/expand',
+          label: '/expand',
+          desc: 'Break down into 3 concrete linked subtasks',
+          icon: <Zap className="size-3 text-amber-500" />,
+          prompt: '/expand',
+          autoExecute: true,
+        },
+        {
+          cmd: '/criteria',
+          label: '/criteria',
+          desc: 'Append 3 acceptance criteria checkpoints',
+          icon: <CheckSquare className="size-3 text-emerald-500" />,
+          prompt: '/criteria',
+          autoExecute: true,
+        },
+        {
+          cmd: '/prio',
+          label: '/prio <1-4>',
+          desc: 'Set priority level (1=Urgent to 4=Low)',
+          icon: <Flag className="size-3 text-rose-500" />,
+          prompt: '/prio 1',
+          autoExecute: false,
+        },
+        {
+          cmd: '/focus',
+          label: '/focus',
+          desc: 'Lock into 25-minute focus session timer',
+          icon: <Lock className="size-3 text-blue-500" />,
+          prompt: '/focus',
+          autoExecute: true,
+        },
+        {
+          cmd: '/stop',
+          label: '/stop',
+          desc: 'Exit active focus session and unlock canvas',
+          icon: <X className="size-3 text-rose-500" />,
+          prompt: '/stop',
+          autoExecute: true,
+        },
+        {
+          cmd: '/rename',
+          label: '/rename <title>',
+          desc: 'Update this task card title',
+          icon: <Edit3 className="size-3 text-zinc-500" />,
+          prompt: '/rename ',
+          autoExecute: false,
+        },
+        {
+          cmd: '/done',
+          label: '/done',
+          desc: 'Mark this task as completed',
+          icon: <CheckCircle2 className="size-3 text-emerald-500" />,
+          prompt: '/done',
+          autoExecute: true,
+        },
+      ]
+    }
+
+    return [
+      {
+        cmd: '/expand',
+        label: '/expand',
+        desc: 'Generate sequential 4-step task workflow',
+        icon: <Zap className="size-3 text-amber-500" />,
+        prompt: 'Generate a sequential 4-step task workflow to launch this project milestone.',
+        autoExecute: true,
+      },
+      {
+        cmd: '/criteria',
+        label: '/criteria',
+        desc: 'List key deliverables and success metrics',
+        icon: <CheckSquare className="size-3 text-emerald-500" />,
+        prompt: 'List the key deliverables and success metrics for this project.',
+        autoExecute: true,
+      },
+      {
+        cmd: '/rename',
+        label: '/rename <title>',
+        desc: 'Update project frame title',
+        icon: <Edit3 className="size-3 text-zinc-500" />,
+        prompt: '/rename ',
+        autoExecute: false,
+      },
+    ]
+  }, [isCanvasScope, isTask])
+
+  const showSlashMenu = prompt.startsWith('/') && !prompt.includes(' ') && !prompt.includes('\n')
+  const matchingCommands = useMemo(() => {
+    if (!showSlashMenu) return []
+    const q = prompt.toLowerCase()
+    return slashCommands.filter((c) => c.cmd.toLowerCase().startsWith(q))
+  }, [showSlashMenu, slashCommands, prompt])
+
+  useEffect(() => {
+    setSelectedCmdIndex(0)
+  }, [prompt])
+
+  const applySlashCommand = useCallback(
+    (cmdItem: (typeof slashCommands)[0]) => {
+      if (cmdItem.autoExecute) {
+        handleSend(cmdItem.prompt)
+      } else {
+        setPrompt(cmdItem.prompt)
+        setTimeout(() => textareaRef.current?.focus(), 10)
+      }
+    },
+    [handleSend]
+  )
+
   return (
     <div
       style={{
@@ -1002,6 +1223,207 @@ Do NOT just passively describe what could be done — when the user asks to modi
               <span className="truncate max-w-[90px]">{connectedRepo}</span>
             </span>
           )}
+
+          {/* AI Provider & Model Fast Switcher Pill */}
+          <Popover open={modelMenuOpen} onOpenChange={setModelMenuOpen}>
+            <PopoverTrigger
+              render={
+                <button
+                  type="button"
+                  title={
+                    isAiReady
+                      ? `Active AI: ${activeConfig.provider.toUpperCase()} (${activeModelLabel})`
+                      : activeConfig.provider === 'ollama'
+                      ? 'Ollama is offline (start localhost:11434)'
+                      : `${activeConfig.provider.toUpperCase()} API key missing`
+                  }
+                  className={`h-6 px-2 rounded-full border text-[10px] font-medium transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer ${
+                    isAiReady
+                      ? 'border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-200 hover:border-black/20 dark:hover:border-white/20'
+                      : 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300'
+                  }`}
+                />
+              }
+            >
+              <span
+                className={`size-1.5 rounded-full shrink-0 ${
+                  isAiReady ? 'bg-emerald-500' : 'bg-amber-500'
+                }`}
+              />
+              <span className="truncate max-w-[85px] font-mono text-[10px]">
+                {activeConfig.provider === 'openai'
+                  ? 'OpenAI'
+                  : activeConfig.provider === 'gemini'
+                  ? 'Gemini'
+                  : 'Ollama'}
+                : {activeModelLabel}
+              </span>
+              <ChevronDown className="size-2.5 text-zinc-400 shrink-0" />
+            </PopoverTrigger>
+
+            <PopoverContent
+              align="end"
+              sideOffset={6}
+              className="w-72 p-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-2xl text-zinc-900 dark:text-zinc-100 z-[7000] font-sans space-y-2 select-none"
+            >
+              <div className="flex items-center justify-between px-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider border-b border-zinc-100 dark:border-zinc-800 pb-1.5">
+                <span className="flex items-center gap-1.5">
+                  <Cpu className="size-3 text-blue-500" />
+                  <span>AI Provider & Model</span>
+                </span>
+                <span className={`text-[10px] ${isAiReady ? 'text-emerald-500' : 'text-amber-500'}`}>
+                  {isAiReady ? 'Online' : 'Needs Config'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1 bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-0.5 rounded-full text-xs">
+                <button
+                  type="button"
+                  onClick={() => handleSelectProvider('ollama')}
+                  className={`py-1 px-1.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer text-center ${
+                    activeConfig.provider === 'ollama'
+                      ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs'
+                      : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  Ollama
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectProvider('openai')}
+                  className={`py-1 px-1.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer text-center ${
+                    activeConfig.provider === 'openai'
+                      ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs'
+                      : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  OpenAI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectProvider('gemini')}
+                  className={`py-1 px-1.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer text-center ${
+                    activeConfig.provider === 'gemini'
+                      ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs'
+                      : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  Gemini
+                </button>
+              </div>
+
+              {activeConfig.provider === 'openai' && (
+                <div className="space-y-1.5 pt-0.5">
+                  {!settings.openaiApiKey?.trim() ? (
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-[11px] text-amber-800 dark:text-amber-300">
+                      <p className="font-semibold">OpenAI API Key Missing</p>
+                      <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
+                        Configure in Foqz Settings &rarr; AI to use OpenAI models.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+                      {OPENAI_DEFAULT_MODELS.map((m) => {
+                        const isSelected = activeConfig.model === m
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              handleSelectModel('openai', m)
+                              setModelMenuOpen(false)
+                            }}
+                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-100 font-medium'
+                                : 'hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300'
+                            }`}
+                          >
+                            <span className="font-mono text-[11px]">{m}</span>
+                            {isSelected && <Check className="size-3 text-blue-600 dark:text-blue-400" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeConfig.provider === 'gemini' && (
+                <div className="space-y-1.5 pt-0.5">
+                  {!settings.geminiApiKey?.trim() ? (
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-[11px] text-amber-800 dark:text-amber-300">
+                      <p className="font-semibold">Gemini API Key Missing</p>
+                      <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
+                        Configure in Foqz Settings &rarr; AI to use Gemini models.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+                      {GEMINI_DEFAULT_MODELS.map((m) => {
+                        const isSelected = activeConfig.model === m
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              handleSelectModel('gemini', m)
+                              setModelMenuOpen(false)
+                            }}
+                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-100 font-medium'
+                                : 'hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300'
+                            }`}
+                          >
+                            <span className="font-mono text-[11px]">{m}</span>
+                            {isSelected && <Check className="size-3 text-blue-600 dark:text-blue-400" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeConfig.provider === 'ollama' && (
+                <div className="space-y-1 pt-0.5">
+                  {!online ? (
+                    <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/60 text-[11px] text-zinc-600 dark:text-zinc-300 text-center">
+                      <p className="font-semibold text-rose-600 dark:text-rose-400">Ollama Offline</p>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        Start Ollama with <code className="font-mono bg-zinc-200/60 dark:bg-zinc-700 px-1 py-0.5 rounded">ollama serve</code>
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+                      {models.map((m) => {
+                        const isSelected = selectedModel === m
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              handleSelectModel('ollama', m)
+                              setModelMenuOpen(false)
+                            }}
+                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-100 font-medium'
+                                : 'hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300'
+                            }`}
+                          >
+                            <span className="font-mono text-[11px] truncate max-w-[200px]">{m}</span>
+                            {isSelected && <Check className="size-3 text-blue-600 dark:text-blue-400" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
 
           {messages.length > 0 && (
             <button
@@ -1312,7 +1734,48 @@ Do NOT just passively describe what could be done — when the user asks to modi
       </div>
 
       {/* Input bar */}
-      <div className="p-2.5 border-t border-black/[0.06] dark:border-white/[0.08] bg-white/40 dark:bg-white/[0.02] shrink-0 space-y-1.5">
+      <div className="p-2.5 border-t border-black/[0.06] dark:border-white/[0.08] bg-white/40 dark:bg-white/[0.02] shrink-0 space-y-1.5 relative">
+        {/* Slash Command Autocomplete Popover */}
+        {showSlashMenu && matchingCommands.length > 0 && (
+          <div className="absolute bottom-[52px] left-2.5 right-2.5 max-h-56 overflow-y-auto bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-black/10 dark:border-white/10 rounded-2xl shadow-xl p-1.5 z-50 space-y-0.5 animate-in fade-in slide-in-from-bottom-2 duration-150">
+            <div className="px-2 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.04] mb-1">
+              <span>Commands</span>
+              <span className="font-mono text-[9px] text-zinc-400">↑↓ navigate • ↲ select • esc</span>
+            </div>
+            {matchingCommands.map((item, idx) => {
+              const isSelected = idx === selectedCmdIndex
+              return (
+                <button
+                  key={item.cmd}
+                  type="button"
+                  onMouseEnter={() => setSelectedCmdIndex(idx)}
+                  onClick={() => applySlashCommand(item)}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-left transition-colors cursor-pointer ${
+                    isSelected
+                      ? 'bg-blue-500/10 text-blue-900 dark:text-blue-100 font-medium'
+                      : 'hover:bg-black/5 dark:hover:bg-white/5 text-zinc-700 dark:text-zinc-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {item.icon}
+                    <span className="font-mono text-xs font-semibold text-foreground">
+                      {item.label}
+                    </span>
+                    <span className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+                      {item.desc}
+                    </span>
+                  </div>
+                  {isSelected && (
+                    <kbd className="hidden sm:inline-flex text-[9px] font-mono px-1 py-0.2 rounded bg-black/5 dark:bg-white/10 text-zinc-400">
+                      ↲
+                    </kbd>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {isTask && !isStreaming && (
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
             <button
@@ -1393,12 +1856,38 @@ Do NOT just passively describe what could be done — when the user asks to modi
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => {
+              if (showSlashMenu && matchingCommands.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setSelectedCmdIndex((prev) => (prev + 1) % matchingCommands.length)
+                  return
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setSelectedCmdIndex((prev) => (prev - 1 + matchingCommands.length) % matchingCommands.length)
+                  return
+                }
+                if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                  e.preventDefault()
+                  const target = matchingCommands[selectedCmdIndex] || matchingCommands[0]
+                  if (target) {
+                    applySlashCommand(target)
+                  }
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setPrompt('')
+                  return
+                }
+              }
+
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 handleSend()
               }
             }}
-            placeholder={`Ask about "${currentShapeText.slice(0, 20)}..." (Enter to send)`}
+            placeholder={`Ask about "${currentShapeText.slice(0, 20)}..." or type / for commands`}
             rows={1}
             className="flex-1 bg-transparent border-0 outline-none resize-none text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 leading-relaxed font-sans max-h-24"
           />

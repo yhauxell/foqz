@@ -219,6 +219,21 @@ type SpotlightEntry =
           setMode('prioritize')
         },
       },
+      {
+        id: 'action-board-strategist',
+        title: 'Open Board Strategist AI Copilot',
+        shortcut: '⌘J',
+        keywords: ['chat', 'copilot', 'ai', 'strategist', 'board', 'ask', 'assistant'],
+        icon: <Sparkles className="size-3 text-blue-500 shrink-0" />,
+        perform: () => {
+          window.dispatchEvent(
+            new CustomEvent('foqz:open-inline-chat', {
+              detail: { nodeId: '__canvas__' },
+            })
+          )
+          onClose()
+        },
+      },
     ],
     [onClose],
   )
@@ -335,6 +350,32 @@ type SpotlightEntry =
           badgeClass: 'bg-violet-500/10 text-violet-500 border-violet-500/30 font-semibold',
           icon: <Sparkles className="size-3.5 text-violet-500 shrink-0" />,
           perform: () => setMode('prioritize'),
+        },
+      ]
+    }
+
+    if (
+      q.startsWith('/chat') ||
+      q.startsWith('/ai') ||
+      q.startsWith('/copilot') ||
+      q.startsWith('/strategist')
+    ) {
+      return [
+        {
+          kind: 'action',
+          id: 'action-prefix-chat',
+          title: `Open Board Strategist AI Copilot`,
+          shortcut: '↵ Enter',
+          badgeClass: 'bg-blue-500/10 text-blue-500 border-blue-500/30 font-semibold',
+          icon: <Sparkles className="size-3.5 text-blue-500 shrink-0" />,
+          perform: () => {
+            window.dispatchEvent(
+              new CustomEvent('foqz:open-inline-chat', {
+                detail: { nodeId: '__canvas__' },
+              })
+            )
+            onClose()
+          },
         },
       ]
     }
