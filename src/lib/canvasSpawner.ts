@@ -36,10 +36,22 @@ export interface SpawnableShape {
   notes?: string
 }
 
+export interface ProposedNodeUpdate {
+  nodeId?: string
+  title?: string
+  notes?: string
+  appendNotes?: string
+  priority?: number
+  status?: 'open' | 'doing' | 'done'
+  paper?: 'cream' | 'fog' | 'bloom' | 'sage'
+  goal?: string
+}
+
 export type OutputSegment =
   | { type: 'text'; content: string }
   | { type: 'canvas'; actions: SpawnableShape[]; raw: string }
   | { type: 'streaming-canvas'; raw: string }
+  | { type: 'proposed-update'; update: ProposedNodeUpdate; raw: string }
 
 export function isValidShape(item: any): item is SpawnableShape {
   return (
@@ -201,14 +213,53 @@ export function parseCanvasActions(output: string): SpawnableShape[] {
 }
 
 /**
- * Splits model output into alternating text segments and canvas schema segments.
- * This allows replacing literal ```canvas [...] ``` JSON blocks with interactive UI components.
+ * Attempts to parse a JSON object proposing updates to an existing node.
+ */
+export function tryParseNodeUpdateJson(raw: string): ProposedNodeUpdate | null {
+  if (!raw) return null
+  const firstBrace = raw.indexOf('{')
+  const lastBrace = raw.lastIndexOf('}')
+  if (firstBrace === -1 || lastBrace <= firstBrace) return null
+
+  try {
+    const cleaned = raw.slice(firstBrace, lastBrace + 1).replace(/,\s*([\]}])/g, '$1')
+    const parsed = JSON.parse(cleaned)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      if (
+        parsed.title !== undefined ||
+        parsed.notes !== undefined ||
+        parsed.appendNotes !== undefined ||
+        parsed.priority !== undefined ||
+        parsed.status !== undefined ||
+        parsed.paper !== undefined ||
+        parsed.goal !== undefined
+      ) {
+        if (parsed.tasks || parsed.elements || parsed.shapes) return null
+        return {
+          nodeId: parsed.nodeId ? String(parsed.nodeId) : undefined,
+          title: parsed.title ? String(parsed.title) : undefined,
+          notes: parsed.notes ? String(parsed.notes) : undefined,
+          appendNotes: parsed.appendNotes ? String(parsed.appendNotes) : undefined,
+          priority: typeof parsed.priority === 'number' ? parsed.priority : undefined,
+          status: parsed.status,
+          paper: parsed.paper,
+          goal: parsed.goal ? String(parsed.goal) : undefined,
+        }
+      }
+    }
+  } catch {}
+  return null
+}
+
+/**
+ * Splits model output into alternating text segments, canvas schema segments, and proposed update segments.
+ * This allows replacing literal ```canvas [...] ``` and ```update_node {...}``` blocks with interactive UI components.
  */
 export function parseOutputSegments(output: string): OutputSegment[] {
   if (!output) return []
 
   const segments: OutputSegment[] = []
-  const codeBlockRegex = /```(?:canvas|json)?\s*\n?([\s\S]*?)```/gi
+  const codeBlockRegex = /```(?:canvas|json|update_node|diff)?\s*\n?([\s\S]*?)```/gi
 
   let lastIndex = 0
   let match: RegExpExecArray | null
@@ -229,8 +280,17 @@ export function parseOutputSegments(output: string): OutputSegment[] {
         raw: match[0],
       })
     } else {
-      // Non-canvas code block, keep as text
-      segments.push({ type: 'text', content: match[0] })
+      const parsedUpdate = tryParseNodeUpdateJson(insideCode)
+      if (parsedUpdate) {
+        segments.push({
+          type: 'proposed-update',
+          update: parsedUpdate,
+          raw: match[0],
+        })
+      } else {
+        // Non-canvas / non-update code block, keep as text
+        segments.push({ type: 'text', content: match[0] })
+      }
     }
 
     lastIndex = match.index + match[0].length

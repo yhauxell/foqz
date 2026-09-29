@@ -34,7 +34,9 @@ import {
 } from '@/lib/canvasSpawner'
 import type { McpTool } from '@/lib/mcpTypes'
 import { MarkdownView } from '@/components/MarkdownView'
-import { CanvasActionList } from '@/components/CanvasActionList'
+import { CanvasActionList, type SpawnTreeOptions } from '@/components/CanvasActionList'
+import { ActiveNodeControlStrip } from '@/components/ActiveNodeControlStrip'
+import { ExecutedToolDiffCard, ProposedUpdateCard } from '@/components/NodeUpdateActionCard'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
 
 export interface ElementAiMessage {
@@ -521,15 +523,26 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   const [spawnedCount, setSpawnedCount] = useState<number | null>(null)
 
   const handleSpawn = useCallback(
-    (actions: SpawnableShape[]) => {
+    (actions: SpawnableShape[], options?: SpawnTreeOptions) => {
       if (!actions.length) return
       const store = useFlowCanvasStore.getState()
       let count = 0
       const isTaskActive = !isCanvasScope && node?.type === 'focusTask'
       const parentId = isCanvasScope ? undefined : (containingProject?.id || node?.parentId)
-      const newEdges: Edge[] = []
+      const linkMode = options?.linkMode || 'chain'
+      const selectedSet = options?.selectedIndices ? new Set(options.selectedIndices) : null
+      const createdTaskIds: string[] = []
 
-      for (const act of actions) {
+      const targetActions = actions
+        .map((act, i) => {
+          if (options?.editedTitles && options.editedTitles[i] !== undefined) {
+            return { ...act, title: options.editedTitles[i] }
+          }
+          return act
+        })
+        .filter((_, i) => selectedSet === null || selectedSet.has(i))
+
+      for (const act of targetActions) {
         if (act.type === 'task') {
           const taskPos =
             isTaskActive && node
@@ -547,18 +560,7 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
             position: taskPos,
           })
 
-          if (isTaskActive && node) {
-            newEdges.push({
-              id: `e-${node.id}-${newId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              type: 'semantic',
-              source: node.id,
-              sourceHandle: 'bottom',
-              target: newId,
-              targetHandle: 'top',
-              animated: false,
-              data: { relation: 'depends' },
-            })
-          }
+          createdTaskIds.push(newId)
           count++
         } else if (act.type === 'project') {
           store.createProject({
@@ -569,8 +571,42 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
         }
       }
 
-      if (newEdges.length > 0) {
-        store.setEdges((prev) => [...prev, ...newEdges])
+      if (isTaskActive && node && createdTaskIds.length > 0) {
+        const newEdges: Edge[] = []
+        if (linkMode === 'fanout') {
+          for (const childId of createdTaskIds) {
+            newEdges.push({
+              id: `e-${node.id}-${childId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              type: 'semantic',
+              source: node.id,
+              sourceHandle: 'bottom',
+              target: childId,
+              targetHandle: 'top',
+              animated: false,
+              data: { relation: 'depends' },
+            })
+          }
+        } else {
+          // Chain: Parent -> T1 -> T2 -> T3
+          let prevId = node.id
+          for (const childId of createdTaskIds) {
+            newEdges.push({
+              id: `e-${prevId}-${childId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              type: 'semantic',
+              source: prevId,
+              sourceHandle: 'bottom',
+              target: childId,
+              targetHandle: 'top',
+              animated: false,
+              data: { relation: 'depends' },
+            })
+            prevId = childId
+          }
+        }
+
+        if (newEdges.length > 0) {
+          store.setEdges((prev) => [...prev, ...newEdges])
+        }
       }
 
       setSpawnedCount(count)
@@ -976,6 +1012,9 @@ Do NOT just passively describe what could be done — when the user asks to modi
         </div>
       </div>
 
+      {/* Active Node Control Strip */}
+      <ActiveNodeControlStrip nodeId={nodeId} isCanvasScope={isCanvasScope} />
+
       {/* Messages Scroll Area */}
       <div ref={scrollRef} className="flex-1 p-3 overflow-y-auto space-y-3 text-xs">
         {messages.length === 0 && !isStreaming && (
@@ -1127,14 +1166,39 @@ Do NOT just passively describe what could be done — when the user asks to modi
                         <CanvasActionList
                           key={sIdx}
                           actions={seg.actions}
-                          onSpawnAll={() => handleSpawn(seg.actions)}
+                          parentTask={isTask && node ? { id: node.id, title: currentShapeText } : null}
+                          onSpawnAll={(options) => handleSpawn(seg.actions, options)}
                           onSpawnSingle={handleSpawnSingle}
                           spawnedCount={spawnedCount}
                         />
                       )
                     }
+                    if (seg.type === 'proposed-update') {
+                      return (
+                        <ProposedUpdateCard
+                          key={sIdx}
+                          update={seg.update}
+                          activeNodeId={node?.id}
+                        />
+                      )
+                    }
                     return null
                   })}
+
+                  {/* Executed Tools Diffs (e.g. update_node) */}
+                  {m.executedTools && m.executedTools.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      {m.executedTools
+                        .filter((evt) => evt.toolName === 'update_node')
+                        .map((evt, eIdx) => (
+                          <ExecutedToolDiffCard
+                            key={eIdx}
+                            toolCall={evt}
+                            nodeId={node?.id}
+                          />
+                        ))}
+                    </div>
+                  )}
 
                   {/* 1-Click Checkpoints Ingestion for Focus Task */}
                   {isTask && (() => {
