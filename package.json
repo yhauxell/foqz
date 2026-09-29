@@ -5,7 +5,7 @@
   "private": true,
   "description": "Foqz — tray toggle, spatial canvas, and focus timers",
   "author": "Foqz",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
