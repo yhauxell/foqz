@@ -5,7 +5,7 @@ import {
   Position,
   type Node,
 } from "@xyflow/react";
-import { Copy, MessageSquare, Trash2 } from "lucide-react";
+import { Copy, Crosshair, MessageSquare, Trash2 } from "lucide-react";
 import { type ProjectAccent, type TaskPaperTheme } from "@/types/canvas";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
@@ -63,7 +63,7 @@ function useOutsideClick(ref: React.RefObject<HTMLDivElement | null>, onClose: (
 }
 
 export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowShapeMenuProps) {
-  const { setNodes, getInternalNode, deleteElements } = useReactFlow();
+  const { setNodes, getInternalNode, deleteElements, fitView } = useReactFlow();
   const [colorOpen, setColorOpen] = useState(false);
   const [borderOpen, setBorderOpen] = useState(false);
   const colorRef = useRef<HTMLDivElement>(null);
@@ -150,6 +150,19 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     useFlowCanvasStore.getState().deleteNode(selectedNode.id);
     deleteElements({ nodes: [{ id: selectedNode.id }] }).catch(() => {});
   };
+
+  const handleCenter = useCallback(
+    (e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      fitView({
+        nodes: [{ id: selectedNode.id }],
+        duration: 300,
+        maxZoom: 1.15,
+        padding: 0.25,
+      });
+    },
+    [fitView, selectedNode.id]
+  );
 
   const nodeInternal = getInternalNode(selectedNode.id);
   const nodeAbsY = nodeInternal?.internals?.positionAbsolute?.y ?? selectedNode.position.y;
@@ -294,6 +307,15 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
           className="size-5 rounded-full flex items-center justify-center hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-colors cursor-pointer"
         >
           <MessageSquare className="size-3" />
+        </button>
+
+        <button
+          type="button"
+          title="Center on Screen (⇧C)"
+          onClick={handleCenter}
+          className="size-5 rounded-full flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
+        >
+          <Crosshair className="size-3" />
         </button>
 
         <button
