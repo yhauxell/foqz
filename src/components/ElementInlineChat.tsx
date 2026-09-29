@@ -18,7 +18,7 @@ import {
   AlertTriangle,
   MessageSquare,
 } from 'lucide-react'
-import { useReactFlow, type Node } from '@xyflow/react'
+import { useReactFlow, type Node, type Edge } from '@xyflow/react'
 import { useOllama } from '@/lib/ollama'
 import { useFocusAppSettingsOptional } from '@/context/FocusAppSettingsContext'
 import { getCachedAppSettings } from '@/lib/appSettingsCache'
@@ -232,6 +232,7 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   const isCanvasScope = !nodeId || nodeId === '__canvas__'
   const node = useFlowCanvasStore((s) => (isCanvasScope ? null : s.nodes.find((n) => n.id === nodeId)))
   const allNodes = useFlowCanvasStore((s) => s.nodes)
+  const allEdges = useFlowCanvasStore((s) => s.edges)
 
   // Fetch MCP tools
   useEffect(() => {
@@ -497,16 +498,40 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
       if (!actions.length) return
       const store = useFlowCanvasStore.getState()
       let count = 0
-      const parentId = isCanvasScope ? undefined : containingProject?.id
+      const isTaskActive = !isCanvasScope && node?.type === 'focusTask'
+      const parentId = isCanvasScope ? undefined : (containingProject?.id || node?.parentId)
+      const newEdges: Edge[] = []
 
       for (const act of actions) {
         if (act.type === 'task') {
-          store.createTask({
+          const taskPos =
+            isTaskActive && node
+              ? {
+                  x: Math.round(node.position.x + 28),
+                  y: Math.round(node.position.y + 95 * (count + 1)),
+                }
+              : undefined
+
+          const newId = store.createTask({
             title: act.title || 'Untitled Task',
             priority: (act.priority as any) ?? 3,
             notes: act.notes,
             parentId,
+            position: taskPos,
           })
+
+          if (isTaskActive && node) {
+            newEdges.push({
+              id: `e-${node.id}-${newId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              type: 'semantic',
+              source: node.id,
+              sourceHandle: 'bottom',
+              target: newId,
+              targetHandle: 'top',
+              animated: false,
+              data: { relation: 'depends' },
+            })
+          }
           count++
         } else if (act.type === 'project') {
           store.createProject({
@@ -516,24 +541,62 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
           count++
         }
       }
+
+      if (newEdges.length > 0) {
+        store.setEdges((prev) => [...prev, ...newEdges])
+      }
+
       setSpawnedCount(count)
       setTimeout(() => setSpawnedCount(null), 3000)
     },
-    [isCanvasScope, containingProject]
+    [isCanvasScope, containingProject, node]
   )
 
   const handleSpawnSingle = useCallback(
     (action: SpawnableShape, _index: number) => {
       const store = useFlowCanvasStore.getState()
-      const parentId = isCanvasScope ? undefined : containingProject?.id
+      const isTaskActive = !isCanvasScope && node?.type === 'focusTask'
+      const parentId = isCanvasScope ? undefined : (containingProject?.id || node?.parentId)
 
       if (action.type === 'task') {
-        store.createTask({
+        const existingSubtasks =
+          isTaskActive && node
+            ? store.nodes.filter(
+                (n) => n.parentId === (node.parentId || parentId) && n.type === 'focusTask'
+              ).length
+            : 0
+
+        const taskPos =
+          isTaskActive && node
+            ? {
+                x: Math.round(node.position.x + 28),
+                y: Math.round(node.position.y + 95 * Math.max(1, existingSubtasks + 1)),
+              }
+            : undefined
+
+        const newId = store.createTask({
           title: action.title || 'Untitled Task',
           priority: (action.priority as any) ?? 3,
           notes: action.notes,
           parentId,
+          position: taskPos,
         })
+
+        if (isTaskActive && node) {
+          store.setEdges((prev) => [
+            ...prev,
+            {
+              id: `e-${node.id}-${newId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              type: 'semantic',
+              source: node.id,
+              sourceHandle: 'bottom',
+              target: newId,
+              targetHandle: 'top',
+              animated: false,
+              data: { relation: 'depends' },
+            },
+          ])
+        }
       } else if (action.type === 'project') {
         store.createProject({
           title: action.title || 'Untitled Project',
@@ -541,7 +604,7 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
         })
       }
     },
-    [isCanvasScope, containingProject]
+    [isCanvasScope, containingProject, node]
   )
 
   const handleClearChat = useCallback(() => {
@@ -554,8 +617,28 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   }, [isStreaming, saveMessages])
 
   const handleSend = async (overridePrompt?: string) => {
-    const text = (overridePrompt || prompt).trim()
+    let text = (overridePrompt || prompt).trim()
     if (!text || (!node && !isCanvasScope) || isStreaming) return
+
+    if (text === '/expand' || text.startsWith('/expand ')) {
+      const extra = text.replace(/^\/expand\s*/, '').trim()
+      text = extra
+        ? `Break this task down into subtasks and link them using expand_task: ${extra}`
+        : 'Break this task down into 3 concrete subtasks and link them using expand_task.'
+    } else if (text === '/done' || text.startsWith('/done ')) {
+      text = 'Mark this task as done using update_node.'
+    } else if (text.startsWith('/prio')) {
+      const match = text.match(/^\/prio\s*([1-4])?/)
+      const prioNum = match?.[1] || '1'
+      text = `Set priority of this task to P${prioNum} using update_node.`
+    } else if (text === '/focus' || text.startsWith('/focus ')) {
+      text = 'Start a 25-minute focus session on this task using start_focus_session.'
+    } else if (text.startsWith('/rename')) {
+      const newTitle = text.replace(/^\/rename\s*/, '').trim()
+      text = newTitle
+        ? `Update this task title to "${newTitle}" using update_node.`
+        : 'Update this task title using update_node.'
+    }
 
     const userMsg: ElementAiMessage = {
       id: `user_${Date.now()}`,
@@ -583,7 +666,35 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     }
 
     const allTools = [...NATIVE_FOQZ_TOOLS, ...currentTools]
-    const localToolExecutor = createFlowCanvasToolExecutor()
+    const localToolExecutor = createFlowCanvasToolExecutor(node?.id)
+
+    // Build rich selectedNodeContext
+    const selectedNodeContext = node
+      ? {
+          id: node.id,
+          type: node.type,
+          title: currentShapeText,
+          status: (node.data as any)?.status || 'open',
+          priority: (node.data as any)?.priority ?? 3,
+          notes: (node.data as any)?.notes || '',
+          paper: (node.data as any)?.paper || 'cream',
+          parentId: node.parentId || null,
+          parentProject: containingProject
+            ? {
+                id: containingProject.id,
+                title: (containingProject.data as any)?.title || 'Untitled Project',
+                goal: (containingProject.data as any)?.goal || '',
+              }
+            : null,
+          connectedEdges: allEdges
+            .filter((e) => e.source === node.id || e.target === node.id)
+            .map((e) => ({
+              direction: e.source === node.id ? 'outgoing' : 'incoming',
+              otherNodeId: e.source === node.id ? e.target : e.source,
+              relation: (e.data as any)?.relation || 'depends',
+            })),
+        }
+      : null
 
     let systemPrompt = ''
     if (isCanvasScope) {
@@ -602,37 +713,56 @@ Macro Workspace Context:
 - Tasks Overview: ${allTasks.length} total (${doneTasks.length} done, ${doingTasks.length} in-progress, ${openTasks.length} open)
 - Loose / Scratchpad items: ${unlinked.length}
 
+You have native spatial canvas tools:
+- \`spawn_tasks\`: Create tasks or stage items.
+- \`update_node\`: Mutate any project or task.
+- \`connect_nodes\`: Create dependency edges between nodes.
+- \`start_focus_session\`: Launch a focus session countdown timer.
+- \`delete_node\`: Remove nodes from the board.
+- \`jev_audit_portfolio\` / \`jev_triage_items\`: Evaluate and prioritize.
+
 Your job is macro-level direction, prioritization, and sprint staging:
 1. Help the founder identify the single highest-leverage focus for today without context switching.
 2. Recommend unblocking critical path dependencies before starting peripheral tasks.
-3. When asked to stage priorities or plan the day, output a \`\`\`canvas block with tasks to stage onto the Runway or use available canvas tools.`
+3. When asked to stage priorities or plan the day, invoke canvas tools or output \`\`\`canvas blocks.`
     } else if (node?.type === 'projectFrame') {
       const childTasks = allNodes.filter((n) => n.parentId === node.id && n.type === 'focusTask')
       const projectData = (node.data || {}) as Record<string, any>
       systemPrompt = `${FOQZ_SYSTEM_PROMPT}
 
-You are the Technical Project Architect for "${currentShapeText}".
+You are the Technical Project Architect for "${currentShapeText}" (id: ${node.id}).
 Goal: "${projectData.goal || 'No goal specified'}"
 Tasks inside this project: ${childTasks.length} (${childTasks.map((t) => (t.data as any)?.title).join(', ')})
 ${connectedRepo ? `Connected GitHub Repository: "${connectedRepo}"` : ''}
 
+You have ACTIVE MUTATION TOOLS to directly manipulate this project and its tasks:
+- To update this project frame's title, goal, or notes, invoke \`update_node(nodeId: "${node.id}", ...)\`.
+- To create tasks inside this project, invoke \`spawn_tasks\` or output \`\`\`canvas blocks.
+- To connect tasks and projects with dependencies, invoke \`connect_nodes\`.
+- To delete obsolete nodes, invoke \`delete_node\`.
+
 Your job is technical execution planning:
 1. Deconstruct milestone goals into concrete, bite-sized focus tasks with clear acceptance criteria.
 2. Maintain clean causality and dependencies between tasks.
-3. Output \`\`\`canvas blocks to spawn tasks directly inside this project frame.`
+3. Directly apply project updates or create connected tasks using your tools rather than just describing them.`
     } else {
       const taskData = (node?.data || {}) as Record<string, any>
       systemPrompt = `${FOQZ_SYSTEM_PROMPT}
 
-You are a Senior Pair Programmer focused on a single execution sprint.
-Active Element: "${currentShapeText}" (type: ${node?.type || 'task'})
-${taskData.notes ? `Task Notes / Checkpoints:\n${taskData.notes}` : ''}
-${containingProject ? `Parent Project: "${(containingProject.data as any)?.title}" (Goal: "${(containingProject.data as any)?.goal}")` : ''}
+You are a Senior Pair Programmer focused on the active card: "${currentShapeText}" (id: ${node?.id}, type: ${node?.type || 'task'}).
+Status: ${taskData.status || 'open'} | Priority: P${taskData.priority ?? 3} | Paper: ${taskData.paper || 'cream'}
+${taskData.notes ? `Task Notes / Checkpoints:\n${taskData.notes}` : 'No notes/checkpoints yet.'}
+${containingProject ? `Parent Project: "${(containingProject.data as any)?.title}" (id: ${containingProject.id}, Goal: "${(containingProject.data as any)?.goal}")` : 'No parent project.'}
 
-Your job is micro-execution:
-1. Ensure the task is small enough for a 25-90 minute Pomodoro session.
-2. If ambiguous, generate 3-5 markdown checkbox steps.
-3. Provide exact code snippets, debugging hypotheses, or refactoring ideas.`
+You have ACTIVE MUTATION TOOLS to directly manipulate the spatial canvas:
+- To change this task's title, checklist, priority, paper theme, or status, invoke the \`update_node\` tool directly (e.g. \`update_node(nodeId: "${node?.id}", status: "done")\`).
+- To append acceptance criteria or markdown checklists to this task's notes, invoke \`update_node(nodeId: "${node?.id}", appendNotes: "...")\`.
+- To break this task down into subtasks, invoke the \`expand_task\` tool with concrete steps (e.g. \`expand_task(taskId: "${node?.id}", subtasks: [...])\`). This automatically creates child cards positioned below this task and connects them with dependency edges.
+- To connect this task to other nodes, invoke the \`connect_nodes\` tool.
+- To launch a focused work session on this task, invoke \`start_focus_session(taskId: "${node?.id}", durationMinutes: 25)\`.
+- To remove this task or any node, invoke \`delete_node(nodeId: "${node?.id}")\`.
+
+Do NOT just passively describe what could be done — when the user asks to modify, decompose, prioritize, or start the task, directly invoke your native tools!`
     }
 
     let assistantText = ''
@@ -650,8 +780,8 @@ Your job is micro-execution:
         userPrompt: text,
         systemPrompt,
         canvasContext: isCanvasScope
-          ? `Macro Board Overview: ${allNodes.length} items total on canvas`
-          : `Current active element text: "${currentShapeText}" (type: ${node?.type})`,
+          ? `Macro Board Overview: ${allNodes.length} items total on canvas (${allNodes.filter((n) => n.type === 'projectFrame').length} projects, ${allNodes.filter((n) => n.type === 'focusTask').length} tasks)`
+          : `Active Selected Node Context:\n${JSON.stringify(selectedNodeContext, null, 2)}`,
         conversationHistory: updated.slice(-10).map((m) => ({
           role: m.role,
           content: m.content,
@@ -839,10 +969,31 @@ Your job is micro-execution:
                 <>
                   <button
                     type="button"
-                    onClick={() => handleSend('Break this task down into 3 concrete next action steps.')}
+                    onClick={() => handleSend('Break this task down into 3 concrete subtasks and link them using expand_task.')}
                     className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
                   >
-                    ⚡ Break down into 3 steps
+                    ⚡ Break down and link subtasks
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSend('Add acceptance criteria and checkpoint checklist to this task notes using update_node appendNotes.')}
+                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
+                  >
+                    📝 Add acceptance criteria
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSend('Set priority of this task to P1 Urgent using update_node.')}
+                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
+                  >
+                    🎯 Set priority to P1 Urgent
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSend('Start a 25-minute focus session on this task using start_focus_session.')}
+                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
+                  >
+                    ▶ Lock into 25m Focus Session
                   </button>
                   <button
                     type="button"
@@ -949,7 +1100,50 @@ Your job is micro-execution:
       </div>
 
       {/* Input bar */}
-      <div className="p-2.5 border-t border-black/[0.06] dark:border-white/[0.08] bg-white/40 dark:bg-white/[0.02] shrink-0">
+      <div className="p-2.5 border-t border-black/[0.06] dark:border-white/[0.08] bg-white/40 dark:bg-white/[0.02] shrink-0 space-y-1.5">
+        {isTask && !isStreaming && (
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+            <button
+              type="button"
+              onClick={() => handleSend('/expand')}
+              className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <Zap className="size-2.5 text-amber-500" />
+              <span>Break down</span>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                handleSend(
+                  'Add a checklist of concrete acceptance criteria to this task notes using update_node appendNotes.'
+                )
+              }
+              className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer"
+            >
+              📝 Criteria
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSend('Set priority of this task to P1 Urgent using update_node.')}
+              className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <Target className="size-2.5 text-rose-500" />
+              <span>P1 Urgent</span>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                handleSend(
+                  'Start a 25-minute focus session on this task using start_focus_session.'
+                )
+              }
+              className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <Lock className="size-2.5 text-blue-500" />
+              <span>Focus 25m</span>
+            </button>
+          </div>
+        )}
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white/80 dark:bg-zinc-900/80 border border-black/[0.08] dark:border-white/[0.1] shadow-2xs">
           <textarea
             ref={textareaRef}
