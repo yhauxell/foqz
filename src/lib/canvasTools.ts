@@ -1,3 +1,4 @@
+import type { Edge } from '@xyflow/react'
 import type { McpTool, McpToolCallResult } from './mcpTypes'
 import { getFlowCanvasContext, getFlowProjectFrameContents } from './canvasContext'
 import { prioritizeDailyFocusSlot, auditPortfolioProjects } from './jev'
@@ -106,12 +107,172 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
       required: ['items'],
     },
   },
+  {
+    serverName: 'foqz',
+    name: 'update_node',
+    description:
+      'Updates attributes of the active or specified canvas node (task title, notes, status, priority, paper theme, project goal). Defaults to the selected node if nodeId is omitted.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        nodeId: {
+          type: 'string',
+          description:
+            'Optional ID of the node to update. Defaults to the currently selected node if omitted.',
+        },
+        title: {
+          type: 'string',
+          description: 'New title or label for the node.',
+        },
+        notes: {
+          type: 'string',
+          description: 'Replaces existing notes or markdown content.',
+        },
+        appendNotes: {
+          type: 'string',
+          description: 'Appends markdown text or checklists to existing notes.',
+        },
+        status: {
+          type: 'string',
+          enum: ['open', 'doing', 'done'],
+          description: 'Task execution status.',
+        },
+        priority: {
+          type: 'number',
+          enum: [1, 2, 3, 4],
+          description:
+            'Priority level: 1=Urgent (red), 2=High (orange), 3=Normal (blue), 4=Low (grey).',
+        },
+        paper: {
+          type: 'string',
+          enum: ['cream', 'fog', 'bloom', 'sage'],
+          description: 'Paper visual theme.',
+        },
+        goal: {
+          type: 'string',
+          description: 'Project frame goal.',
+        },
+      },
+    },
+  },
+  {
+    serverName: 'foqz',
+    name: 'expand_task',
+    description:
+      'Deconstructs a focus task into subtasks, placing them directly below the parent task and wiring semantic dependency edges. Defaults to the selected task if taskId is omitted.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: {
+          type: 'string',
+          description:
+            'Optional ID of parent task to expand. Defaults to the currently selected task if omitted.',
+        },
+        subtasks: {
+          type: 'array',
+          description: 'Array of concrete subtask objects to spawn under the parent task.',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: 'Title of the subtask' },
+              priority: {
+                type: 'number',
+                enum: [1, 2, 3, 4],
+                description: 'Priority level 1-4 (default: 3)',
+              },
+              notes: {
+                type: 'string',
+                description: 'Optional details, acceptance criteria, or markdown notes',
+              },
+            },
+            required: ['title'],
+          },
+        },
+        linkMode: {
+          type: 'string',
+          enum: ['chain', 'fanout'],
+          default: 'chain',
+          description:
+            'Dependency link pattern: "chain" (Parent -> T1 -> T2 -> T3) or "fanout" (Parent -> T1, Parent -> T2, Parent -> T3).',
+        },
+      },
+      required: ['subtasks'],
+    },
+  },
+  {
+    serverName: 'foqz',
+    name: 'connect_nodes',
+    description:
+      'Connects two canvas nodes with a semantic relationship edge (depends, blocks, or aggregates).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sourceId: {
+          type: 'string',
+          description: 'Source node ID.',
+        },
+        targetId: {
+          type: 'string',
+          description: 'Target node ID.',
+        },
+        relation: {
+          type: 'string',
+          enum: ['depends', 'blocks', 'aggregates'],
+          default: 'depends',
+          description: 'Semantic relation type between source and target nodes.',
+        },
+        animated: {
+          type: 'boolean',
+          default: false,
+          description: 'Whether the edge connection line is animated.',
+        },
+      },
+      required: ['sourceId', 'targetId'],
+    },
+  },
+  {
+    serverName: 'foqz',
+    name: 'start_focus_session',
+    description:
+      'Activates a task as the single active focus card and starts the Mono-Heartbeat timer countdown. Defaults to the selected task if taskId is omitted.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: {
+          type: 'string',
+          description:
+            'Optional ID of task to focus. Defaults to currently selected task.',
+        },
+        durationMinutes: {
+          type: 'number',
+          default: 25,
+          description: 'Duration in minutes for the focus countdown timer (default: 25).',
+        },
+      },
+    },
+  },
+  {
+    serverName: 'foqz',
+    name: 'delete_node',
+    description:
+      'Deletes a node from the canvas and cascades removal of attached edges. Defaults to the selected node if nodeId is omitted.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        nodeId: {
+          type: 'string',
+          description:
+            'Optional ID of node to delete. Defaults to currently selected node.',
+        },
+      },
+    },
+  },
 ]
 
 /**
  * Creates a tool executor bound to the React Flow store.
  */
-export function createFlowCanvasToolExecutor() {
+export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
   return async (
     toolName: string,
     args: Record<string, any>,
@@ -324,6 +485,349 @@ export function createFlowCanvasToolExecutor() {
               },
             ],
           }
+        }
+      }
+
+      case 'update_node': {
+        const liveStore = useFlowCanvasStore.getState()
+        const targetId = args.nodeId || args.taskId || defaultNodeId || liveStore.selectedNodeId
+        if (!targetId) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'No nodeId specified and no node currently selected to update.' }],
+          }
+        }
+        const targetNode = liveStore.nodes.find((n) => n.id === targetId)
+        if (!targetNode) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Node "${targetId}" not found on canvas.` }],
+          }
+        }
+
+        const patch: Record<string, any> = {}
+        if (args.title !== undefined) {
+          patch.title = String(args.title)
+          if (targetNode.type === 'box' || targetNode.type === 'circle') {
+            patch.label = String(args.title)
+          } else if (targetNode.type === 'text') {
+            patch.text = String(args.title)
+          }
+        }
+        if (args.notes !== undefined) {
+          patch.notes = String(args.notes)
+        }
+        if (args.appendNotes !== undefined) {
+          const baseNotes = patch.notes !== undefined ? patch.notes : ((targetNode.data as any)?.notes || '')
+          patch.notes = baseNotes ? `${baseNotes}\n${args.appendNotes}` : String(args.appendNotes)
+        }
+        if (args.status !== undefined) {
+          patch.status = args.status
+        }
+        if (args.priority !== undefined) {
+          patch.priority = Number(args.priority)
+        }
+        if (args.paper !== undefined) {
+          patch.paper = args.paper
+        }
+        if (args.goal !== undefined) {
+          patch.goal = String(args.goal)
+        }
+
+        if (Object.keys(patch).length === 0) {
+          return {
+            isError: false,
+            content: [{ type: 'text', text: `No attributes provided to update on node "${targetId}".` }],
+          }
+        }
+
+        liveStore.updateNodeData(targetId, patch)
+        const updatedTitle = patch.title || (targetNode.data as any)?.title || targetId
+
+        return {
+          isError: false,
+          content: [
+            {
+              type: 'text',
+              text: `Successfully updated node "${updatedTitle}" (${targetId}). Changed attributes: ${Object.keys(patch).join(', ')}.`,
+            },
+          ],
+        }
+      }
+
+      case 'expand_task': {
+        const liveStore = useFlowCanvasStore.getState()
+        const targetId = args.nodeId || args.taskId || defaultNodeId || liveStore.selectedNodeId
+        if (!targetId) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'No taskId specified and no task currently selected to expand.' }],
+          }
+        }
+        const parentTask = liveStore.nodes.find((n) => n.id === targetId)
+        if (!parentTask) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Task "${targetId}" not found on canvas.` }],
+          }
+        }
+
+        let rawSubtasks = args.subtasks
+        if (typeof rawSubtasks === 'string') {
+          try {
+            rawSubtasks = JSON.parse(rawSubtasks)
+          } catch {}
+        }
+        if (!Array.isArray(rawSubtasks) || rawSubtasks.length === 0) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'No subtasks provided to expand.' }],
+          }
+        }
+
+        const linkMode = args.linkMode === 'fanout' ? 'fanout' : 'chain'
+        const isProjectFrame = parentTask.type === 'projectFrame'
+        const existingTasksCount = liveStore.nodes.filter(
+          (n) => n.parentId === (isProjectFrame ? parentTask.id : parentTask.parentId) && n.type === 'focusTask'
+        ).length
+
+        const parentId = isProjectFrame ? parentTask.id : parentTask.parentId
+        const parentX = isProjectFrame ? 40 : parentTask.position.x
+        const parentY = isProjectFrame ? 100 + existingTasksCount * 94 : parentTask.position.y
+
+        // Auto-expand frame height: if parentId exists, check if parentY + 95 * (rawSubtasks.length + 1) + 40 exceeds containing project frame height
+        if (parentId) {
+          const frameNode = liveStore.nodes.find((n) => n.id === parentId && n.type === 'projectFrame')
+          if (frameNode) {
+            const currentHeight = Number(frameNode.style?.height ?? frameNode.height ?? 420)
+            const neededHeight = Math.round(parentY + 95 * (rawSubtasks.length + 1) + 40)
+            if (neededHeight > currentHeight) {
+              liveStore.setNodes((nodes) =>
+                nodes.map((n) =>
+                  n.id === parentId
+                    ? {
+                        ...n,
+                        style: { ...n.style, height: neededHeight },
+                      }
+                    : n
+                )
+              )
+            }
+          }
+        }
+
+        const createdSubtasks: { id: string; title: string }[] = []
+        for (let i = 0; i < rawSubtasks.length; i++) {
+          const st = rawSubtasks[i]
+          const title = typeof st === 'string' ? st : String(st?.title || `Subtask ${i + 1}`)
+          const priority = typeof st === 'object' && typeof st?.priority === 'number' ? (st.priority as 1 | 2 | 3 | 4) : 3
+          const notes = typeof st === 'object' && st?.notes ? String(st.notes) : undefined
+
+          const subtaskId = liveStore.createTask({
+            title,
+            priority,
+            notes,
+            parentId,
+            position: {
+              x: Math.round(isProjectFrame ? parentX : parentX + 28),
+              y: Math.round(isProjectFrame ? parentY + 95 * i : parentY + 95 * (i + 1)),
+            },
+          })
+          createdSubtasks.push({ id: subtaskId, title })
+        }
+
+        const newEdges: Edge[] = []
+        if (isProjectFrame) {
+          for (let idx = 1; idx < createdSubtasks.length; idx++) {
+            const prev = createdSubtasks[idx - 1]
+            const curr = createdSubtasks[idx]
+            newEdges.push({
+              id: `e-${prev.id}-${curr.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              type: 'semantic',
+              source: prev.id,
+              sourceHandle: 'bottom',
+              target: curr.id,
+              targetHandle: 'top',
+              animated: false,
+              data: { relation: 'depends' },
+            })
+          }
+        } else if (linkMode === 'fanout') {
+          for (const child of createdSubtasks) {
+            newEdges.push({
+              id: `e-${parentTask.id}-${child.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              type: 'semantic',
+              source: parentTask.id,
+              sourceHandle: 'bottom',
+              target: child.id,
+              targetHandle: 'top',
+              animated: false,
+              data: { relation: 'depends' },
+            })
+          }
+        } else {
+          let prevId = parentTask.id
+          for (const child of createdSubtasks) {
+            newEdges.push({
+              id: `e-${prevId}-${child.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              type: 'semantic',
+              source: prevId,
+              sourceHandle: 'bottom',
+              target: child.id,
+              targetHandle: 'top',
+              animated: false,
+              data: { relation: 'depends' },
+            })
+            prevId = child.id
+          }
+        }
+
+        if (newEdges.length > 0) {
+          liveStore.setEdges((prev) => [...prev, ...newEdges])
+        }
+
+        return {
+          isError: false,
+          content: [
+            {
+              type: 'text',
+              text: `Successfully expanded task "${(parentTask.data as any)?.title || parentTask.id}" into ${createdSubtasks.length} subtasks with ${linkMode} dependencies:\n` +
+                createdSubtasks.map((st, idx) => `  ${idx + 1}. ${st.title} (id: ${st.id})`).join('\n'),
+            },
+          ],
+        }
+      }
+
+      case 'connect_nodes': {
+        const liveStore = useFlowCanvasStore.getState()
+        const sourceId = String(args.sourceId || '').trim()
+        const targetId = String(args.targetId || '').trim()
+        if (!sourceId || !targetId) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'Both sourceId and targetId are required to connect nodes.' }],
+          }
+        }
+
+        const sourceNode = liveStore.nodes.find((n) => n.id === sourceId)
+        const targetNode = liveStore.nodes.find((n) => n.id === targetId)
+        if (!sourceNode || !targetNode) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text',
+                text: `Cannot connect nodes: ${!sourceNode ? `source "${sourceId}"` : `target "${targetId}"`} not found on canvas.`,
+              },
+            ],
+          }
+        }
+
+        const relation = args.relation || 'depends'
+        const animated = Boolean(args.animated)
+        const existingEdge = liveStore.edges.find((e) => e.source === sourceId && e.target === targetId)
+
+        if (existingEdge) {
+          liveStore.updateEdgeData(existingEdge.id, { relation, animated })
+          return {
+            isError: false,
+            content: [
+              {
+                type: 'text',
+                text: `Updated existing edge between "${sourceId}" and "${targetId}" to relation "${relation}".`,
+              },
+            ],
+          }
+        }
+
+        const newEdge: Edge = {
+          id: `e-${sourceId}-${targetId}-${Date.now()}`,
+          type: 'semantic',
+          source: sourceId,
+          sourceHandle: 'bottom',
+          target: targetId,
+          targetHandle: 'top',
+          animated,
+          data: { relation },
+        }
+
+        liveStore.setEdges((prev) => [...prev, newEdge])
+        return {
+          isError: false,
+          content: [
+            {
+              type: 'text',
+              text: `Successfully connected "${(sourceNode.data as any)?.title || sourceId}" -> "${(targetNode.data as any)?.title || targetId}" with relation "${relation}".`,
+            },
+          ],
+        }
+      }
+
+      case 'start_focus_session': {
+        const liveStore = useFlowCanvasStore.getState()
+        const targetId = args.nodeId || args.taskId || defaultNodeId || liveStore.selectedNodeId
+        if (!targetId) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'No taskId specified and no task currently selected to focus.' }],
+          }
+        }
+        const targetNode = liveStore.nodes.find((n) => n.id === targetId)
+        if (!targetNode) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Task "${targetId}" not found on canvas.` }],
+          }
+        }
+
+        const durationMinutes =
+          typeof args.durationMinutes === 'number' && args.durationMinutes > 0
+            ? args.durationMinutes
+            : 25
+
+        liveStore.setActiveFocusNodeId(targetId)
+        liveStore.setTimerSecondsRemaining(durationMinutes * 60)
+        liveStore.setIsTimerRunning(true)
+
+        return {
+          isError: false,
+          content: [
+            {
+              type: 'text',
+              text: `Started ${durationMinutes}-minute focus session on task "${(targetNode.data as any)?.title || targetId}".`,
+            },
+          ],
+        }
+      }
+
+      case 'delete_node': {
+        const liveStore = useFlowCanvasStore.getState()
+        const targetId = args.nodeId || args.taskId || defaultNodeId || liveStore.selectedNodeId
+        if (!targetId) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'No nodeId specified and no node currently selected to delete.' }],
+          }
+        }
+        const targetNode = liveStore.nodes.find((n) => n.id === targetId)
+        if (!targetNode) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Node "${targetId}" not found on canvas.` }],
+          }
+        }
+
+        const title = (targetNode.data as any)?.title || (targetNode.data as any)?.label || targetId
+        liveStore.deleteNode(targetId)
+
+        return {
+          isError: false,
+          content: [
+            {
+              type: 'text',
+              text: `Successfully deleted node "${title}" (${targetId}) from the canvas.`,
+            },
+          ],
         }
       }
 

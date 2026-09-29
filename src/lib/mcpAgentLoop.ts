@@ -11,6 +11,7 @@ import {
 } from './aiProvider'
 import { getCachedAppSettings } from './appSettingsCache'
 import { resolveActiveAiConfig } from './appSettings'
+import { NATIVE_FOQZ_TOOLS } from './canvasTools'
 
 export interface AgentToolCallEvent {
   id: string
@@ -407,7 +408,14 @@ When you receive tool execution results, summarize them naturally for the user i
           toolName === 'create_timer' ||
           toolName === 'add_sticky_note' ||
           toolName === 'get_canvas_summary' ||
-          toolName === 'jev_triage_items'
+          toolName === 'jev_triage_items' ||
+          toolName === 'jev_audit_portfolio' ||
+          toolName === 'update_node' ||
+          toolName === 'expand_task' ||
+          toolName === 'connect_nodes' ||
+          toolName === 'start_focus_session' ||
+          toolName === 'delete_node' ||
+          NATIVE_FOQZ_TOOLS.some((t) => t.name === toolName)
 
         if (
           options.localToolExecutor &&
