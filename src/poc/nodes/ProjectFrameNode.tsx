@@ -189,14 +189,22 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
               })
             );
           }}
-          className="flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-mono shadow-2xs backdrop-blur-xs ml-2 shrink-0 cursor-pointer transition-colors"
+          className={`flex items-center justify-center transition-all cursor-pointer shadow-2xs ml-2 shrink-0 ${
+            data.connectors?.githubRepo
+              ? "px-2 py-0.5 rounded-full gap-1 border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 text-zinc-700 dark:text-zinc-300 font-mono text-[10px]"
+              : "size-6 rounded-full border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+          }`}
           style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
-          title="Configure project connectors & AI context"
+          title={
+            data.connectors?.githubRepo
+              ? `Connected repo: ${data.connectors.githubRepo}`
+              : "Configure project connectors & AI context"
+          }
         >
-          <GitBranch className="size-3" />
-          <span className="truncate max-w-[140px]">
-            {data.connectors?.githubRepo || "Connect repo"}
-          </span>
+          <GitBranch className="size-3 shrink-0" />
+          {data.connectors?.githubRepo && (
+            <span className="truncate max-w-[120px]">{data.connectors.githubRepo}</span>
+          )}
         </button>
       </div>
 

@@ -12,6 +12,7 @@ import {
   type TaskPaperTheme,
 } from "@/types/canvas";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import { useFocusAppSettingsOptional } from "@/context/FocusAppSettingsContext";
 
 export interface FocusTaskNodeData {
   title: string;
@@ -26,11 +27,24 @@ export interface FocusTaskNodeData {
 
 export type FocusTaskNodeType = Node<FocusTaskNodeData, "focusTask">;
 
-const PAPER_COLORS: Record<TaskPaperTheme, { bg: string; fill: string }> = {
-  cream: { bg: "#fefcf6", fill: "rgba(254, 252, 246, 0.95)" },
-  fog: { bg: "#f6f8fb", fill: "rgba(246, 248, 251, 0.95)" },
-  bloom: { bg: "#fdf5f8", fill: "rgba(253, 245, 248, 0.95)" },
-  sage: { bg: "#f4f9f6", fill: "rgba(244, 249, 246, 0.95)" },
+const PAPER_COLORS_LIGHT: Record<
+  TaskPaperTheme,
+  { bg: string; fill: string; stroke: string; doneStroke: string }
+> = {
+  cream: { bg: "#fefcf6", fill: "rgba(254, 252, 246, 0.96)", stroke: "#475569", doneStroke: "#94a3b8" },
+  fog: { bg: "#f6f8fb", fill: "rgba(246, 248, 251, 0.96)", stroke: "#475569", doneStroke: "#94a3b8" },
+  bloom: { bg: "#fdf5f8", fill: "rgba(253, 245, 248, 0.96)", stroke: "#475569", doneStroke: "#94a3b8" },
+  sage: { bg: "#f4f9f6", fill: "rgba(244, 249, 246, 0.96)", stroke: "#475569", doneStroke: "#94a3b8" },
+};
+
+const PAPER_COLORS_DARK: Record<
+  TaskPaperTheme,
+  { bg: string; fill: string; stroke: string; doneStroke: string }
+> = {
+  cream: { bg: "#18181b", fill: "rgba(24, 24, 27, 0.96)", stroke: "#52525b", doneStroke: "#3f3f46" },
+  fog: { bg: "#161922", fill: "rgba(22, 25, 34, 0.96)", stroke: "#475569", doneStroke: "#334155" },
+  bloom: { bg: "#22171d", fill: "rgba(34, 23, 29, 0.96)", stroke: "#5c3d4d", doneStroke: "#3f2b35" },
+  sage: { bg: "#152019", fill: "rgba(21, 32, 25, 0.96)", stroke: "#3d5c48", doneStroke: "#283b2f" },
 };
 
 export const FocusTaskNode = memo(function FocusTaskNode({
@@ -40,6 +54,32 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   width = 280,
   height = 90,
 }: NodeProps<FocusTaskNodeType>) {
+  const settingsCtx = useFocusAppSettingsOptional();
+  const themeSetting = settingsCtx?.settings?.theme || "system";
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof document !== "undefined") {
+      return document.documentElement.classList.contains("dark");
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const updateDark = () => {
+      const dark =
+        themeSetting === "dark" ||
+        (themeSetting === "system" &&
+          typeof window !== "undefined" &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches) ||
+        (typeof document !== "undefined" && document.documentElement.classList.contains("dark"));
+      setIsDark(dark);
+    };
+    updateDark();
+
+    const observer = new MutationObserver(() => updateDark());
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, [themeSetting]);
+
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(data.title || "");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -51,7 +91,9 @@ export const FocusTaskNode = memo(function FocusTaskNode({
 
   const isDone = data.status === "done";
   const priorityHex = focusTaskShellColorForPriority(data.priority || 3);
-  const theme = PAPER_COLORS[data.paper || "cream"] || PAPER_COLORS.cream;
+  const activeTheme = isDark
+    ? PAPER_COLORS_DARK[data.paper || "cream"] || PAPER_COLORS_DARK.cream
+    : PAPER_COLORS_LIGHT[data.paper || "cream"] || PAPER_COLORS_LIGHT.cream;
 
   const w = Math.max(200, width);
   const h = Math.max(76, height);
@@ -152,10 +194,10 @@ export const FocusTaskNode = memo(function FocusTaskNode({
     const cardRect = rc.rectangle(3, 3, w - 6, h - 6, {
       seed: nodeSeed,
       roughness: 1.2,
-      stroke: isDone ? "#94a3b8" : "#475569",
+      stroke: isDone ? activeTheme.doneStroke : activeTheme.stroke,
       strokeWidth: 1.5,
       strokeLineDash: dashArray,
-      fill: theme.fill,
+      fill: activeTheme.fill,
       fillStyle: "solid",
     });
     svg.appendChild(cardRect);
@@ -176,12 +218,16 @@ export const FocusTaskNode = memo(function FocusTaskNode({
     const checkOutline = rc.rectangle(16, 12, 16, 16, {
       seed: nodeSeed + 2,
       roughness: 1.4,
-      stroke: isDone ? "#16a34a" : "#64748b",
+      stroke: isDone
+        ? (isDark ? "#4ade80" : "#16a34a")
+        : (isDark ? "#71717a" : "#64748b"),
       strokeWidth: 1.5,
-      fill: isDone ? "rgba(22, 163, 74, 0.15)" : "transparent",
+      fill: isDone
+        ? (isDark ? "rgba(74, 222, 128, 0.2)" : "rgba(22, 163, 74, 0.15)")
+        : (isDark ? "rgba(255, 255, 255, 0.04)" : "transparent"),
     });
     svg.appendChild(checkOutline);
-  }, [id, w, h, isDone, priorityHex, theme.fill, data.borderStyle]);
+  }, [id, w, h, isDone, priorityHex, activeTheme, data.borderStyle, isDark]);
 
   const toggleStatus = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -270,6 +316,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
         <button
           type="button"
           onClick={toggleStatus}
+          title={isDone ? "Mark as incomplete" : "Mark as completed"}
           className="size-4.5 mt-0.5 flex items-center justify-center cursor-pointer shrink-0"
         >
           {isDone && (
@@ -354,11 +401,10 @@ export const FocusTaskNode = memo(function FocusTaskNode({
               <button
                 type="button"
                 onClick={handleStartFocus}
-                className="opacity-85 hover:opacity-100 hover:scale-105 active:scale-95 transition-all px-1.5 py-0.5 rounded bg-zinc-200/70 dark:bg-zinc-800 text-[9px] font-medium text-zinc-600 dark:text-zinc-300 hover:text-rose-500 shrink-0 flex items-center gap-1 cursor-pointer select-none"
-                title="Start Focus Session on this task (F)"
+                className="size-5 rounded-full bg-zinc-200/70 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:text-rose-500 hover:bg-rose-500/10 dark:hover:bg-rose-500/20 hover:scale-110 active:scale-95 transition-all flex items-center justify-center shrink-0 cursor-pointer select-none"
+                title="Start Focus Session (F)"
               >
-                <Target className="size-2.5 text-rose-500" />
-                <span>Focus</span>
+                <Target className="size-3 text-rose-500" />
               </button>
             ) : null}
           </div>
@@ -416,11 +462,10 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                 e.stopPropagation();
                 setIsEditingNotes(true);
               }}
-              className="mt-1.5 pt-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 flex items-center gap-1 cursor-pointer transition-colors"
-              style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
+              title="Add notes or checklist"
+              className="mt-1.5 size-5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
             >
               <Plus className="size-3" />
-              <span>Add notes / checklist...</span>
             </button>
           ) : null}
         </div>

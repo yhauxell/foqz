@@ -291,10 +291,9 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
               })
             );
           }}
-          className="h-6 px-2 rounded-full flex items-center gap-1 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-colors cursor-pointer text-[11px] font-medium"
+          className="size-5 rounded-full flex items-center justify-center hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-colors cursor-pointer"
         >
           <MessageSquare className="size-3" />
-          <span>Chat</span>
         </button>
 
         <button

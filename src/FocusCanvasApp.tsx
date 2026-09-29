@@ -205,10 +205,11 @@ function FocusCanvasAppInner() {
 
         {/* Right section: Assistant + Shortcuts + Settings */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Space-Aware Assistant Trigger */}
+          {/* Space-Aware Assistant Trigger (Solid Black in Light Mode, White in Dark Mode) */}
           <button
             type="button"
-            title="Open Space-Aware Assistant (⌘J / Space+C)"
+            title={`AI Copilot (⌘J) • ${online ? "Ollama Connected" : "Ollama Offline"}`}
+            aria-label="AI Copilot"
             onClick={() => {
               window.dispatchEvent(
                 new CustomEvent("foqz:open-inline-chat", {
@@ -216,15 +217,14 @@ function FocusCanvasAppInner() {
                 })
               );
             }}
-            className="h-7 px-2.5 rounded-full text-xs font-medium border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 hover:text-zinc-950 dark:hover:text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
+            className="size-7.5 rounded-full bg-zinc-950 hover:bg-black text-white dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-950 flex items-center justify-center transition-all shadow-xs active:scale-95 cursor-pointer relative"
           >
-            <Sparkles className="size-3 text-blue-500" />
-            <span>AI Copilot</span>
+            <Sparkles className="size-3.5 fill-current" />
             <span
-              className={`size-1.5 rounded-full ${online ? "bg-emerald-500" : "bg-zinc-400 dark:bg-zinc-600"}`}
-              title={online ? "Ollama is online" : "Ollama is offline"}
+              className={`absolute -top-0.5 -right-0.5 size-2 rounded-full border border-white dark:border-zinc-900 ${
+                online ? "bg-emerald-500" : "bg-zinc-400"
+              }`}
             />
-            <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-50 px-1 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800/80 ml-0.5">⌘J</kbd>
           </button>
 
           {/* Keyboard Shortcuts Modal */}
@@ -243,6 +243,7 @@ function FocusCanvasAppInner() {
             type="button"
             className="size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
             aria-label="Settings"
+            title="Settings (⌘,)"
             onClick={() => handleOpenSettings("general")}
           >
             <Settings className="size-3.5" />

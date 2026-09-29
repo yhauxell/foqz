@@ -79,9 +79,9 @@ export function FlowZoomControls({ sidebarOpen = false }: FlowZoomControlsProps)
         type="button"
         title="Reset Zoom to 100%"
         onClick={() => zoomTo(1)}
-        className="px-2 py-0.5 rounded-full text-[11px] font-mono hover:bg-black/5 dark:hover:bg-white/10 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-colors cursor-pointer min-w-[36px] text-center font-medium"
+        className="px-1.5 py-0.5 rounded-full text-[11px] font-mono hover:bg-black/5 dark:hover:bg-white/10 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-colors cursor-pointer min-w-[34px] text-center font-medium"
       >
-        Reset
+        100%
       </button>
 
       <button
