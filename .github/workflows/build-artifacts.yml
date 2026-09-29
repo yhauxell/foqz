@@ -1,13 +1,14 @@
-# Build Foqz installers on pull requests and main pushes, and save them as GitHub Actions artifacts.
+# Build Foqz installers and save them as GitHub Actions artifacts.
 #
-# Artifacts are stored on GitHub Actions for 30 days and can be downloaded from the Action Run summary.
+# Triggered only when a PR is labeled with 'build-artifacts', or manually via
+# workflow_dispatch. This avoids burning CI minutes on every routine commit.
+#
+# Artifacts are stored for 30 days and downloadable from the Action Run summary.
 name: Build Artifacts
 
 on:
   pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+    types: [labeled]
   workflow_dispatch:
 
 concurrency:
@@ -16,6 +17,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'build-artifacts'
     strategy:
       fail-fast: false
       matrix:
