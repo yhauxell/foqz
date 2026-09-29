@@ -259,9 +259,10 @@ function isToolUnsupportedError(err: Error): boolean {
  * Runs the multi-turn agent execution loop with Ollama, OpenAI, or Gemini and MCP tools.
  */
 export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentLoopResult> {
-  const maxSteps = options.maxSteps ?? 5
+  const maxSteps = options.maxSteps ?? 12
   const messages: AiChatMessage[] = []
   const executedTools: AgentToolCallEvent[] = []
+  const toolCallSignatures = new Map<string, number>()
 
   const activeConfig = resolveActiveAiConfig(getCachedAppSettings())
   const provider: AiProviderName = options.provider || activeConfig.provider
@@ -479,14 +480,62 @@ When you receive tool execution results, summarize them naturally for the user i
       })
     }
 
+    // Check if the same tool calls are looping without progress
+    const currentToolKeys = chatResult.toolCalls.map(
+      (tc) => `${tc.function.name}:${JSON.stringify(tc.function.arguments || {})}`
+    )
+    let isLooping = false
+    for (const key of currentToolKeys) {
+      const count = (toolCallSignatures.get(key) || 0) + 1
+      toolCallSignatures.set(key, count)
+      if (count >= 3) {
+        isLooping = true
+        break
+      }
+    }
+
     steps++
+
+    if (isLooping) {
+      break
+    }
   }
 
-  // Max steps reached
-  const finalMsg =
+  // If the last message is still a tool response, execute one final turn without tools
+  // to synthesize the final answer for the user instead of halting with an iteration limit error.
+  let finalMsg =
     messages[messages.length - 1]?.role === 'assistant'
       ? messages[messages.length - 1].content
-      : 'Agent reached maximum iteration limit.'
+      : ''
+
+  if (!finalMsg && !options.signal?.aborted) {
+    try {
+      messages.push({
+        role: 'user',
+        content:
+          'Please summarize your findings and provide your response to the user based on the tool results above.',
+      })
+      const finalTurn = await streamAiChatWithTools({
+        provider,
+        model,
+        apiKey,
+        baseUrl,
+        messages,
+        tools: [],
+        onChunk: options.onChunk,
+        signal: options.signal,
+      })
+      if (finalTurn.content) {
+        finalMsg = finalTurn.content
+        messages.push({ role: 'assistant', content: finalMsg })
+      }
+    } catch {}
+  }
+
+  if (!finalMsg) {
+    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant' && m.content)
+    finalMsg = lastAssistant?.content || 'Completed processing your request.'
+  }
 
   return {
     success: true,

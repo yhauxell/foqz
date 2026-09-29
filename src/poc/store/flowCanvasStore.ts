@@ -284,7 +284,13 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         let parentId = props.parentId;
         let pos = props.position;
 
-        if (!parentId && !pos && state.cursorPosition) {
+        if (!parentId && pos) {
+          const frameMatch = findFrameAt(pos, state.nodes);
+          if (frameMatch) {
+            parentId = frameMatch.frame.id;
+            pos = { x: frameMatch.relX, y: frameMatch.relY };
+          }
+        } else if (!parentId && !pos && state.cursorPosition) {
           const frameMatch = findFrameAt(state.cursorPosition, state.nodes);
           if (frameMatch) {
             parentId = frameMatch.frame.id;

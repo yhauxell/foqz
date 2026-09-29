@@ -14,8 +14,66 @@ const {
 const fs = require('node:fs/promises')
 const fsSync = require('node:fs')
 const path = require('node:path')
+const childProcess = require('node:child_process')
 const { McpClientManager } = require('./mcp/McpClientManager.cjs')
 const { getMcpConfigPath, loadMcpConfig } = require('./mcp/mcpConfig.cjs')
+
+// Ensure production macOS app inherits full user shell PATH (npx, node, uvx, bun, etc.)
+function fixSystemPath() {
+  if (process.platform !== 'darwin') return
+
+  const commonPaths = [
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+    '/usr/local/sbin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin',
+  ]
+
+  const home = process.env.HOME || ''
+  if (home) {
+    commonPaths.unshift(
+      path.join(home, '.local/bin'),
+      path.join(home, '.cargo/bin'),
+      path.join(home, '.bun/bin')
+    )
+    const nvmDir = path.join(home, '.nvm/versions/node')
+    try {
+      if (fsSync.existsSync(nvmDir)) {
+        const versions = fsSync.readdirSync(nvmDir)
+        for (const v of versions.reverse()) {
+          const binPath = path.join(nvmDir, v, 'bin')
+          if (fsSync.existsSync(binPath)) {
+            commonPaths.unshift(binPath)
+          }
+        }
+      }
+    } catch {}
+  }
+
+  try {
+    const userShell = process.env.SHELL || '/bin/zsh'
+    const out = childProcess.execFileSync(
+      userShell,
+      ['-l', '-c', 'printf "%s" "$PATH"'],
+      { encoding: 'utf8', timeout: 2000 }
+    )
+    if (out && typeof out === 'string' && out.includes('/')) {
+      const shellPaths = out.split(':').filter(Boolean)
+      const combined = Array.from(new Set([...shellPaths, ...commonPaths, ...(process.env.PATH || '').split(':')]))
+      process.env.PATH = combined.filter(Boolean).join(':')
+      return
+    }
+  } catch {}
+
+  const current = (process.env.PATH || '').split(':').filter(Boolean)
+  process.env.PATH = Array.from(new Set([...commonPaths, ...current])).join(':')
+}
+
+fixSystemPath()
 
 const mcpManager = new McpClientManager()
 

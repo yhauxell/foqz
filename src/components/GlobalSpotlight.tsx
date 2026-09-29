@@ -165,6 +165,7 @@ type SpotlightEntry =
         icon: <Plus className="size-3 text-blue-500 shrink-0" />,
         perform: () => {
           window.dispatchEvent(new CustomEvent('foqz:new-task'))
+          onClose()
         },
       },
       {
@@ -175,6 +176,7 @@ type SpotlightEntry =
         icon: <FolderPlus className="size-3 text-indigo-500 shrink-0" />,
         perform: () => {
           window.dispatchEvent(new CustomEvent('foqz:new-project'))
+          onClose()
         },
       },
       {
@@ -262,8 +264,7 @@ type SpotlightEntry =
           badgeClass: 'bg-blue-500/10 text-blue-500 border-blue-500/30 font-semibold',
           icon: <Plus className="size-3.5 text-blue-500 shrink-0" />,
           perform: () => {
-            const newId = useFlowCanvasStore.getState().createTask({ title })
-            window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
+            window.dispatchEvent(new CustomEvent('foqz:new-task', { detail: { title } }))
             onClose()
           },
         },
@@ -281,8 +282,7 @@ type SpotlightEntry =
           badgeClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 font-semibold',
           icon: <FolderPlus className="size-3.5 text-emerald-500 shrink-0" />,
           perform: () => {
-            const newId = useFlowCanvasStore.getState().createProject({ title })
-            window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
+            window.dispatchEvent(new CustomEvent('foqz:new-project', { detail: { title } }))
             onClose()
           },
         },
@@ -372,8 +372,7 @@ type SpotlightEntry =
         badgeClass: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30 font-semibold',
         icon: <Plus className="size-3.5 text-blue-500 shrink-0" />,
         perform: () => {
-          const newId = useFlowCanvasStore.getState().createTask({ title: raw })
-          window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
+          window.dispatchEvent(new CustomEvent('foqz:new-task', { detail: { title: raw } }))
           onClose()
         },
       },

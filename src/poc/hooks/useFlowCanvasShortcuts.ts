@@ -52,7 +52,7 @@ export function useFlowCanvasShortcuts({
   useHotkeys(["p", "5", "d"], () => onPencilTool(), { preventDefault: true, enabled });
 
   // Creation & Context Actions
-  useHotkeys(["n", "meta+n", "ctrl+n"], () => onCreateTask(), { preventDefault: true, enabled });
+  useHotkeys(["n", "N", "meta+n", "ctrl+n", "alt+n"], () => onCreateTask(), { preventDefault: true, enabled });
   useHotkeys(
     ["meta+shift+p", "ctrl+shift+p", "alt+p", "alt+meta+n", "alt+ctrl+n"],
     () => onCreateProject(),

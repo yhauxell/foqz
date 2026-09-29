@@ -657,6 +657,7 @@ Your job is micro-execution:
           content: m.content,
         })),
         tools: allTools,
+        maxSteps: 12,
         onChunk: (delta) => {
           assistantText += delta
           setStreamingContent(assistantText)

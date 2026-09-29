@@ -7,6 +7,8 @@ export interface TextNodeData {
   text: string;
   fontSize?: number;
   color?: string;
+  isNew?: boolean;
+  autoEdit?: boolean;
   [key: string]: unknown;
 }
 
@@ -17,8 +19,8 @@ export const TextNode = memo(function TextNode({
   data,
   selected,
 }: NodeProps<TextNodeType>) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [val, setVal] = useState(data.text || "Type something...");
+  const [isEditing, setIsEditing] = useState(() => Boolean(data.isNew || data.autoEdit || !data.text));
+  const [val, setVal] = useState(data.text || "");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -29,21 +31,56 @@ export const TextNode = memo(function TextNode({
     if (isEditing && textareaRef.current) {
       const el = textareaRef.current;
       el.style.height = "auto";
-      el.style.height = `${el.scrollHeight}px`;
-      el.focus();
-      el.setSelectionRange(el.value.length, el.value.length);
+      el.style.height = `${Math.max(24, el.scrollHeight)}px`;
+      const timer = setTimeout(() => {
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      }, 50);
+      return () => clearTimeout(timer);
     }
   }, [isEditing]);
 
+  // When selected but not editing, pressing Enter begins editing
+  useEffect(() => {
+    if (!selected || isEditing) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setIsEditing(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selected, isEditing]);
+
   const handleSave = () => {
     setIsEditing(false);
-    useFlowCanvasStore.getState().updateNodeData(id, { text: val });
+    if (!val.trim() && data.isNew) {
+      useFlowCanvasStore.getState().deleteNode(id);
+      return;
+    }
+    useFlowCanvasStore.getState().updateNodeData(id, { text: val, isNew: false, autoEdit: false });
   };
 
   return (
     <div
-      className={`relative min-w-[60px] max-w-[400px] p-1.5 rounded transition-all select-none cursor-text ${
-        selected ? "ring-1 ring-blue-500/60" : ""
+      className={`relative min-w-[120px] max-w-[400px] p-2 rounded-lg transition-all ${
+        isEditing ? "cursor-text" : "cursor-default"
+      } ${
+        selected
+          ? "ring-1.5 ring-blue-500/70 bg-white/60 dark:bg-zinc-900/60 shadow-xs"
+          : "hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
       }`}
       style={{ contain: "layout style" }}
       onDoubleClick={(e) => {
@@ -82,10 +119,11 @@ export const TextNode = memo(function TextNode({
           ref={textareaRef}
           value={val}
           rows={1}
+          placeholder="Type something..."
           onChange={(e) => {
             setVal(e.target.value);
             e.target.style.height = "auto";
-            e.target.style.height = `${e.target.scrollHeight}px`;
+            e.target.style.height = `${Math.max(24, e.target.scrollHeight)}px`;
           }}
           onBlur={handleSave}
           onKeyDown={(e) => {
@@ -96,9 +134,12 @@ export const TextNode = memo(function TextNode({
               e.preventDefault();
               setVal(data.text || "");
               setIsEditing(false);
+            } else if ((e.key === "Backspace" || e.key === "Delete") && !val) {
+              e.preventDefault();
+              useFlowCanvasStore.getState().deleteNode(id);
             }
           }}
-          className="w-full bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none shadow-none focus:ring-0 text-zinc-900 dark:text-zinc-100"
+          className="w-full min-w-[120px] bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none shadow-none focus:ring-0 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400/80 dark:placeholder:text-zinc-500/80"
           style={{
             fontSize: data.fontSize || 16,
             color: data.color,
@@ -108,7 +149,9 @@ export const TextNode = memo(function TextNode({
         />
       ) : (
         <span
-          className="text-zinc-900 dark:text-zinc-100 break-words block"
+          className={`break-words block ${
+            !val ? "text-zinc-400/80 dark:text-zinc-500/80 italic select-none" : "text-zinc-900 dark:text-zinc-100"
+          }`}
           style={{
             fontSize: data.fontSize || 16,
             color: data.color,
@@ -116,7 +159,7 @@ export const TextNode = memo(function TextNode({
             lineHeight: 1.35,
           }}
           dangerouslySetInnerHTML={{
-            __html: renderMarkdownInline(val || "Double click to edit"),
+            __html: renderMarkdownInline(val || "Type something..."),
           }}
         />
       )}

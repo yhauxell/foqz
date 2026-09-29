@@ -450,6 +450,7 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
           canvasContext: contextMsg,
           conversationHistory: previousHistory,
           tools: allTools,
+          maxSteps: 12,
           onChunk: (delta) => {
             setMessages((prev) =>
               prev.map((m) =>

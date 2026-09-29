@@ -91,6 +91,20 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     [fitView, selectedNode]
   );
 
+  const handleDelete = useCallback(
+    (e?: React.MouseEvent | React.PointerEvent) => {
+      if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+      if (!selectedNode?.id) return;
+      const idToDelete = selectedNode.id;
+      useFlowCanvasStore.getState().deleteNode(idToDelete);
+      deleteElements({ nodes: [{ id: idToDelete }] }).catch(() => {});
+    },
+    [selectedNode, deleteElements]
+  );
+
   if (!selectedNode) return null;
 
   // Derive current color hex from node type
@@ -162,11 +176,6 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     );
   };
 
-  const handleDelete = (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    useFlowCanvasStore.getState().deleteNode(selectedNode.id);
-    deleteElements({ nodes: [{ id: selectedNode.id }] }).catch(() => {});
-  };
   const nodeInternal = getInternalNode(selectedNode.id);
   const nodeAbsY = nodeInternal?.internals?.positionAbsolute?.y ?? selectedNode.position.y;
   const toolbarPosition = nodeAbsY < 70 ? Position.Bottom : Position.Top;
@@ -299,6 +308,10 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
         <button
           type="button"
           title="Chat with Element (C)"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
           onClick={(e) => {
             e.stopPropagation();
             window.dispatchEvent(
@@ -315,6 +328,10 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
         <button
           type="button"
           title="Center on Screen (⇧C)"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
           onClick={handleCenter}
           className="size-5 rounded-full flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
         >
@@ -324,6 +341,10 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
         <button
           type="button"
           title="Duplicate (⌘D)"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
           onClick={(e) => {
             e.stopPropagation();
             useFlowCanvasStore.getState().duplicateSelected();
@@ -336,6 +357,11 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
         <button
           type="button"
           title="Delete (Del/Backspace)"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleDelete(e);
+          }}
           onClick={handleDelete}
           className="size-5 rounded-full flex items-center justify-center hover:bg-rose-100 dark:hover:bg-rose-950/80 text-zinc-500 hover:text-rose-600 transition-colors cursor-pointer"
         >

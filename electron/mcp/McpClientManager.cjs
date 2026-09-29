@@ -80,13 +80,28 @@ class McpClientManager {
       if (config.transport === 'sse') {
         transport = new SSEClientTransport(new URL(config.url))
       } else {
+        const mergedEnv = {
+          ...process.env,
+        }
+
+        if (config.env && typeof config.env === 'object') {
+          for (const [k, v] of Object.entries(config.env)) {
+            mergedEnv[k] = typeof v === 'string' ? v.trim() : String(v || '')
+          }
+        }
+
+        // Bridge GitHub access token env names
+        if (mergedEnv.GITHUB_PERSONAL_ACCESS_TOKEN && !mergedEnv.GITHUB_TOKEN) {
+          mergedEnv.GITHUB_TOKEN = mergedEnv.GITHUB_PERSONAL_ACCESS_TOKEN
+        }
+        if (mergedEnv.GITHUB_TOKEN && !mergedEnv.GITHUB_PERSONAL_ACCESS_TOKEN) {
+          mergedEnv.GITHUB_PERSONAL_ACCESS_TOKEN = mergedEnv.GITHUB_TOKEN
+        }
+
         transport = new StdioClientTransport({
           command: config.command,
           args: config.args,
-          env: {
-            ...process.env,
-            ...config.env,
-          },
+          env: mergedEnv,
           stderr: 'pipe',
         })
 

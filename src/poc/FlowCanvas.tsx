@@ -163,9 +163,9 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     const handleCenterOn = (e: any) => {
       const id = e.detail?.id;
       if (!id) return;
-      requestAnimationFrame(() => {
+      setTimeout(() => {
         fitView({ nodes: [{ id }], duration: 350, maxZoom: 1.15, padding: 0.15 });
-      });
+      }, 50);
     };
     const handleFitView = () => fitView({ duration: 300 });
     const handleZoomReset = () => fitView({ duration: 300, maxZoom: 1, minZoom: 1 });
@@ -174,12 +174,48 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       setInlineChatNodeId(id);
     };
 
+    const handleNewTask = (e: any) => {
+      const title = e.detail?.title || "New Task";
+      const center = screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      });
+      const pos = e.detail?.position || useFlowCanvasStore.getState().cursorPosition || center;
+      const id = useFlowCanvasStore.getState().createTask({
+        title,
+        status: "open",
+        priority: 3,
+        position: pos,
+      });
+      window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
+      setActiveTool("select");
+    };
+
+    const handleNewProject = (e: any) => {
+      const title = e.detail?.title || "New Project";
+      const center = screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      });
+      const pos = e.detail?.position || useFlowCanvasStore.getState().cursorPosition || center;
+      const id = useFlowCanvasStore.getState().createProject({
+        title,
+        goal: "Milestone goal & focus direction",
+        accent: "blue",
+        position: pos,
+      });
+      window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
+      setActiveTool("select");
+    };
+
     window.addEventListener("foqz:flow-center-on", handleCenterOn as EventListener);
     window.addEventListener("foqz:flow-fit-view", handleFitView);
     window.addEventListener("foqz:fit-view", handleFitView);
     window.addEventListener("foqz:flow-zoom-fit", handleFitView);
     window.addEventListener("foqz:flow-zoom-reset", handleZoomReset);
     window.addEventListener("foqz:open-inline-chat", handleOpenInlineChat as EventListener);
+    window.addEventListener("foqz:new-task", handleNewTask as EventListener);
+    window.addEventListener("foqz:new-project", handleNewProject as EventListener);
     return () => {
       window.removeEventListener("foqz:flow-center-on", handleCenterOn as EventListener);
       window.removeEventListener("foqz:flow-fit-view", handleFitView);
@@ -187,8 +223,10 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       window.removeEventListener("foqz:flow-zoom-fit", handleFitView);
       window.removeEventListener("foqz:flow-zoom-reset", handleZoomReset);
       window.removeEventListener("foqz:open-inline-chat", handleOpenInlineChat as EventListener);
+      window.removeEventListener("foqz:new-task", handleNewTask as EventListener);
+      window.removeEventListener("foqz:new-project", handleNewProject as EventListener);
     };
-  }, [fitView]);
+  }, [fitView, screenToFlowPosition]);
 
   // 3. Debounced Auto-save to localStorage
   useEffect(() => {
@@ -654,21 +692,24 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           position: { x: frameMatch.relX, y: frameMatch.relY },
           style: { zIndex: nextZ },
           data: {
-            text: "Type something...",
+            text: "",
+            isNew: true,
           },
+          selected: true,
         };
         setNodes((nds) => {
-          const parentIdx = nds.findIndex((n) => n.id === frameMatch.frame.id);
+          const cleared = nds.map((n) => (n.selected ? { ...n, selected: false } : n));
+          const parentIdx = cleared.findIndex((n) => n.id === frameMatch.frame.id);
           if (parentIdx !== -1) {
             let insertIdx = parentIdx + 1;
-            while (insertIdx < nds.length && nds[insertIdx].parentId === frameMatch.frame.id) {
+            while (insertIdx < cleared.length && cleared[insertIdx].parentId === frameMatch.frame.id) {
               insertIdx++;
             }
-            const copy = [...nds];
+            const copy = [...cleared];
             copy.splice(insertIdx, 0, newNode);
             return copy;
           }
-          return [...nds, newNode];
+          return [...cleared, newNode];
         });
       } else {
         const newNode: Node = {
@@ -677,10 +718,15 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           position: pos,
           style: { zIndex: nextZ },
           data: {
-            text: "Type something...",
+            text: "",
+            isNew: true,
           },
+          selected: true,
         };
-        setNodes((nds) => [...nds, newNode]);
+        setNodes((nds) => [
+          ...nds.map((n) => (n.selected ? { ...n, selected: false } : n)),
+          newNode,
+        ]);
       }
       setSelectedNodeId(id);
       setActiveTool("select");
@@ -944,11 +990,16 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     [setEdges, setNodes, setSelectedNodeId]
   );
 
-  // Double Click Canvas to Create Text Note (strictly on canvas background)
+  // Double Click Canvas to Create Text Note (strictly on canvas background, unaffected by SVG background dots)
   const handlePaneDoubleClick = useCallback(
     (event: React.MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (target && target.classList.contains("react-flow__pane")) {
+      const target = event.target as HTMLElement | SVGElement | null;
+      if (
+        target &&
+        !target.closest?.(".react-flow__node") &&
+        !target.closest?.(".react-flow__edge") &&
+        !target.closest?.("button")
+      ) {
         const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
         handleCreateTextAt(pos);
       }
@@ -958,7 +1009,9 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
   // Pointer Down (Box/Circle Drag-to-size OR Pencil drawing)
   const handlePointerDown = (e: React.PointerEvent) => {
-    if (activeTool === "select" || activeTool === "arrow") return;
+    // Only tools that require drag-drawing (pencil, box, circle) need pointer capture.
+    // Task, text, select, and arrow tools must NOT capture pointer, ensuring click-to-place and node clicks work!
+    if (activeTool !== "pencil" && activeTool !== "box" && activeTool !== "circle") return;
     try {
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     } catch {}
@@ -1134,13 +1187,19 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         {/* 2. Task Card Tool */}
         <button
           type="button"
-          onClick={() => selectTool("task")}
+          onClick={() => {
+            if (activeTool === "task") {
+              handleCreateTask();
+            } else {
+              selectTool("task");
+            }
+          }}
           className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             activeTool === "task"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-1 ring-white/25"
               : "text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50/80 dark:hover:bg-blue-950/40 active:scale-95"
           }`}
-          title="Task Card Tool (N) — Click canvas to place"
+          title="Task Card Tool (N) — Click canvas to place, or click again to spawn at center"
         >
           <CheckSquare className="size-5" />
         </button>
@@ -1176,13 +1235,23 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         {/* 4. Text Tool */}
         <button
           type="button"
-          onClick={() => selectTool("text")}
+          onClick={() => {
+            if (activeTool === "text") {
+              const center = screenToFlowPosition({
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2,
+              });
+              handleCreateTextAt(center);
+            } else {
+              selectTool("text");
+            }
+          }}
           className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             activeTool === "text"
               ? "bg-amber-600 text-white shadow-md shadow-amber-500/30 ring-1 ring-white/25"
               : "text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/80 dark:hover:bg-amber-950/40 active:scale-95"
           }`}
-          title="Text Note Tool (T) — Click canvas to place"
+          title="Text Note Tool (T) — Click canvas to place, or click again to spawn at center"
         >
           <TypeIcon className="size-5" />
         </button>
@@ -1244,7 +1313,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         deleteKeyCode={null}
         multiSelectionKeyCode={MULTI_SELECTION_KEY_CODE}
         proOptions={PRO_OPTIONS}
-        onlyRenderVisibleElements={true}
+        onlyRenderVisibleElements={false}
         selectionOnDrag={activeTool === "select"}
         panOnDrag={PAN_ON_DRAG}
         panOnScroll={true}

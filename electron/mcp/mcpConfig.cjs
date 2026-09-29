@@ -42,8 +42,15 @@ function normalizeServerConfig(name, raw) {
   const command = typeof raw.command === 'string' ? raw.command.trim() : ''
   if (!command) return null
 
-  const args = Array.isArray(raw.args) ? raw.args.map(String) : []
-  const env = raw.env && typeof raw.env === 'object' ? { ...raw.env } : {}
+  const args = Array.isArray(raw.args) ? raw.args.map((a) => String(a).trim()).filter(Boolean) : []
+  const env = {}
+  if (raw.env && typeof raw.env === 'object') {
+    for (const [k, v] of Object.entries(raw.env)) {
+      if (k && k.trim()) {
+        env[k.trim()] = typeof v === 'string' ? v.trim() : String(v || '')
+      }
+    }
+  }
 
   return {
     name,
