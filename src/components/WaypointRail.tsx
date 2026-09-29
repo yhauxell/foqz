@@ -54,10 +54,12 @@ export function WaypointRail() {
   }, []);
 
   const handleCreateProject = useCallback(() => {
+    const store = useFlowCanvasStore.getState();
     const id = createProject({
       title: "New Project",
       goal: "Milestone goal & focus direction",
       accent: "blue",
+      position: store.cursorPosition || undefined,
     });
     window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
   }, [createProject]);

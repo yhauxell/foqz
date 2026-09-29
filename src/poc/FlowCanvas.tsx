@@ -48,6 +48,8 @@ import {
   FLOW_STORAGE_KEY,
   INITIAL_NODES,
   INITIAL_EDGES,
+  getMaxZIndex,
+  findFrameAt,
 } from "./store/flowCanvasStore";
 
 function getSvgPathFromStroke(stroke: number[][]) {
@@ -88,6 +90,19 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
   const [activeTool, setActiveTool] = useState<ActiveTool>("select");
 
+  const selectTool = useCallback(
+    (tool: ActiveTool) => {
+      setActiveTool(tool);
+      if (tool !== "select") {
+        setSelectedNodeId(null);
+        setNodes((nds) =>
+          nds.some((n) => n.selected) ? nds.map((n) => ({ ...n, selected: false })) : nds
+        );
+      }
+    },
+    [setSelectedNodeId, setNodes]
+  );
+
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Drag-to-size state for Box tool
@@ -122,12 +137,35 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     loadSnapshot();
   }, [loadSnapshot]);
 
-  // 2. Viewport Event Listeners (Center-on node, fit view & inline chat)
+  // 2. Continuous Cursor Tracking in Flow Coordinates
+  useEffect(() => {
+    let rafId: number | null = null;
+    const handleGlobalPointerMove = (e: PointerEvent) => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        try {
+          const flowPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+          useFlowCanvasStore.getState().setCursorPosition(flowPos);
+        } catch {}
+      });
+    };
+
+    window.addEventListener("pointermove", handleGlobalPointerMove, { passive: true });
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      window.removeEventListener("pointermove", handleGlobalPointerMove);
+    };
+  }, [screenToFlowPosition]);
+
+  // 3. Viewport Event Listeners (Center-on node, fit view & inline chat)
   useEffect(() => {
     const handleCenterOn = (e: any) => {
-      if (e.detail?.id) {
-        fitView({ nodes: [{ id: e.detail.id }], duration: 300, maxZoom: 1.2 });
-      }
+      const id = e.detail?.id;
+      if (!id) return;
+      requestAnimationFrame(() => {
+        fitView({ nodes: [{ id }], duration: 350, maxZoom: 1.15, padding: 0.15 });
+      });
     };
     const handleFitView = () => fitView({ duration: 300 });
     const handleZoomReset = () => fitView({ duration: 300, maxZoom: 1, minZoom: 1 });
@@ -423,20 +461,54 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   const handleCreateTaskAt = useCallback(
     (pos: { x: number; y: number }) => {
       const id = `task-${Date.now()}`;
-      const newNode: Node = {
-        id,
-        type: "focusTask",
-        position: { x: pos.x - 130, y: pos.y - 41 },
-        style: { width: 280, height: 90 },
-        data: {
-          title: "New Task Card",
-          status: "open",
-          priority: 3,
-          paper: "cream",
-          borderStyle: "solid",
-        },
-      };
-      setNodes((nds) => [...nds, newNode]);
+      const currentNodes = useFlowCanvasStore.getState().nodes;
+      const nextZ = Math.max(100, getMaxZIndex(currentNodes) + 1);
+      const frameMatch = findFrameAt(pos, currentNodes);
+
+      if (frameMatch) {
+        const newNode: Node = {
+          id,
+          type: "focusTask",
+          parentId: frameMatch.frame.id,
+          position: { x: frameMatch.relX, y: frameMatch.relY },
+          style: { width: 280, height: 82, zIndex: nextZ },
+          data: {
+            title: "New Task Card",
+            status: "open",
+            priority: 3,
+            paper: "cream",
+            borderStyle: "solid",
+          },
+        };
+        setNodes((nds) => {
+          const parentIdx = nds.findIndex((n) => n.id === frameMatch.frame.id);
+          if (parentIdx !== -1) {
+            let insertIdx = parentIdx + 1;
+            while (insertIdx < nds.length && nds[insertIdx].parentId === frameMatch.frame.id) {
+              insertIdx++;
+            }
+            const copy = [...nds];
+            copy.splice(insertIdx, 0, newNode);
+            return copy;
+          }
+          return [...nds, newNode];
+        });
+      } else {
+        const newNode: Node = {
+          id,
+          type: "focusTask",
+          position: { x: pos.x - 130, y: pos.y - 41 },
+          style: { width: 280, height: 82, zIndex: nextZ },
+          data: {
+            title: "New Task Card",
+            status: "open",
+            priority: 3,
+            paper: "cream",
+            borderStyle: "solid",
+          },
+        };
+        setNodes((nds) => [...nds, newNode]);
+      }
       setSelectedNodeId(id);
       setActiveTool("select");
     },
@@ -446,20 +518,59 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   const handleCreateBoxAt = useCallback(
     (x: number, y: number, w: number, h: number) => {
       const id = `box-${Date.now()}`;
-      const newNode: Node = {
-        id,
-        type: "box",
-        position: { x, y },
-        style: { width: w, height: h },
-        data: {
-          label: "Sketch Box",
-          color: "rgba(16, 185, 129, 0.08)",
-          strokeColor: "#10b981",
-          roughness: 1.8,
-          borderStyle: "solid",
-        },
-      };
-      setNodes((nds) => [...nds, newNode]);
+      const currentNodes = useFlowCanvasStore.getState().nodes;
+      const nextZ = Math.max(100, getMaxZIndex(currentNodes) + 1);
+      const frameMatch = findFrameAt({ x: x + w / 2, y: y + h / 2 }, currentNodes);
+
+      if (frameMatch) {
+        const fx = frameMatch.frame.position.x;
+        const fy = frameMatch.frame.position.y;
+        const newNode: Node = {
+          id,
+          type: "box",
+          parentId: frameMatch.frame.id,
+          position: {
+            x: Math.max(20, Math.round(x - fx)),
+            y: Math.max(68, Math.round(y - fy)),
+          },
+          style: { width: w, height: h, zIndex: nextZ },
+          data: {
+            label: "Sketch Box",
+            color: "rgba(16, 185, 129, 0.08)",
+            strokeColor: "#10b981",
+            roughness: 1.8,
+            borderStyle: "solid",
+          },
+        };
+        setNodes((nds) => {
+          const parentIdx = nds.findIndex((n) => n.id === frameMatch.frame.id);
+          if (parentIdx !== -1) {
+            let insertIdx = parentIdx + 1;
+            while (insertIdx < nds.length && nds[insertIdx].parentId === frameMatch.frame.id) {
+              insertIdx++;
+            }
+            const copy = [...nds];
+            copy.splice(insertIdx, 0, newNode);
+            return copy;
+          }
+          return [...nds, newNode];
+        });
+      } else {
+        const newNode: Node = {
+          id,
+          type: "box",
+          position: { x, y },
+          style: { width: w, height: h, zIndex: nextZ },
+          data: {
+            label: "Sketch Box",
+            color: "rgba(16, 185, 129, 0.08)",
+            strokeColor: "#10b981",
+            roughness: 1.8,
+            borderStyle: "solid",
+          },
+        };
+        setNodes((nds) => [...nds, newNode]);
+      }
       setSelectedNodeId(id);
       setActiveTool("select");
     },
@@ -469,39 +580,108 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   const handleCreateCircleAt = useCallback(
     (x: number, y: number, w: number, h: number) => {
       const id = `circle-${Date.now()}`;
-      const newNode: Node = {
-        id,
-        type: "circle",
-        position: { x, y },
-        style: { width: w, height: h },
-        data: {
-          label: "Circle",
-          color: "rgba(99, 102, 241, 0.08)",
-          strokeColor: "#6366f1",
-          roughness: 1.8,
-          borderStyle: "solid",
-        },
-      };
-      setNodes((nds) => [...nds, newNode]);
+      const currentNodes = useFlowCanvasStore.getState().nodes;
+      const nextZ = Math.max(100, getMaxZIndex(currentNodes) + 1);
+      const frameMatch = findFrameAt({ x: x + w / 2, y: y + h / 2 }, currentNodes);
+
+      if (frameMatch) {
+        const fx = frameMatch.frame.position.x;
+        const fy = frameMatch.frame.position.y;
+        const newNode: Node = {
+          id,
+          type: "circle",
+          parentId: frameMatch.frame.id,
+          position: {
+            x: Math.max(20, Math.round(x - fx)),
+            y: Math.max(68, Math.round(y - fy)),
+          },
+          style: { width: w, height: h, zIndex: nextZ },
+          data: {
+            label: "Circle",
+            color: "rgba(99, 102, 241, 0.08)",
+            strokeColor: "#6366f1",
+            roughness: 1.8,
+            borderStyle: "solid",
+          },
+        };
+        setNodes((nds) => {
+          const parentIdx = nds.findIndex((n) => n.id === frameMatch.frame.id);
+          if (parentIdx !== -1) {
+            let insertIdx = parentIdx + 1;
+            while (insertIdx < nds.length && nds[insertIdx].parentId === frameMatch.frame.id) {
+              insertIdx++;
+            }
+            const copy = [...nds];
+            copy.splice(insertIdx, 0, newNode);
+            return copy;
+          }
+          return [...nds, newNode];
+        });
+      } else {
+        const newNode: Node = {
+          id,
+          type: "circle",
+          position: { x, y },
+          style: { width: w, height: h, zIndex: nextZ },
+          data: {
+            label: "Circle",
+            color: "rgba(99, 102, 241, 0.08)",
+            strokeColor: "#6366f1",
+            roughness: 1.8,
+            borderStyle: "solid",
+          },
+        };
+        setNodes((nds) => [...nds, newNode]);
+      }
       setSelectedNodeId(id);
       setActiveTool("select");
     },
     [setNodes, setSelectedNodeId]
   );
 
-
   const handleCreateTextAt = useCallback(
     (pos: { x: number; y: number }) => {
       const id = `text-${Date.now()}`;
-      const newNode: Node = {
-        id,
-        type: "text",
-        position: pos,
-        data: {
-          text: "Type something...",
-        },
-      };
-      setNodes((nds) => [...nds, newNode]);
+      const currentNodes = useFlowCanvasStore.getState().nodes;
+      const nextZ = Math.max(100, getMaxZIndex(currentNodes) + 1);
+      const frameMatch = findFrameAt(pos, currentNodes);
+
+      if (frameMatch) {
+        const newNode: Node = {
+          id,
+          type: "text",
+          parentId: frameMatch.frame.id,
+          position: { x: frameMatch.relX, y: frameMatch.relY },
+          style: { zIndex: nextZ },
+          data: {
+            text: "Type something...",
+          },
+        };
+        setNodes((nds) => {
+          const parentIdx = nds.findIndex((n) => n.id === frameMatch.frame.id);
+          if (parentIdx !== -1) {
+            let insertIdx = parentIdx + 1;
+            while (insertIdx < nds.length && nds[insertIdx].parentId === frameMatch.frame.id) {
+              insertIdx++;
+            }
+            const copy = [...nds];
+            copy.splice(insertIdx, 0, newNode);
+            return copy;
+          }
+          return [...nds, newNode];
+        });
+      } else {
+        const newNode: Node = {
+          id,
+          type: "text",
+          position: pos,
+          style: { zIndex: nextZ },
+          data: {
+            text: "Type something...",
+          },
+        };
+        setNodes((nds) => [...nds, newNode]);
+      }
       setSelectedNodeId(id);
       setActiveTool("select");
     },
@@ -509,24 +689,44 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   );
 
   const handleCreateProject = useCallback(() => {
-    const id = useFlowCanvasStore.getState().createProject({
+    const store = useFlowCanvasStore.getState();
+    let spawnPos = store.cursorPosition;
+    if (!spawnPos && typeof window !== "undefined") {
+      spawnPos = screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      });
+    }
+
+    const id = store.createProject({
       title: "New Project",
       goal: "Milestone goal & focus direction",
       accent: "blue",
+      position: spawnPos || undefined,
     });
     window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
     setActiveTool("select");
-  }, []);
+  }, [screenToFlowPosition]);
 
   const handleCreateTask = useCallback(() => {
-    const id = useFlowCanvasStore.getState().createTask({
+    const store = useFlowCanvasStore.getState();
+    let spawnPos = store.cursorPosition;
+    if (!spawnPos && typeof window !== "undefined") {
+      spawnPos = screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      });
+    }
+
+    const id = store.createTask({
       title: "New Task",
       status: "open",
       priority: 3,
+      position: spawnPos || undefined,
     });
     window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
     setActiveTool("select");
-  }, []);
+  }, [screenToFlowPosition]);
 
   const handleDeleteSelected = useCallback(() => {
     const currentNodes = useFlowCanvasStore.getState().nodes;
@@ -614,10 +814,12 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
                 lastSiblingIdx = i;
               }
             }
+            const maxZ = getMaxZIndex(nds);
+            const nextZ = Math.max(100, maxZ + 1);
             const res = [...without];
             res.splice(lastSiblingIdx + 1, 0, {
               ...target,
-              style: { ...target.style, zIndex: 1000 },
+              style: { ...target.style, zIndex: nextZ },
             });
             return res;
           }
@@ -626,7 +828,9 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           // Keep project frames at base container level so child tasks stay above it
           return [target, ...without];
         }
-        return [...without, { ...target, style: { ...target.style, zIndex: 1000 } }];
+        const maxZ = getMaxZIndex(nds);
+        const nextZ = Math.max(100, maxZ + 1);
+        return [...without, { ...target, style: { ...target.style, zIndex: nextZ } }];
       });
     } else if (selEdge) {
       fitView({
@@ -642,12 +846,12 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   // Unified Keyboard Shortcuts Hook (disabled during modal dialogs)
   useFlowCanvasShortcuts({
     enabled: !reparentState?.isOpen,
-    onSelectTool: () => setActiveTool("select"),
-    onBoxTool: () => setActiveTool("box"),
-    onCircleTool: () => setActiveTool("circle"),
-    onTextTool: () => setActiveTool("text"),
-    onArrowTool: () => setActiveTool("arrow"),
-    onPencilTool: () => setActiveTool("pencil"),
+    onSelectTool: () => selectTool("select"),
+    onBoxTool: () => selectTool("box"),
+    onCircleTool: () => selectTool("circle"),
+    onTextTool: () => selectTool("text"),
+    onArrowTool: () => selectTool("arrow"),
+    onPencilTool: () => selectTool("pencil"),
     onCreateTask: handleCreateTask,
     onCreateProject: handleCreateProject,
     onFocusMode: () => {
@@ -706,6 +910,26 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, setEdges]
   );
 
+  // Node Click Handler (Places task/text inside node if tool active, otherwise selects node)
+  const handleNodeClick = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      if (activeTool === "task") {
+        const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        handleCreateTaskAt(pos);
+        return;
+      }
+      if (activeTool === "text") {
+        const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        handleCreateTextAt(pos);
+        return;
+      }
+      if (activeTool === "select") {
+        setSelectedNodeId(node.id);
+      }
+    },
+    [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, setSelectedNodeId]
+  );
+
   // Edge Click Handler (Selects edge, deselects nodes)
   const onEdgeClick = useCallback(
     (_event: React.MouseEvent, edge: Edge) => {
@@ -734,6 +958,11 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
   // Pointer Down (Box/Circle Drag-to-size OR Pencil drawing)
   const handlePointerDown = (e: React.PointerEvent) => {
+    if (activeTool === "select" || activeTool === "arrow") return;
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {}
+
     if (activeTool === "pencil") {
       isDrawingPencil.current = true;
       const containerRect = containerRef.current?.getBoundingClientRect();
@@ -796,6 +1025,10 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
   // Pointer Up (Finalize Box/Circle Drag OR Pencil drawing)
   const handlePointerUp = (e: React.PointerEvent) => {
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    } catch {}
+
     if (activeTool === "pencil" && isDrawingPencil.current) {
       isDrawingPencil.current = false;
       setPencilPreviewSvgPath(null);
@@ -810,15 +1043,19 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         const minX = Math.min(...xs);
         const minY = Math.min(...ys);
 
+        const currentNodes = useFlowCanvasStore.getState().nodes;
+        const nextZ = Math.max(100, getMaxZIndex(currentNodes) + 1);
+
         const newPencilNode: Node = {
           id: finalId,
           type: "pencil",
           position: { x: minX, y: minY },
+          style: { zIndex: nextZ },
           data: { points: rawPoints, color: "#ef4444", size: 6 },
         };
         setNodes((nds) => [...nds, newPencilNode]);
       }
-      setActiveTool("select");
+      selectTool("select");
     } else if ((activeTool === "box" || activeTool === "circle") && boxDragStartRef.current) {
       const currentFlow = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       const startFlow = boxDragStartRef.current.flow;
@@ -851,6 +1088,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           handleCreateBoxAt(x, y, w, h);
         }
       }
+      selectTool("select");
     }
   };
 
@@ -859,7 +1097,9 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     <div
       ref={containerRef}
       className={`w-full h-full relative overflow-hidden bg-zinc-50 dark:bg-zinc-950 ${
-        activeTool !== "select" ? "cursor-crosshair" : "cursor-default"
+        activeTool !== "select"
+          ? "[&_.react-flow__node]:!cursor-crosshair cursor-crosshair select-none"
+          : "cursor-default"
       }`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -877,7 +1117,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         {/* 1. Select Tool */}
         <button
           type="button"
-          onClick={() => setActiveTool("select")}
+          onClick={() => selectTool("select")}
           className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             activeTool === "select"
               ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-md shadow-black/20 ring-1 ring-white/20"
@@ -894,7 +1134,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         {/* 2. Task Card Tool */}
         <button
           type="button"
-          onClick={() => setActiveTool("task")}
+          onClick={() => selectTool("task")}
           className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             activeTool === "task"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-1 ring-white/25"
@@ -908,7 +1148,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         {/* 3. 2D Sketch Box Tool (Square) */}
         <button
           type="button"
-          onClick={() => setActiveTool("box")}
+          onClick={() => selectTool("box")}
           className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             activeTool === "box"
               ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/30 ring-1 ring-white/25"
@@ -922,7 +1162,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         {/* Circle Sketch Tool */}
         <button
           type="button"
-          onClick={() => setActiveTool("circle")}
+          onClick={() => selectTool("circle")}
           className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             activeTool === "circle"
               ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-1 ring-white/25"
@@ -936,7 +1176,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         {/* 4. Text Tool */}
         <button
           type="button"
-          onClick={() => setActiveTool("text")}
+          onClick={() => selectTool("text")}
           className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             activeTool === "text"
               ? "bg-amber-600 text-white shadow-md shadow-amber-500/30 ring-1 ring-white/25"
@@ -950,7 +1190,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         {/* 5. Semantic Arrow / Connector Tool */}
         <button
           type="button"
-          onClick={() => setActiveTool("arrow")}
+          onClick={() => selectTool("arrow")}
           className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             activeTool === "arrow"
               ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-1 ring-white/25"
@@ -964,7 +1204,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         {/* 6. Freehand Pencil */}
         <button
           type="button"
-          onClick={() => setActiveTool("pencil")}
+          onClick={() => selectTool("pencil")}
           className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             activeTool === "pencil"
               ? "bg-rose-600 text-white shadow-md shadow-rose-500/30 ring-1 ring-white/25"
@@ -982,12 +1222,16 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        nodesDraggable={activeTool === "select"}
+        elementsSelectable={activeTool === "select"}
+        nodesConnectable={activeTool === "select" || activeTool === "arrow"}
+        nodesFocusable={activeTool === "select"}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
-        onNodeClick={(_event, node) => setSelectedNodeId(node.id)}
+        onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
         onEdgeClick={onEdgeClick}
         onDoubleClick={handlePaneDoubleClick}
@@ -1034,10 +1278,14 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         </svg>
       )}
 
-      {/* Live Drag-to-size Box Preview Overlay */}
+      {/* Live Drag-to-size Box/Circle Preview Overlay */}
       {boxPreviewRect && (
         <div
-          className="absolute pointer-events-none border-2 border-dashed border-emerald-500 bg-emerald-500/10 rounded-xl z-40"
+          className={`absolute pointer-events-none border-2 border-dashed z-40 ${
+            activeTool === "circle"
+              ? "border-indigo-500 bg-indigo-500/10 rounded-full"
+              : "border-emerald-500 bg-emerald-500/10 rounded-xl"
+          }`}
           style={{
             left: boxPreviewRect.x,
             top: boxPreviewRect.y,

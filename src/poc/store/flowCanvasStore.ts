@@ -113,10 +113,47 @@ export const INITIAL_EDGES: Edge[] = [
   },
 ];
 
+export function getMaxZIndex(nodes: Node[]): number {
+  let maxZ = 10;
+  for (const n of nodes) {
+    if (n.type === "projectFrame") continue;
+    const styleZ = typeof n.style?.zIndex === "number" ? n.style.zIndex : undefined;
+    const directZ = typeof n.zIndex === "number" ? n.zIndex : undefined;
+    const z = styleZ ?? directZ ?? 0;
+    if (z > maxZ) maxZ = z;
+  }
+  return maxZ;
+}
+
+export function findFrameAt(
+  pos: { x: number; y: number },
+  nodes: Node[]
+): { frame: Node; relX: number; relY: number } | null {
+  const frames = nodes.filter((n) => n.type === "projectFrame");
+  for (let i = frames.length - 1; i >= 0; i--) {
+    const f = frames[i];
+    const fx = f.position.x;
+    const fy = f.position.y;
+    const fw = Number(f.style?.width ?? f.width ?? 640);
+    const fh = Number(f.style?.height ?? f.height ?? 420);
+
+    if (pos.x >= fx && pos.x <= fx + fw && pos.y >= fy && pos.y <= fy + fh) {
+      return {
+        frame: f,
+        relX: Math.max(20, Math.min(fw - 280 - 20, Math.round(pos.x - fx))),
+        relY: Math.max(68, Math.min(fh - 90 - 20, Math.round(pos.y - fy))),
+      };
+    }
+  }
+  return null;
+}
+
 export interface FlowCanvasState {
   nodes: Node[];
   edges: Edge[];
   selectedNodeId: string | null;
+  cursorPosition: { x: number; y: number } | null;
+  setCursorPosition: (pos: { x: number; y: number } | null) => void;
   setNodes: (nodes: Node[] | ((prev: Node[]) => Node[])) => void;
   setEdges: (edges: Edge[] | ((prev: Edge[]) => Edge[])) => void;
   setSelectedNodeId: (id: string | null) => void;
@@ -134,6 +171,8 @@ export interface FlowCanvasState {
     goal?: string;
     accent?: string;
     position?: { x: number; y: number };
+    width?: number;
+    height?: number;
   }) => string;
   createBox: (props: {
     label: string;
@@ -163,6 +202,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
       nodes: INITIAL_NODES,
       edges: INITIAL_EDGES,
       selectedNodeId: null,
+      cursorPosition: null,
+      setCursorPosition: (pos) => set({ cursorPosition: pos }),
       activeFocusNodeId: null,
       timerSecondsRemaining: 25 * 60,
       isTimerRunning: false,
@@ -235,19 +276,44 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         set({ selectedNodeId: id }),
 
       createTask: (props) => {
+        const state = get();
         const id = `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        const existingTasks = get().nodes.filter((n) => n.parentId === props.parentId && n.type === "focusTask");
-        const defaultX = props.parentId ? 40 : 400 + Math.random() * 40;
-        const defaultY = props.parentId
-          ? 100 + existingTasks.length * 94
-          : 280 + Math.random() * 40;
+        const maxZ = getMaxZIndex(state.nodes);
+        const nextZ = Math.max(100, maxZ + 1);
+
+        let parentId = props.parentId;
+        let pos = props.position;
+
+        if (!parentId && !pos && state.cursorPosition) {
+          const frameMatch = findFrameAt(state.cursorPosition, state.nodes);
+          if (frameMatch) {
+            parentId = frameMatch.frame.id;
+            pos = { x: frameMatch.relX, y: frameMatch.relY };
+          } else {
+            pos = {
+              x: Math.round(state.cursorPosition.x - 140),
+              y: Math.round(state.cursorPosition.y - 41),
+            };
+          }
+        }
+
+        if (!pos) {
+          const existingTasks = state.nodes.filter(
+            (n) => n.parentId === parentId && n.type === "focusTask"
+          );
+          const defaultX = parentId ? 40 : 400 + Math.random() * 40;
+          const defaultY = parentId
+            ? 100 + existingTasks.length * 94
+            : 280 + Math.random() * 40;
+          pos = { x: defaultX, y: defaultY };
+        }
 
         const newNode: Node = {
           id,
           type: "focusTask",
-          parentId: props.parentId,
-          position: props.position || { x: defaultX, y: defaultY },
-          style: { width: 280, height: 82 },
+          parentId,
+          position: pos,
+          style: { width: 280, height: 82, zIndex: nextZ },
           data: {
             title: props.title,
             status: props.status || "open",
@@ -256,54 +322,210 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
             notes: props.notes || "",
             borderStyle: "solid",
           },
+          selected: true,
         };
-        set((state) => ({
-          nodes: [
-            ...state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
-            { ...newNode, selected: true },
-          ],
+
+        const clearedNodes = state.nodes.map((n) =>
+          n.selected ? { ...n, selected: false } : n
+        );
+
+        if (parentId) {
+          const parentIdx = clearedNodes.findIndex((n) => n.id === parentId);
+          if (parentIdx !== -1) {
+            let insertIdx = parentIdx + 1;
+            while (
+              insertIdx < clearedNodes.length &&
+              clearedNodes[insertIdx].parentId === parentId
+            ) {
+              insertIdx++;
+            }
+            const copy = [...clearedNodes];
+            copy.splice(insertIdx, 0, newNode);
+            set({ nodes: copy, selectedNodeId: id });
+            return id;
+          }
+        }
+
+        set({
+          nodes: [...clearedNodes, newNode],
           selectedNodeId: id,
-        }));
+        });
         return id;
       },
 
       createProject: (props) => {
+        const state = get();
         const id = `proj-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        const newNode: Node = {
+
+        // Spawn position: explicit prop > current cursor position > fallback
+        const spawnPos = props.position || state.cursorPosition || {
+          x: 200 + Math.random() * 40,
+          y: 200 + Math.random() * 40,
+        };
+
+        const projX = Math.round(spawnPos.x);
+        const projY = Math.round(spawnPos.y);
+        const defaultW = props.width || 680;
+        const defaultH = props.height || 440;
+
+        // 1. Identify unparented candidates in the vicinity ("bring inside what is the place its created")
+        const candidates = state.nodes.filter(
+          (n) => n.type !== "projectFrame" && !n.parentId
+        );
+
+        const getCandidateMetrics = (n: Node) => {
+          const nw = Number(
+            n.style?.width ?? (n.width ?? (n.type === "focusTask" ? 280 : n.type === "box" ? 220 : n.type === "circle" ? 160 : 180))
+          );
+          const nh = Number(
+            n.style?.height ?? (n.height ?? (n.type === "focusTask" ? 82 : n.type === "box" ? 140 : n.type === "circle" ? 160 : 60))
+          );
+          const nx = n.position.x;
+          const ny = n.position.y;
+          const ncx = nx + nw / 2;
+          const ncy = ny + nh / 2;
+          return { nx, ny, nw, nh, ncx, ncy };
+        };
+
+        const capturedNodes = candidates.filter((n) => {
+          if (n.selected) return true;
+          const { nx, ny, nw, nh, ncx, ncy } = getCandidateMetrics(n);
+
+          // Center inside default bounds (with small generous margin)
+          const centerInside =
+            ncx >= projX - 20 &&
+            ncx <= projX + defaultW + 20 &&
+            ncy >= projY - 20 &&
+            ncy <= projY + defaultH + 20;
+
+          // Bounding box overlap
+          const bboxOverlap =
+            nx < projX + defaultW &&
+            nx + nw > projX &&
+            ny < projY + defaultH &&
+            ny + nh > projY;
+
+          // Proximity to spawn cursor point
+          const distToCursor = Math.hypot(ncx - spawnPos.x, ncy - spawnPos.y);
+          const nearCursor = distToCursor < 180;
+
+          return centerInside || bboxOverlap || nearCursor;
+        });
+
+        let frameX = projX;
+        let frameY = projY;
+        let frameW = defaultW;
+        let frameH = defaultH;
+
+        if (capturedNodes.length > 0) {
+          let minX = Infinity;
+          let minY = Infinity;
+          let maxX = -Infinity;
+          let maxY = -Infinity;
+
+          for (const n of capturedNodes) {
+            const { nx, ny, nw, nh } = getCandidateMetrics(n);
+            minX = Math.min(minX, nx);
+            minY = Math.min(minY, ny);
+            maxX = Math.max(maxX, nx + nw);
+            maxY = Math.max(maxY, ny + nh);
+          }
+
+          // Frame envelops all captured nodes comfortably
+          // Header sits in 0..48, so minY - 70 ensures child content sits below the header line
+          frameX = Math.min(projX, minX - 28);
+          frameY = Math.min(projY, minY - 70);
+          frameW = Math.max(defaultW, maxX - frameX + 36);
+          frameH = Math.max(defaultH, maxY - frameY + 36);
+        }
+
+        const capturedIds = new Set(capturedNodes.map((c) => c.id));
+        const maxZ = getMaxZIndex(state.nodes);
+        let childZ = Math.max(10, maxZ);
+
+        // Reparent captured nodes relative to new frame position
+        const childNodes: Node[] = capturedNodes.map((c) => {
+          const relX = Math.round(c.position.x - frameX);
+          const relY = Math.round(c.position.y - frameY);
+          const updated = {
+            ...c,
+            parentId: id,
+            position: { x: Math.max(24, relX), y: Math.max(68, relY) },
+            style: {
+              ...c.style,
+              zIndex: typeof c.style?.zIndex === "number" ? Math.max(10, c.style.zIndex) : ++childZ,
+            },
+            selected: false,
+          };
+          delete (updated as any).extent;
+          return updated;
+        });
+
+        // Project frame base container (zIndex: 0 so it stays underneath child tasks and shapes)
+        const projectNode: Node = {
           id,
           type: "projectFrame",
-          position: props.position || {
-            x: 200 + Math.random() * 40,
-            y: 200 + Math.random() * 40,
-          },
-          style: { width: 640, height: 400 },
+          position: { x: frameX, y: frameY },
+          style: { width: frameW, height: frameH, zIndex: 0 },
           data: {
             title: props.title,
             goal: props.goal || "",
             accent: props.accent || "blue",
             borderStyle: "dashed",
           },
+          selected: true,
         };
-        set((state) => ({
-          nodes: [
-            ...state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
-            { ...newNode, selected: true },
-          ],
+
+        const unaffectedNodes = state.nodes
+          .filter((n) => !capturedIds.has(n.id))
+          .map((n) => (n.selected ? { ...n, selected: false } : n));
+
+        // In React Flow, parent node MUST precede its children in the nodes array
+        const newNodes = [...unaffectedNodes, projectNode, ...childNodes];
+
+        set({
+          nodes: newNodes,
           selectedNodeId: id,
-        }));
+        });
+
         return id;
       },
 
       createBox: (props) => {
+        const state = get();
         const id = `box-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const maxZ = getMaxZIndex(state.nodes);
+        const nextZ = Math.max(100, maxZ + 1);
+
+        let pos = props.position;
+        let parentId: string | undefined = undefined;
+
+        if (!pos && state.cursorPosition) {
+          const frameMatch = findFrameAt(state.cursorPosition, state.nodes);
+          if (frameMatch) {
+            parentId = frameMatch.frame.id;
+            pos = { x: frameMatch.relX, y: frameMatch.relY };
+          } else {
+            pos = {
+              x: Math.round(state.cursorPosition.x - 110),
+              y: Math.round(state.cursorPosition.y - 70),
+            };
+          }
+        }
+
+        if (!pos) {
+          pos = {
+            x: 300 + Math.random() * 40,
+            y: 150 + Math.random() * 40,
+          };
+        }
+
         const newNode: Node = {
           id,
           type: "box",
-          position: props.position || {
-            x: 300 + Math.random() * 40,
-            y: 150 + Math.random() * 40,
-          },
-          style: { width: 220, height: 140 },
+          parentId,
+          position: pos,
+          style: { width: 220, height: 140, zIndex: nextZ },
           data: {
             label: props.label,
             color: props.color || "rgba(16, 185, 129, 0.08)",
@@ -311,14 +533,34 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
             borderStyle: "solid",
             roughness: 1.8,
           },
+          selected: true,
         };
-        set((state) => ({
-          nodes: [
-            ...state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
-            { ...newNode, selected: true },
-          ],
+
+        const clearedNodes = state.nodes.map((n) =>
+          n.selected ? { ...n, selected: false } : n
+        );
+
+        if (parentId) {
+          const parentIdx = clearedNodes.findIndex((n) => n.id === parentId);
+          if (parentIdx !== -1) {
+            let insertIdx = parentIdx + 1;
+            while (
+              insertIdx < clearedNodes.length &&
+              clearedNodes[insertIdx].parentId === parentId
+            ) {
+              insertIdx++;
+            }
+            const copy = [...clearedNodes];
+            copy.splice(insertIdx, 0, newNode);
+            set({ nodes: copy, selectedNodeId: id });
+            return id;
+          }
+        }
+
+        set({
+          nodes: [...clearedNodes, newNode],
           selectedNodeId: id,
-        }));
+        });
         return id;
       },
 
@@ -369,6 +611,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
 
           const OFFSET = 24;
           const idMap = new Map<string, string>();
+          const maxZ = getMaxZIndex(state.nodes);
+          let nextZ = Math.max(100, maxZ + 1);
 
           const clones: Node[] = selected.map((n) => {
             const newId = `${n.type ?? "node"}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -379,6 +623,10 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
               selected: true,
               parentId: n.parentId && idMap.has(n.parentId) ? idMap.get(n.parentId)! : undefined,
               position: { x: n.position.x + OFFSET, y: n.position.y + OFFSET },
+              style: {
+                ...n.style,
+                zIndex: n.type === "projectFrame" ? 0 : nextZ++,
+              },
             };
           });
 

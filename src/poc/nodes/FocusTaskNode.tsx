@@ -55,7 +55,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   height = 90,
 }: NodeProps<FocusTaskNodeType>) {
   const settingsCtx = useFocusAppSettingsOptional();
-  const themeSetting = settingsCtx?.settings?.theme || "system";
+  const themeSetting = settingsCtx?.settings?.colorScheme || "system";
   const [isDark, setIsDark] = useState(() => {
     if (typeof document !== "undefined") {
       return document.documentElement.classList.contains("dark");
