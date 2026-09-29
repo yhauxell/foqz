@@ -73,7 +73,7 @@ export async function evaluateJev(
     options?.apiKey ||
     settings?.typesafeApiKey ||
     (typeof window !== 'undefined' ? localStorage.getItem('foqz_typesafe_api_key') : '') ||
-    (typeof process !== 'undefined' ? process.env.TYPESAFE_API_KEY : '') ||
+    (typeof globalThis !== 'undefined' && (globalThis as any).process?.env?.TYPESAFE_API_KEY) ||
     ''
   ).trim()
 
