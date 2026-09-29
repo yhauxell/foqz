@@ -112,11 +112,11 @@ export function GlobalSpotlight({
           id: n.id,
           text: text.trim(),
           type:
-            n.type === 'focusTask'
+            (n.type === 'focusTask'
               ? 'focus-task'
               : n.type === 'projectFrame'
               ? 'project-frame'
-              : n.type,
+              : n.type) || 'unknown',
           shape: n,
         })
       }
@@ -198,6 +198,17 @@ type SpotlightEntry =
         },
       },
       {
+        id: 'action-stage-runway',
+        title: "Stage Today's Runway Frame",
+        shortcut: '/today',
+        keywords: ['today', 'runway', 'focus', 'sprint', 'daily', 'stage'],
+        icon: <Sparkles className="size-3 text-rose-500 shrink-0" />,
+        perform: () => {
+          useFlowCanvasStore.getState().stageRunway()
+          onClose()
+        },
+      },
+      {
         id: 'action-prioritize-ai',
         title: 'Prioritize Backlog with AI',
         keywords: ['prioritize', 'backlog', 'ai', 'slot', 'day', 'rank', 'goal'],
@@ -207,12 +218,13 @@ type SpotlightEntry =
         },
       },
     ],
-    [],
+    [onClose],
   )
 
   // Unified fuzzy search for actions and canvas shapes
   const filteredEntries = useMemo<SpotlightEntry[]>(() => {
-    const q = query.trim().toLowerCase()
+    const raw = query.trim()
+    const q = raw.toLowerCase()
 
     if (!q) {
       const actionEntries: SpotlightEntry[] = actions.map((a) => ({
@@ -238,6 +250,101 @@ type SpotlightEntry =
       return [...actionEntries, ...projects, ...others]
     }
 
+    // 1. Prefix command triggers
+    if (q.startsWith('/t ') || q.startsWith('/task ') || q.startsWith('todo ')) {
+      const title = raw.replace(/^(\/t|\/task|todo)\s*/i, '').trim() || 'New Focus Task'
+      return [
+        {
+          kind: 'action',
+          id: 'action-prefix-create-task',
+          title: `Create Focus Task: "${title}"`,
+          shortcut: '↵ Enter',
+          badgeClass: 'bg-blue-500/10 text-blue-500 border-blue-500/30 font-semibold',
+          icon: <Plus className="size-3.5 text-blue-500 shrink-0" />,
+          perform: () => {
+            const newId = useFlowCanvasStore.getState().createTask({ title })
+            window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
+            onClose()
+          },
+        },
+      ]
+    }
+
+    if (q.startsWith('/p ') || q.startsWith('/project ')) {
+      const title = raw.replace(/^(\/p|\/project)\s*/i, '').trim() || 'New Project Workspace'
+      return [
+        {
+          kind: 'action',
+          id: 'action-prefix-create-project',
+          title: `Create Project Frame: "${title}"`,
+          shortcut: '↵ Enter',
+          badgeClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 font-semibold',
+          icon: <FolderPlus className="size-3.5 text-emerald-500 shrink-0" />,
+          perform: () => {
+            const newId = useFlowCanvasStore.getState().createProject({ title })
+            window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
+            onClose()
+          },
+        },
+      ]
+    }
+
+    if (q.startsWith('/b ') || q.startsWith('/box ')) {
+      const label = raw.replace(/^(\/b|\/box)\s*/i, '').trim() || 'Architecture Spec'
+      return [
+        {
+          kind: 'action',
+          id: 'action-prefix-create-box',
+          title: `Create Architecture Spec Box: "${label}"`,
+          shortcut: '↵ Enter',
+          badgeClass: 'bg-amber-500/10 text-amber-500 border-amber-500/30 font-semibold',
+          icon: <Layers className="size-3.5 text-amber-500 shrink-0" />,
+          perform: () => {
+            const newId = useFlowCanvasStore.getState().createBox({ label })
+            window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
+            onClose()
+          },
+        },
+      ]
+    }
+
+    if (q.startsWith('/today') || q.startsWith('/runway')) {
+      return [
+        {
+          kind: 'action',
+          id: 'action-prefix-runway',
+          title: `Stage Today's Runway Frame (Focus Sprints)`,
+          shortcut: '↵ Enter',
+          badgeClass: 'bg-rose-500/10 text-rose-500 border-rose-500/30 font-semibold',
+          icon: <Sparkles className="size-3.5 text-rose-500 shrink-0" />,
+          perform: () => {
+            useFlowCanvasStore.getState().stageRunway()
+            onClose()
+          },
+        },
+      ]
+    }
+
+    if (q.startsWith('/prioritize')) {
+      return [
+        {
+          kind: 'action',
+          id: 'action-prefix-prioritize',
+          title: `Prioritize Backlog & Projects with Jev AI`,
+          shortcut: '↵ Enter',
+          badgeClass: 'bg-violet-500/10 text-violet-500 border-violet-500/30 font-semibold',
+          icon: <Sparkles className="size-3.5 text-violet-500 shrink-0" />,
+          perform: () => setMode('prioritize'),
+        },
+      ]
+    }
+
+    // 2. Standard Search + Instant Creation
+    const matchedShapes: SpotlightEntry[] = searchableShapes
+      .filter((s) => s.text.toLowerCase().includes(q) || s.type.toLowerCase().includes(q))
+      .slice(0, 20)
+      .map((s) => ({ kind: 'shape', ...s }))
+
     const matchedActions: SpotlightEntry[] = actions
       .filter(
         (a) =>
@@ -255,13 +362,25 @@ type SpotlightEntry =
         perform: a.perform,
       }))
 
-    const matchedShapes: SpotlightEntry[] = searchableShapes
-      .filter((s) => s.text.toLowerCase().includes(q) || s.type.toLowerCase().includes(q))
-      .slice(0, 25)
-      .map((s) => ({ kind: 'shape', ...s }))
+    // Instant creation entries
+    const creationActions: SpotlightEntry[] = [
+      {
+        kind: 'action',
+        id: 'action-instant-create-task',
+        title: `Create Focus Task: "${raw}"`,
+        shortcut: '↵ Enter',
+        badgeClass: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30 font-semibold',
+        icon: <Plus className="size-3.5 text-blue-500 shrink-0" />,
+        perform: () => {
+          const newId = useFlowCanvasStore.getState().createTask({ title: raw })
+          window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
+          onClose()
+        },
+      },
+    ]
 
-    return [...matchedActions, ...matchedShapes]
-  }, [actions, searchableShapes, query])
+    return [...creationActions, ...matchedShapes, ...matchedActions]
+  }, [actions, searchableShapes, query, onClose])
 
   // Reset selected index when query or results change
   useEffect(() => {
@@ -615,7 +734,7 @@ type SpotlightEntry =
 
                       <button
                         type="button"
-                        onClick={() => handleStartFocusSession(item.id as TLShapeId)}
+                        onClick={() => handleStartFocusSession(item.id)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0 cursor-pointer ${
                           idx === 0
                             ? 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-xs'

@@ -13,3 +13,4 @@ electron-assets/concepts
 skills-lock.json
 AGENTS.md
 downloads/
+*.tsbuildinfo

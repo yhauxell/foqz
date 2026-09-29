@@ -37,8 +37,45 @@ declare global {
           options?: { apiKey?: string; baseUrl?: string },
         ) => Promise<unknown>;
       };
+      /** Auto-updater API */
+      updater?: {
+        check: () => Promise<{ ok: boolean; status?: string; error?: string; updateInfo?: any }>;
+        getState: () => Promise<UpdaterState>;
+        quitAndInstall: () => Promise<{ ok: boolean; error?: string }>;
+        onStatusChange: (callback: (state: UpdaterState) => void) => () => void;
+      };
+      getAppVersion?: () => Promise<{ version: string; isPackaged: boolean }>;
       /** Electron: run before exit so timers can be stopped and the board saved. */
       onPrepareShutdown?: (handler: () => void | Promise<void>) => () => void;
     };
   }
+
+  export type UpdaterState = {
+    status:
+      | 'idle'
+      | 'checking'
+      | 'available'
+      | 'not-available'
+      | 'downloading'
+      | 'downloaded'
+      | 'error'
+      | 'dev-mode';
+    currentVersion: string;
+    isPackaged?: boolean;
+    updateInfo?: {
+      version: string;
+      releaseDate?: string;
+      releaseName?: string;
+      releaseNotes?: string;
+      [key: string]: any;
+    } | null;
+    error?: string | null;
+    progress?: {
+      percent: number;
+      bytesPerSecond?: number;
+      transferred?: number;
+      total?: number;
+    } | null;
+    lastChecked?: string | null;
+  };
 }

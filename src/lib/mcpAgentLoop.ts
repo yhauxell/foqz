@@ -120,7 +120,7 @@ export function normalizeToolArgs(
   defaultRepo?: string,
 ): Record<string, any> {
   const args = { ...(rawArgs || {}) }
-  const schema = toolDef?.inputSchema || {}
+  const schema = (toolDef?.inputSchema || {}) as Record<string, any>
   const properties = schema.properties || {}
   const required = schema.required || []
 

@@ -121,13 +121,14 @@ export function MonoFocusController({
 
   // Initialize drafts from shape
   useEffect(() => {
+    if (isEditingTitle || isEditingNotes) return
     if (flowTaskData) {
       setTitleDraft(flowTaskData.title || '')
       setNotesDraft(flowTaskData.notes || '')
     } else if (flowNode) {
       setTitleDraft(shapeTitle)
     }
-  }, [flowTaskData, flowNode, shapeTitle])
+  }, [flowTaskData, flowNode, shapeTitle, isEditingTitle, isEditingNotes])
 
   // Timer interval
   useEffect(() => {
@@ -306,15 +307,15 @@ export function MonoFocusController({
     )
   }
 
-  if (!activeShapeId || (!activeShape && !flowNode)) return null
+  if (!activeShapeId || !flowNode) return null
 
   const minutes = Math.floor(secondsRemaining / 60)
   const seconds = secondsRemaining % 60
   const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 
-  const currentPriority = flowTaskData?.priority || taskShape?.props.priority || 3
+  const currentPriority = (flowTaskData?.priority as number) || 3
   const priorityConfig = PRIORITY_CONFIG[currentPriority] || PRIORITY_CONFIG[3]
-  const isTaskDone = (flowTaskData?.status || taskShape?.props.status) === 'done'
+  const isTaskDone = flowTaskData?.status === 'done'
 
   const progressPercent = totalSeconds > 0 ? Math.min(100, Math.max(0, ((totalSeconds - secondsRemaining) / totalSeconds) * 100)) : 0
 
@@ -572,12 +573,12 @@ export function MonoFocusController({
                       </button>
                     </div>
                   </div>
-                ) : (flowTaskData?.notes || taskShape?.props.notes)?.trim() ? (
+                ) : flowTaskData?.notes?.trim() ? (
                   <div
                     onClick={handleNotesCheckboxClick}
                     className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-xs text-zinc-200 max-h-44 overflow-y-auto leading-relaxed ai-markdown space-y-1.5 cursor-pointer"
                     dangerouslySetInnerHTML={{
-                      __html: renderMarkdownBlock((flowTaskData?.notes || taskShape?.props.notes) || ""),
+                      __html: renderMarkdownBlock(flowTaskData.notes || ""),
                     }}
                   />
                 ) : (

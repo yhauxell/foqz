@@ -563,7 +563,7 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
       for (const act of actions) {
         if (act.type === "task") {
           flowCreateTask({
-            title: act.title,
+            title: act.title || "Untitled Task",
             priority: (act.priority as any) ?? 3,
             notes: act.notes,
             parentId: targetFrame?.id,
@@ -571,7 +571,7 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
           spawned++;
         } else if (act.type === "project") {
           flowCreateProject({
-            title: act.title,
+            title: act.title || "Untitled Project",
             goal: act.notes,
           });
           spawned++;
@@ -593,14 +593,14 @@ You also have access to \`jev_triage_items\` to prioritize individual candidate 
       );
       if (action.type === "task") {
         flowCreateTask({
-          title: action.title,
+          title: action.title || "Untitled Task",
           priority: (action.priority as any) ?? 3,
           notes: action.notes,
           parentId: targetFrame?.id,
         });
       } else if (action.type === "project") {
         flowCreateProject({
-          title: action.title,
+          title: action.title || "Untitled Project",
           goal: action.notes,
         });
       }

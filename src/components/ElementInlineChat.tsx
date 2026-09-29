@@ -228,8 +228,9 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
   }, [onClose])
 
-  // Get reactive node from flowCanvasStore
-  const node = useFlowCanvasStore((s) => s.nodes.find((n) => n.id === nodeId))
+  // Get reactive node from flowCanvasStore (or null for board root scope)
+  const isCanvasScope = !nodeId || nodeId === '__canvas__'
+  const node = useFlowCanvasStore((s) => (isCanvasScope ? null : s.nodes.find((n) => n.id === nodeId)))
   const allNodes = useFlowCanvasStore((s) => s.nodes)
 
   // Fetch MCP tools
@@ -273,14 +274,20 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
 
   // Extract element text
   const currentShapeText = useMemo(() => {
+    if (isCanvasScope) return 'Board Strategist'
     if (!node) return ''
     const d = (node.data || {}) as Record<string, any>
     return d.title || d.label || d.text || `[${node.type}]`
-  }, [node])
+  }, [node, isCanvasScope])
 
-  // Compute smart viewport placement to fit directly next to the node
+  // Compute smart viewport placement to fit directly next to the node or centered for canvas
   const placement = useMemo(() => {
-    if (!node) return null
+    if (isCanvasScope || !node) {
+      return {
+        x: Math.round(Math.max(16, (window.innerWidth - modalSize.width) / 2)),
+        y: Math.max(70, Math.round((window.innerHeight - modalSize.height) / 2 - 30)),
+      }
+    }
     const internal = getInternalNode(node.id)
     const absPos = internal?.internals?.positionAbsolute ?? node.position
     const nodeW = Number(node.style?.width ?? node.width ?? 280)
@@ -318,7 +325,7 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     y = Math.min(maxY, y)
 
     return { x: Math.round(x), y: Math.round(y) }
-  }, [node, modalSize.width, modalSize.height, flowToScreenPosition, getInternalNode])
+  }, [isCanvasScope, node, modalSize.width, modalSize.height, flowToScreenPosition, getInternalNode])
 
   const currentX = customPos ? customPos.x : (placement?.x ?? 80)
   const currentY = customPos ? customPos.y : (placement?.y ?? 80)
@@ -460,35 +467,42 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     }
   }
 
-  // Conversation history in node.data.aiMessages
+  // Conversation history in node.data.aiMessages (or boardAiMessages for canvas scope)
+  const [boardAiMessages, setBoardAiMessages] = useState<ElementAiMessage[]>([])
+
   const messages: ElementAiMessage[] = useMemo(() => {
+    if (isCanvasScope) return boardAiMessages
     const d = (node?.data || {}) as Record<string, any>
     return (d.aiMessages as ElementAiMessage[]) || []
-  }, [node])
+  }, [node, isCanvasScope, boardAiMessages])
 
   const saveMessages = useCallback(
     (newMessages: ElementAiMessage[]) => {
+      if (isCanvasScope) {
+        setBoardAiMessages(newMessages)
+        return
+      }
       if (!node) return
       useFlowCanvasStore.getState().updateNodeData(node.id, {
         aiMessages: newMessages,
       })
     },
-    [node]
+    [node, isCanvasScope]
   )
 
   const [spawnedCount, setSpawnedCount] = useState<number | null>(null)
 
   const handleSpawn = useCallback(
     (actions: SpawnableShape[]) => {
-      if (!node || !actions.length) return
+      if (!actions.length) return
       const store = useFlowCanvasStore.getState()
       let count = 0
-      const parentId = containingProject?.id
+      const parentId = isCanvasScope ? undefined : containingProject?.id
 
       for (const act of actions) {
         if (act.type === 'task') {
           store.createTask({
-            title: act.title,
+            title: act.title || 'Untitled Task',
             priority: (act.priority as any) ?? 3,
             notes: act.notes,
             parentId,
@@ -496,7 +510,7 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
           count++
         } else if (act.type === 'project') {
           store.createProject({
-            title: act.title,
+            title: act.title || 'Untitled Project',
             goal: act.notes,
           })
           count++
@@ -505,30 +519,29 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
       setSpawnedCount(count)
       setTimeout(() => setSpawnedCount(null), 3000)
     },
-    [node, containingProject]
+    [isCanvasScope, containingProject]
   )
 
   const handleSpawnSingle = useCallback(
     (action: SpawnableShape, _index: number) => {
-      if (!node) return
       const store = useFlowCanvasStore.getState()
-      const parentId = containingProject?.id
+      const parentId = isCanvasScope ? undefined : containingProject?.id
 
       if (action.type === 'task') {
         store.createTask({
-          title: action.title,
+          title: action.title || 'Untitled Task',
           priority: (action.priority as any) ?? 3,
           notes: action.notes,
           parentId,
         })
       } else if (action.type === 'project') {
         store.createProject({
-          title: action.title,
+          title: action.title || 'Untitled Project',
           goal: action.notes,
         })
       }
     },
-    [node, containingProject]
+    [isCanvasScope, containingProject]
   )
 
   const handleClearChat = useCallback(() => {
@@ -542,7 +555,7 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
 
   const handleSend = async (overridePrompt?: string) => {
     const text = (overridePrompt || prompt).trim()
-    if (!text || !node || isStreaming) return
+    if (!text || (!node && !isCanvasScope) || isStreaming) return
 
     const userMsg: ElementAiMessage = {
       id: `user_${Date.now()}`,
@@ -572,27 +585,55 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     const allTools = [...NATIVE_FOQZ_TOOLS, ...currentTools]
     const localToolExecutor = createFlowCanvasToolExecutor()
 
-    const projectData = (containingProject?.data || {}) as Record<string, any>
-    const projectContext = projectData?.projectContext
-    const projectTitle = projectData?.title || 'Untitled Project'
-    const projectGoal = projectData?.goal || ''
+    let systemPrompt = ''
+    if (isCanvasScope) {
+      const projects = allNodes.filter((n) => n.type === 'projectFrame')
+      const allTasks = allNodes.filter((n) => n.type === 'focusTask')
+      const doneTasks = allTasks.filter((n) => (n.data as any)?.status === 'done')
+      const doingTasks = allTasks.filter((n) => (n.data as any)?.status === 'doing')
+      const openTasks = allTasks.filter((n) => (n.data as any)?.status === 'open')
+      const unlinked = allNodes.filter((n) => !n.parentId && n.type !== 'projectFrame')
 
-    const systemPrompt = `${FOQZ_SYSTEM_PROMPT}
+      systemPrompt = `${FOQZ_SYSTEM_PROMPT}
 
-You are an AI thinking partner embedded directly alongside a specific canvas element.
-Current Element: "${currentShapeText}" (type: ${node.type})
-${connectedRepo ? `Connected GitHub Repository: "${connectedRepo}".
-IMPORTANT: You are focused on the CURRENT ELEMENT ("${currentShapeText}").
-- Do NOT query GitHub unless the user EXPLICITLY asks to check or fetch GitHub issues/PRs.
-- Ground all task breakdowns and code suggestions in the current element.` : ''}
-${projectContext ? `
-PROJECT CONTEXT & REPOSITORY ARCHITECTURE:
-Project: "${projectTitle}"${projectGoal ? ` (Goal: "${projectGoal}")` : ''}
-Context & Guidelines:
-${projectContext}
-` : ''}
+You are the Chief Technical Strategist in Foqz. You have a bird's-eye view of the entire workspace.
+Macro Workspace Context:
+- Active Projects: ${projects.length} (${projects.map((p) => (p.data as any)?.title || 'Untitled').join(', ') || 'None'})
+- Tasks Overview: ${allTasks.length} total (${doneTasks.length} done, ${doingTasks.length} in-progress, ${openTasks.length} open)
+- Loose / Scratchpad items: ${unlinked.length}
 
-When the user asks to break down this element or generate cards, provide clear reasoning and output a \`\`\`canvas block with an array of tasks or notes.`
+Your job is macro-level direction, prioritization, and sprint staging:
+1. Help the founder identify the single highest-leverage focus for today without context switching.
+2. Recommend unblocking critical path dependencies before starting peripheral tasks.
+3. When asked to stage priorities or plan the day, output a \`\`\`canvas block with tasks to stage onto the Runway or use available canvas tools.`
+    } else if (node?.type === 'projectFrame') {
+      const childTasks = allNodes.filter((n) => n.parentId === node.id && n.type === 'focusTask')
+      const projectData = (node.data || {}) as Record<string, any>
+      systemPrompt = `${FOQZ_SYSTEM_PROMPT}
+
+You are the Technical Project Architect for "${currentShapeText}".
+Goal: "${projectData.goal || 'No goal specified'}"
+Tasks inside this project: ${childTasks.length} (${childTasks.map((t) => (t.data as any)?.title).join(', ')})
+${connectedRepo ? `Connected GitHub Repository: "${connectedRepo}"` : ''}
+
+Your job is technical execution planning:
+1. Deconstruct milestone goals into concrete, bite-sized focus tasks with clear acceptance criteria.
+2. Maintain clean causality and dependencies between tasks.
+3. Output \`\`\`canvas blocks to spawn tasks directly inside this project frame.`
+    } else {
+      const taskData = (node?.data || {}) as Record<string, any>
+      systemPrompt = `${FOQZ_SYSTEM_PROMPT}
+
+You are a Senior Pair Programmer focused on a single execution sprint.
+Active Element: "${currentShapeText}" (type: ${node?.type || 'task'})
+${taskData.notes ? `Task Notes / Checkpoints:\n${taskData.notes}` : ''}
+${containingProject ? `Parent Project: "${(containingProject.data as any)?.title}" (Goal: "${(containingProject.data as any)?.goal}")` : ''}
+
+Your job is micro-execution:
+1. Ensure the task is small enough for a 25-90 minute Pomodoro session.
+2. If ambiguous, generate 3-5 markdown checkbox steps.
+3. Provide exact code snippets, debugging hypotheses, or refactoring ideas.`
+    }
 
     let assistantText = ''
     const executedToolsList: AgentToolCallEvent[] = []
@@ -608,7 +649,9 @@ When the user asks to break down this element or generate cards, provide clear r
         baseUrl: activeConfig.baseUrl,
         userPrompt: text,
         systemPrompt,
-        canvasContext: `Current active element text: "${currentShapeText}" (type: ${node.type})`,
+        canvasContext: isCanvasScope
+          ? `Macro Board Overview: ${allNodes.length} items total on canvas`
+          : `Current active element text: "${currentShapeText}" (type: ${node?.type})`,
         conversationHistory: updated.slice(-10).map((m) => ({
           role: m.role,
           content: m.content,
@@ -660,10 +703,10 @@ When the user asks to break down this element or generate cards, provide clear r
     }
   }, [messages, streamingContent])
 
-  if (!node) return null
+  if (!node && !isCanvasScope) return null
 
-  const isTask = node.type === 'focusTask'
-  const isProject = node.type === 'projectFrame'
+  const isTask = node?.type === 'focusTask'
+  const isProject = node?.type === 'projectFrame'
 
   return (
     <div
@@ -688,12 +731,20 @@ When the user asks to break down this element or generate cards, provide clear r
       >
         <div className="flex items-center gap-2 min-w-0">
           <GripVertical className="size-3.5 text-zinc-400 shrink-0" />
-          <div className="size-2 rounded-full bg-blue-500 shrink-0" />
+          <div
+            className={`size-2 rounded-full shrink-0 ${
+              isCanvasScope
+                ? 'bg-rose-500'
+                : isProject
+                ? 'bg-emerald-500'
+                : 'bg-blue-500'
+            }`}
+          />
           <span className="font-semibold text-xs truncate max-w-[200px]" title={currentShapeText}>
             {currentShapeText}
           </span>
           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-zinc-200/60 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0">
-            {node.type}
+            {isCanvasScope ? 'Macro Board' : node?.type}
           </span>
         </div>
 
@@ -745,15 +796,44 @@ When the user asks to break down this element or generate cards, provide clear r
             </div>
             <div>
               <p className="font-semibold text-xs text-zinc-800 dark:text-zinc-200">
-                Chat with this {node.type}
+                {isCanvasScope
+                  ? 'Board Strategist • Macro Flight Control'
+                  : `Chat with this ${node?.type}`}
               </p>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 max-w-[280px]">
-                Ask questions, decompose into subtasks, evaluate execution readiness, or brainstorm.
+                {isCanvasScope
+                  ? "Plan your day, stage Today's Runway, triage projects, or evaluate macro priorities."
+                  : 'Ask questions, decompose into subtasks, evaluate execution readiness, or brainstorm.'}
               </p>
             </div>
 
             {/* Quick Action Pills */}
             <div className="flex flex-wrap gap-1.5 justify-center pt-2 max-w-[340px]">
+              {isCanvasScope && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleSend("Stage Today's Runway frame with the top 2-3 critical path focus tasks.")}
+                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
+                  >
+                    ⚡ Stage Today's Runway
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSend("Audit my projects and backlog: what is my single highest-leverage task today?")}
+                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
+                  >
+                    📊 Audit Highest Leverage
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSend("Identify any blocking tasks or dependencies across all projects.")}
+                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
+                  >
+                    🔍 Find Blockers
+                  </button>
+                </>
+              )}
               {isTask && (
                 <>
                   <button

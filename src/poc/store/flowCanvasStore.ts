@@ -141,6 +141,13 @@ export interface FlowCanvasState {
     strokeColor?: string;
     position?: { x: number; y: number };
   }) => string;
+  activeFocusNodeId: string | null;
+  timerSecondsRemaining: number;
+  isTimerRunning: boolean;
+  setActiveFocusNodeId: (id: string | null) => void;
+  setTimerSecondsRemaining: (updater: number | ((prev: number) => number)) => void;
+  setIsTimerRunning: (updater: boolean | ((prev: boolean) => boolean)) => void;
+  stageRunway: () => string;
   updateNodeData: (id: string, patch: Record<string, any>) => void;
   deleteNode: (id: string) => void;
   updateEdgeData: (id: string, patch: Record<string, any>) => void;
@@ -156,6 +163,63 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
       nodes: INITIAL_NODES,
       edges: INITIAL_EDGES,
       selectedNodeId: null,
+      activeFocusNodeId: null,
+      timerSecondsRemaining: 25 * 60,
+      isTimerRunning: false,
+
+      setActiveFocusNodeId: (id) =>
+        set((state) => ({
+          activeFocusNodeId: id,
+          isTimerRunning: id !== null,
+          timerSecondsRemaining: 25 * 60,
+          selectedNodeId: id || state.selectedNodeId,
+        })),
+
+      setTimerSecondsRemaining: (updater) =>
+        set((state) => ({
+          timerSecondsRemaining:
+            typeof updater === "function" ? updater(state.timerSecondsRemaining) : updater,
+        })),
+
+      setIsTimerRunning: (updater) =>
+        set((state) => ({
+          isTimerRunning:
+            typeof updater === "function" ? updater(state.isTimerRunning) : updater,
+        })),
+
+      stageRunway: () => {
+        const state = get();
+        const existingRunway = state.nodes.find(
+          (n) => n.type === "projectFrame" && String((n.data as any)?.title || "").includes("Runway")
+        );
+        if (existingRunway) {
+          window.dispatchEvent(
+            new CustomEvent("foqz:flow-center-on", { detail: { id: existingRunway.id } })
+          );
+          return existingRunway.id;
+        }
+
+        const runwayId = `runway-${Date.now()}`;
+        const runwayNode: Node = {
+          id: runwayId,
+          type: "projectFrame",
+          position: { x: 100, y: 100 },
+          style: { width: 720, height: 420 },
+          data: {
+            title: "📌 Today's Runway (Focus Sprints)",
+            goal: "Execute critical path milestones without interruption",
+            accent: "rose",
+            borderStyle: "dashed",
+          },
+        };
+
+        const newNodes = [...state.nodes, runwayNode];
+        set({ nodes: newNodes, selectedNodeId: runwayId });
+        window.dispatchEvent(
+          new CustomEvent("foqz:flow-center-on", { detail: { id: runwayId } })
+        );
+        return runwayId;
+      },
 
       setNodes: (updater) =>
         set((state) => ({

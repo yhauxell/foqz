@@ -280,11 +280,11 @@ export function createFlowCanvasToolExecutor() {
               notes: t.shape?.data?.notes,
             }))
 
-          const d = pf.data || {}
+          const d = (pf.data || {}) as Record<string, any>
           return {
             id: pf.id,
-            title: d.title || 'Untitled Project',
-            goal: d.goal || '',
+            title: String(d.title || 'Untitled Project'),
+            goal: String(d.goal || ''),
             projectContext: d.projectContext,
             totalTasks: tasksInFrame.length,
             doneTasks,
