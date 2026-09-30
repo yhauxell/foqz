@@ -87,6 +87,92 @@ function JevEvaluationCard({
   onDeconstruct: () => void
   onFocus: () => void
 }) {
+  const isProjectVerdict =
+    content.includes('Project Readiness Verdict') || content.includes('Execution Path')
+
+  if (isProjectVerdict) {
+    const isReady =
+      content.includes('Ready for Execution') ||
+      content.includes('✅ This project has a concrete') ||
+      content.includes('isReady: true')
+
+    const scoreMatch = content.match(/(\d+)%\s*\(/) || content.match(/Readiness Score\*?\*?:\s*(\d+)%/)
+    const readinessScore = scoreMatch ? parseInt(scoreMatch[1], 10) : (isReady ? 80 : 35)
+
+    const pathMatch = content.match(/Execution Path\*?\*?:\s*`([^`]+)`/i)
+    const execPath = pathMatch ? pathMatch[1] : (isReady ? 'unbroken' : 'ambiguous')
+
+    const urgencyMatch = content.match(/Urgency State\*?\*?:\s*`([^`]+)`/i)
+    const urgency = urgencyMatch ? urgencyMatch[1].replace(/_/g, ' ') : 'active momentum'
+
+    return (
+      <div className="w-full rounded-2xl border border-emerald-500/25 bg-emerald-50/40 dark:bg-emerald-950/20 p-3.5 space-y-3 text-xs shadow-xs">
+        <div className="flex items-center justify-between border-b border-emerald-200/50 dark:border-emerald-800/40 pb-2">
+          <div className="flex items-center gap-1.5 font-semibold text-emerald-900 dark:text-emerald-300">
+            <Target className="size-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Project Readiness Verdict</span>
+          </div>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+              isReady
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+            }`}
+          >
+            {isReady ? 'Unbroken Path' : 'Needs Planning'}
+          </span>
+        </div>
+
+        <div className="space-y-2">
+          <div>
+            <div className="flex justify-between text-[11px] mb-1">
+              <span className="text-zinc-600 dark:text-zinc-400 font-medium">
+                Milestone Execution Readiness
+              </span>
+              <span className="font-semibold text-foreground">{readinessScore}%</span>
+            </div>
+            <div className="h-2 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  readinessScore >= 70
+                    ? 'bg-emerald-500'
+                    : readinessScore >= 45
+                      ? 'bg-amber-500'
+                      : 'bg-rose-500'
+                }`}
+                style={{ width: `${Math.max(8, readinessScore)}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-emerald-100 dark:border-emerald-900/30">
+            <span className="text-zinc-600 dark:text-zinc-400">Execution Path:</span>
+            <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 rounded bg-zinc-200/70 dark:bg-zinc-800 text-foreground font-medium">
+              {execPath}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-zinc-600 dark:text-zinc-400">Urgency:</span>
+            <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 rounded bg-zinc-200/70 dark:bg-zinc-800 text-foreground font-medium">
+              {urgency}
+            </span>
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-emerald-200/50 dark:border-emerald-800/40">
+          <button
+            type="button"
+            onClick={onDeconstruct}
+            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
+          >
+            <Zap className="size-3.5" />
+            <span>Generate Sequential Milestone Tasks</span>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const isActionable =
     content.includes('Actionable**: Yes') ||
     content.includes('Actionable: Yes') ||
@@ -801,7 +887,11 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     if (!text || (!node && !isCanvasScope) || isStreaming) return
 
     if (text === '/eval' || text === '/evaluate' || text.startsWith('/eval ') || text.startsWith('/evaluate ')) {
-      text = `Evaluate this task actionability, clarity score, and blast radius using the jev_evaluate_task tool. Present the verdict clearly.`
+      if (node?.type === 'projectFrame') {
+        text = `Evaluate this project frame's milestone execution readiness and unbroken path using the jev_evaluate_project tool. Present the verdict clearly.`
+      } else {
+        text = `Evaluate this task actionability, clarity score, and blast radius using the jev_evaluate_task tool. Present the verdict clearly.`
+      }
     } else if (text === '/expand' || text.startsWith('/expand ')) {
       const extra = text.replace(/^\/expand\s*/, '').trim()
       text = extra
@@ -922,6 +1012,7 @@ Tasks inside this project: ${childTasks.length} (${childTasks.map((t) => (t.data
 ${connectedRepo ? `Connected GitHub Repository: "${connectedRepo}"` : ''}
 
 You have ACTIVE MUTATION TOOLS to directly manipulate this project and its tasks:
+- To evaluate milestone execution readiness and unbroken paths using Jev AI, invoke \`jev_evaluate_project(projectId: "${node.id}")\`.
 - To update this project frame's title, goal, or notes, invoke \`update_node(nodeId: "${node.id}", ...)\`.
 - To create tasks inside this project, invoke \`spawn_tasks\` or output \`\`\`canvas blocks.
 - To connect tasks and projects with dependencies, invoke \`connect_nodes\`.
@@ -1126,6 +1217,14 @@ Do NOT just passively describe what could be done — when the user asks to modi
     }
 
     return [
+      {
+        cmd: '/eval',
+        label: '/eval',
+        desc: 'Evaluate project milestone execution readiness (Jev)',
+        icon: <Target className="size-3 text-emerald-500" />,
+        prompt: '/eval',
+        autoExecute: true,
+      },
       {
         cmd: '/expand',
         label: '/expand',
@@ -1557,6 +1656,14 @@ Do NOT just passively describe what could be done — when the user asks to modi
                 <>
                   <button
                     type="button"
+                    onClick={() => handleSend('/eval')}
+                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Target className="size-3 text-emerald-500" />
+                    <span>🎯 Evaluate Readiness</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleSend('Generate a sequential 4-step task workflow to launch this project milestone.')}
                     className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
                   >
@@ -1671,7 +1778,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
                         ))}
 
                       {m.executedTools
-                        .filter((evt) => evt.toolName === 'jev_evaluate_task')
+                        .filter((evt) => evt.toolName === 'jev_evaluate_task' || evt.toolName === 'jev_evaluate_project')
                         .map((evt, eIdx) => {
                           const evalText =
                             evt.result?.content?.find((c) => c.type === 'text')?.text || ''
