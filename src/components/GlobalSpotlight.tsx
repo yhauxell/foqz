@@ -13,6 +13,7 @@ import {
   Plus,
   FolderPlus,
   PanelLeft,
+  Inbox,
 } from 'lucide-react'
 import { prioritizeDailyFocusSlot } from '@/lib/jev'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
@@ -220,6 +221,29 @@ type SpotlightEntry =
         },
       },
       {
+        id: 'action-new-note',
+        title: 'New Sticky Note',
+        shortcut: '/note',
+        keywords: ['note', 'sticky', 'text', 'scratchpad', 'idea', 'thought'],
+        icon: <StickyNote className="size-3 text-amber-500 shrink-0" />,
+        perform: () => {
+          const newId = useFlowCanvasStore.getState().createNote({ text: '' })
+          window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
+          onClose()
+        },
+      },
+      {
+        id: 'action-sweep-inbox',
+        title: 'Sweep Free Items into Inbox Frame',
+        shortcut: '/sweep',
+        keywords: ['sweep', 'inbox', 'clean', 'tidy', 'collect', 'stickies', 'organize'],
+        icon: <Inbox className="size-3 text-zinc-500 shrink-0" />,
+        perform: () => {
+          useFlowCanvasStore.getState().sweepToInbox()
+          onClose()
+        },
+      },
+      {
         id: 'action-board-strategist',
         title: 'Open Board Strategist AI Copilot',
         shortcut: '⌘J',
@@ -317,6 +341,42 @@ type SpotlightEntry =
           perform: () => {
             const newId = useFlowCanvasStore.getState().createBox({ label })
             window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
+            onClose()
+          },
+        },
+      ]
+    }
+
+    if (q.startsWith('/note ') || q.startsWith('/sticky ') || q === '/note' || q === '/sticky') {
+      const text = raw.replace(/^(\/note|\/sticky)\s*/i, '').trim()
+      return [
+        {
+          kind: 'action',
+          id: 'action-prefix-create-note',
+          title: text ? `Create Sticky Note: "${text}"` : 'Create New Sticky Note',
+          shortcut: '↵ Enter',
+          badgeClass: 'bg-amber-500/10 text-amber-500 border-amber-500/30 font-semibold',
+          icon: <StickyNote className="size-3.5 text-amber-500 shrink-0" />,
+          perform: () => {
+            const newId = useFlowCanvasStore.getState().createNote({ text })
+            window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
+            onClose()
+          },
+        },
+      ]
+    }
+
+    if (q.startsWith('/sweep') || q === '/inbox' || q === '/tidy') {
+      return [
+        {
+          kind: 'action',
+          id: 'action-prefix-sweep',
+          title: 'Sweep Free-Floating Items into Inbox Frame',
+          shortcut: '↵ Enter',
+          badgeClass: 'bg-zinc-500/10 text-zinc-500 border-zinc-500/30 font-semibold',
+          icon: <Inbox className="size-3.5 text-zinc-500 shrink-0" />,
+          perform: () => {
+            useFlowCanvasStore.getState().sweepToInbox()
             onClose()
           },
         },

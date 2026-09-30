@@ -180,6 +180,11 @@ export interface FlowCanvasState {
     strokeColor?: string;
     position?: { x: number; y: number };
   }) => string;
+  createNote: (props: {
+    text: string;
+    position?: { x: number; y: number };
+  }) => string;
+  sweepToInbox: () => { inboxId: string; sweptCount: number };
   activeFocusNodeId: string | null;
   timerSecondsRemaining: number;
   isTimerRunning: boolean;
@@ -568,6 +573,165 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           selectedNodeId: id,
         });
         return id;
+      },
+
+      createNote: (props) => {
+        const state = get();
+        const id = `text-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const maxZ = getMaxZIndex(state.nodes);
+        const nextZ = Math.max(100, maxZ + 1);
+
+        let pos = props.position;
+        let parentId: string | undefined = undefined;
+
+        if (!pos && state.cursorPosition) {
+          const frameMatch = findFrameAt(state.cursorPosition, state.nodes);
+          if (frameMatch) {
+            parentId = frameMatch.frame.id;
+            pos = { x: frameMatch.relX, y: frameMatch.relY };
+          } else {
+            pos = {
+              x: Math.round(state.cursorPosition.x - 70),
+              y: Math.round(state.cursorPosition.y - 20),
+            };
+          }
+        }
+
+        if (!pos) {
+          pos = {
+            x: 320 + Math.random() * 40,
+            y: 200 + Math.random() * 40,
+          };
+        }
+
+        const newNode: Node = {
+          id,
+          type: "text",
+          parentId,
+          position: pos,
+          style: { zIndex: nextZ },
+          data: {
+            text: props.text,
+            isNew: !props.text,
+          },
+          selected: true,
+        };
+
+        const clearedNodes = state.nodes.map((n) =>
+          n.selected ? { ...n, selected: false } : n
+        );
+
+        if (parentId) {
+          const parentIdx = clearedNodes.findIndex((n) => n.id === parentId);
+          if (parentIdx !== -1) {
+            let insertIdx = parentIdx + 1;
+            while (
+              insertIdx < clearedNodes.length &&
+              clearedNodes[insertIdx].parentId === parentId
+            ) {
+              insertIdx++;
+            }
+            const copy = [...clearedNodes];
+            copy.splice(insertIdx, 0, newNode);
+            set({ nodes: copy, selectedNodeId: id });
+            return id;
+          }
+        }
+
+        set({
+          nodes: [...clearedNodes, newNode],
+          selectedNodeId: id,
+        });
+        return id;
+      },
+
+      sweepToInbox: () => {
+        const state = get();
+        // Find existing Inbox frame or create a new one
+        let inboxFrame = state.nodes.find(
+          (n) => n.type === "projectFrame" && String((n.data as any)?.title || "").toLowerCase().includes("inbox")
+        );
+
+        let inboxId = inboxFrame?.id;
+        let nodesList = [...state.nodes];
+
+        if (!inboxFrame) {
+          inboxId = `inbox-${Date.now()}`;
+          inboxFrame = {
+            id: inboxId,
+            type: "projectFrame",
+            position: { x: 120, y: 120 },
+            style: { width: 680, height: 460, zIndex: 0 },
+            data: {
+              title: "📥 Scratchpad Inbox (Swept Items)",
+              goal: "Triage unassigned thoughts, stickies, and notes",
+              accent: "zinc",
+              borderStyle: "dashed",
+            },
+          };
+          nodesList.push(inboxFrame);
+        }
+
+        const targetInboxId = inboxId!;
+
+        // Free-floating stickies & text items (unparented text, box, or unparented tasks)
+        const unparentedItems = nodesList.filter(
+          (n) => n.type !== "projectFrame" && !n.parentId && n.id !== targetInboxId
+        );
+
+        if (unparentedItems.length === 0) {
+          window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id: targetInboxId } }));
+          return { inboxId: targetInboxId, sweptCount: 0 };
+        }
+
+        const unparentedIds = new Set(unparentedItems.map((n) => n.id));
+        let childZ = 10;
+
+        const sweptChildren: Node[] = unparentedItems.map((item, idx) => {
+          const col = idx % 2;
+          const row = Math.floor(idx / 2);
+          const relX = 30 + col * 310;
+          const relY = 70 + row * 96;
+
+          const updated: Node = {
+            ...item,
+            parentId: targetInboxId,
+            position: { x: relX, y: relY },
+            style: {
+              ...item.style,
+              zIndex: typeof item.style?.zIndex === "number" ? Math.max(10, item.style.zIndex) : ++childZ,
+            },
+            selected: false,
+          };
+          delete (updated as any).extent;
+          return updated;
+        });
+
+        // Expand inbox height if needed
+        const totalRows = Math.ceil(sweptChildren.length / 2);
+        const neededHeight = Math.max(460, 90 + totalRows * 105);
+
+        const updatedInboxNode: Node = {
+          ...inboxFrame,
+          style: {
+            ...inboxFrame.style,
+            height: neededHeight,
+          },
+        };
+
+        const unaffectedNodes = nodesList
+          .filter((n) => !unparentedIds.has(n.id) && n.id !== targetInboxId);
+
+        // Parent frame must precede children in nodes list
+        const finalNodes = [...unaffectedNodes, updatedInboxNode, ...sweptChildren];
+
+        set({
+          nodes: finalNodes,
+          selectedNodeId: targetInboxId,
+        });
+
+        window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id: targetInboxId } }));
+        return { inboxId: targetInboxId, sweptCount: unparentedItems.length };
       },
 
       updateNodeData: (id, patch) =>
