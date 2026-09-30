@@ -35,7 +35,7 @@ export const BoxNode = memo(function BoxNode({
   React.useEffect(() => {
     if (!svgRef.current) return;
     const svg = svgRef.current;
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    const fragment = document.createDocumentFragment();
 
     const rc = rough.svg(svg);
     const borderStyle = data.borderStyle || "solid";
@@ -66,7 +66,8 @@ export const BoxNode = memo(function BoxNode({
       strokeLineDash: dashArray,
       ...fillOptions,
     });
-    svg.appendChild(node);
+    fragment.appendChild(node);
+    svg.replaceChildren(fragment);
   }, [id, w, h, stroke, fill, fillStyle, data.roughness, data.borderStyle]);
 
   return (

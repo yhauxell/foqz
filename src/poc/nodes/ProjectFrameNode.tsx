@@ -57,7 +57,7 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
   useEffect(() => {
     if (!svgRef.current) return;
     const svg = svgRef.current;
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    const fragment = document.createDocumentFragment();
 
     const rc = rough.svg(svg);
     const borderStyle = data.borderStyle || "dashed";
@@ -79,7 +79,7 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
       strokeLineDash: dashArray,
       fill: "transparent",
     });
-    svg.appendChild(outerRect);
+    fragment.appendChild(outerRect);
 
     // 2. Hand-drawn header divider line
     const headerLine = rc.line(4, 48, w - 4, 48, {
@@ -88,7 +88,8 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
       stroke: accent.dotHex || "#3b82f6",
       strokeWidth: 1.5,
     });
-    svg.appendChild(headerLine);
+    fragment.appendChild(headerLine);
+    svg.replaceChildren(fragment);
   }, [id, w, h, accent.dotHex, data.borderStyle]);
 
   return (
