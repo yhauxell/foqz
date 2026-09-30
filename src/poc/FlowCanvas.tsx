@@ -141,8 +141,13 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   // 2. Continuous Cursor Tracking in Flow Coordinates
   useEffect(() => {
     let rafId: number | null = null;
+    let lastClientX = 0;
+    let lastClientY = 0;
     const handleGlobalPointerMove = (e: PointerEvent) => {
+      if (Math.hypot(e.clientX - lastClientX, e.clientY - lastClientY) < 15) return;
       if (rafId !== null) return;
+      lastClientX = e.clientX;
+      lastClientY = e.clientY;
       rafId = requestAnimationFrame(() => {
         rafId = null;
         try {
@@ -252,14 +257,15 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         if (selectionChange.selected) {
           setSelectedNodeId(selectionChange.id);
         } else {
-          const remainingSelected = nodes.find(
+          const currentNodes = useFlowCanvasStore.getState().nodes;
+          const remainingSelected = currentNodes.find(
             (n) => n.id !== selectionChange.id && n.selected
           );
           setSelectedNodeId(remainingSelected ? remainingSelected.id : null);
         }
       }
     },
-    [nodes, setNodes, setSelectedNodeId]
+    [setNodes, setSelectedNodeId]
   );
 
   const onEdgesChange = useCallback(
@@ -1415,7 +1421,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         deleteKeyCode={null}
         multiSelectionKeyCode={MULTI_SELECTION_KEY_CODE}
         proOptions={PRO_OPTIONS}
-        onlyRenderVisibleElements={false}
+        onlyRenderVisibleElements={true}
         selectionOnDrag={activeTool === "select"}
         panOnDrag={PAN_ON_DRAG}
         panOnScroll={true}
