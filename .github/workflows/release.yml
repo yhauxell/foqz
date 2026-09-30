@@ -21,7 +21,7 @@ permissions:
 
 env:
   # electron-builder publishes releases and update metadata (latest-*.yml) with this token
-  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
 jobs:
   publish:
