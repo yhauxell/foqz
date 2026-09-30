@@ -668,3 +668,125 @@ export async function evaluateTaskActionability(
     }
   }
 }
+
+export interface ProjectReadinessInput {
+  title: string
+  goal?: string
+  projectContext?: string
+  totalTasks: number
+  openTasks: Array<{ title: string; priority?: number; notes?: string }>
+  doneTasks: number
+}
+
+export interface ProjectReadinessResult {
+  isReady: boolean
+  readinessScore: number // 0-100
+  urgencyState: 'critical_blocker' | 'active_momentum' | 'blocked_external' | 'backlog'
+  executionPathStatus: 'unbroken' | 'ambiguous' | 'blocked'
+  critique: string
+  nextRecommendedTask: string | null
+}
+
+/**
+ * TypeSafe Jev System One evaluation of a Project Frame's execution readiness,
+ * determining whether the milestone has an unbroken path of actionable next steps.
+ */
+export async function evaluateProjectReadiness(
+  project: ProjectReadinessInput,
+  options?: { apiKey?: string; baseUrl?: string },
+): Promise<ProjectReadinessResult> {
+  const questions: Record<string, JevQuestion> = {
+    readiness: {
+      type: 'noul',
+      instructions: `Does the project "${project.title}" have an unbroken, concrete execution path with ready next steps to deliver its goal?`,
+      criteria: {
+        true: 'Clear execution path with immediate concrete actionable next steps',
+        false: 'Missing tasks, ambiguous goals, or blocked progression',
+      },
+    },
+    urgency: {
+      type: 'choice',
+      instructions: `What is the operational urgency state for project "${project.title}"?`,
+      criteria: {
+        critical_blocker: 'Urgent release blocker or high-stakes deadline',
+        active_momentum: 'Active sprint with clear momentum',
+        blocked_external: 'Blocked on external inputs, reviews, or missing prerequisites',
+        backlog: 'Backlog or exploratory initiative with low immediate urgency',
+      },
+    },
+    execution_path: {
+      type: 'choice',
+      instructions: `How unbroken is the execution path from open tasks to the project goal for "${project.title}"?`,
+      criteria: {
+        unbroken: 'Unbroken: next tasks are self-contained and sequentially executable',
+        ambiguous: 'Ambiguous: open tasks are too high-level, vague, or missing checkpoints',
+        blocked: 'Blocked: open tasks lack clear prerequisites or have missing dependencies',
+      },
+    },
+  }
+
+  const state = {
+    project_title: project.title,
+    project_goal: project.goal || 'No goal specified',
+    project_context: project.projectContext ? project.projectContext.slice(0, 600) : 'None',
+    total_tasks: project.totalTasks,
+    completed_tasks: project.doneTasks,
+    open_tasks: project.openTasks.map((t) => ({
+      title: t.title,
+      priority: t.priority ?? 3,
+      has_notes: Boolean(t.notes && t.notes.trim().length > 5),
+    })),
+  }
+
+  try {
+    const result = await evaluateJev({ state, questions }, options)
+    const prob = (result.answers.readiness as JevNoulAnswer)?.noul ?? 0.5
+    const urgency = ((result.answers.urgency as JevChoiceAnswer)?.choice || 'active_momentum') as any
+    const execPath = ((result.answers.execution_path as JevChoiceAnswer)?.choice || 'ambiguous') as any
+
+    const percentage = Math.round(prob * 100)
+    const isRdy = percentage >= 65
+
+    let critique = ''
+    if (percentage >= 75) {
+      critique = 'Strong execution path. The open tasks provide a sequential and actionable route to the milestone.'
+    } else if (percentage >= 50) {
+      critique = 'Partially scoped. Some open tasks are actionable, but the project would benefit from breaking down milestones into smaller 25m tasks.'
+    } else {
+      critique = 'Ambiguous or incomplete execution path. Define 2-3 specific focus tasks with checkpoints to establish momentum.'
+    }
+
+    const nextTask = project.openTasks[0]?.title || null
+
+    return {
+      isReady: isRdy,
+      readinessScore: percentage,
+      urgencyState: urgency,
+      executionPathStatus: execPath,
+      critique,
+      nextRecommendedTask: nextTask,
+    }
+  } catch {
+    // Resilient local fallback
+    const hasGoal = Boolean(project.goal && project.goal.trim().length > 10)
+    const hasOpenTasks = project.openTasks.length > 0
+    let score = 40
+    if (hasGoal) score += 25
+    if (hasOpenTasks) score += 25
+    if (project.openTasks.length >= 2 && project.openTasks.length <= 6) score += 10
+    score = Math.min(95, Math.max(20, score))
+
+    return {
+      isReady: score >= 65,
+      readinessScore: score,
+      urgencyState: 'active_momentum',
+      executionPathStatus: score >= 65 ? 'unbroken' : 'ambiguous',
+      critique:
+        score >= 65
+          ? 'Project has clear focus and active tasks ready for execution.'
+          : 'Project needs a clearer goal or concrete next tasks to ensure momentum.',
+      nextRecommendedTask: project.openTasks[0]?.title || null,
+    }
+  }
+}
+

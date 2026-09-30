@@ -5,6 +5,7 @@ import {
   prioritizeDailyFocusSlot,
   auditPortfolioProjects,
   evaluateTaskActionability,
+  evaluateProjectReadiness,
 } from './jev'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
 
@@ -293,6 +294,22 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
           type: 'string',
           description:
             'Optional ID of task to evaluate. Defaults to currently selected task.',
+        },
+      },
+    },
+  },
+  {
+    serverName: 'foqz',
+    name: 'jev_evaluate_project',
+    description:
+      'Evaluates the execution readiness, milestone clarity, and unbroken path of next steps for a project frame using TypeSafe Jev System One intelligence.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description:
+            'Optional ID of project frame to evaluate. Defaults to currently selected project.',
         },
       },
     },
@@ -935,6 +952,57 @@ ${evalRes.isActionable ? '✅ This task is concrete and ready for a 25-minute fo
               text: `Successfully deleted node "${title}" (${targetId}) from the canvas.`,
             },
           ],
+        }
+      }
+
+      case 'jev_evaluate_project': {
+        const liveStore = useFlowCanvasStore.getState()
+        const targetId = args.projectId || args.nodeId || defaultNodeId || liveStore.selectedNodeId
+        if (!targetId) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'No projectId specified and no project frame currently selected.' }],
+          }
+        }
+        const targetNode = liveStore.nodes.find((n) => n.id === targetId && n.type === 'projectFrame')
+        if (!targetNode) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Project frame "${targetId}" not found on canvas.` }],
+          }
+        }
+
+        const projectData = (targetNode.data || {}) as Record<string, any>
+        const childTasks = liveStore.nodes.filter((n) => n.parentId === targetId && n.type === 'focusTask')
+        const openTasks = childTasks.filter((t) => (t.data as any)?.status !== 'done')
+        const doneTasks = childTasks.filter((t) => (t.data as any)?.status === 'done')
+
+        const evalRes = await evaluateProjectReadiness({
+          title: projectData.title || targetId,
+          goal: projectData.goal,
+          projectContext: projectData.projectContext,
+          totalTasks: childTasks.length,
+          openTasks: openTasks.map((t) => ({
+            title: (t.data as any)?.title || t.id,
+            priority: (t.data as any)?.priority,
+            notes: (t.data as any)?.notes,
+          })),
+          doneTasks: doneTasks.length,
+        })
+
+        const textOutput = `### Project Readiness Verdict for "${projectData.title || targetId}"
+- **Readiness Score**: ${evalRes.readinessScore}% (${evalRes.isReady ? 'Ready for Execution' : 'Needs Planning'})
+- **Execution Path**: \`${evalRes.executionPathStatus}\`
+- **Urgency State**: \`${evalRes.urgencyState}\`
+- **Active Tasks**: ${openTasks.length} open (${doneTasks.length} completed)
+- **Critique**: ${evalRes.critique}
+${evalRes.nextRecommendedTask ? `- **Next Recommended Focus**: "${evalRes.nextRecommendedTask}"` : ''}
+
+${evalRes.isReady ? '✅ This project has a concrete, unbroken path to delivery.' : '⚠️ Execution path is ambiguous or missing breakdown. Recommended: break goals into actionable focus tasks.'}`
+
+        return {
+          isError: false,
+          content: [{ type: 'text', text: textOutput }],
         }
       }
 
