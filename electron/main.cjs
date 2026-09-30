@@ -473,11 +473,11 @@ function applyAlwaysOnTop() {
 let boundsSaveTimer = null
 function scheduleSaveBounds() {
   if (!appSettings.rememberWindowBounds || !mainWindow) return
-  if (mainWindow.isMaximized()) return
+  if (mainWindow.isMaximized() || mainWindow.isFullScreen()) return
   if (boundsSaveTimer) clearTimeout(boundsSaveTimer)
   boundsSaveTimer = setTimeout(() => {
     boundsSaveTimer = null
-    if (!mainWindow || mainWindow.isMaximized()) return
+    if (!mainWindow || mainWindow.isMaximized() || mainWindow.isFullScreen()) return
     const b = mainWindow.getBounds()
     appSettings.windowBounds = { x: b.x, y: b.y, width: b.width, height: b.height }
     saveSettingsToDisk().catch(() => {})
@@ -533,7 +533,7 @@ function createTrayIcon() {
 }
 
 function centerWindow() {
-  if (!mainWindow || mainWindow.isMaximized()) return
+  if (!mainWindow || mainWindow.isMaximized() || mainWindow.isFullScreen()) return
 
   const { width, height } = mainWindow.getBounds()
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
@@ -565,7 +565,7 @@ function animateOpacity(from, to, duration, onDone) {
 
 function showWindow() {
   if (!mainWindow || animating) return
-  if (!mainWindow.isMaximized()) {
+  if (!mainWindow.isMaximized() && !mainWindow.isFullScreen()) {
     centerWindow()
   }
   mainWindow.setOpacity(0)
@@ -614,6 +614,7 @@ function attachBlurHandler() {
 
 function createWindow() {
   const appIconPath = path.join(__dirname, '../electron-assets/icon.png')
+  const isMac = process.platform === 'darwin'
   const opts = {
     title: 'Foqz',
     width: 980,
@@ -621,13 +622,16 @@ function createWindow() {
     minWidth: 480,
     minHeight: 360,
     show: false,
-    frame: false,
+    frame: !isMac ? false : undefined,
+    titleBarStyle: isMac ? 'hidden' : undefined,
+    trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
     transparent: true,
     hasShadow: true,
     roundedCorners: true,
     backgroundColor: '#00000000',
     icon: fsSync.existsSync(appIconPath) ? appIconPath : undefined,
     alwaysOnTop: appSettings.alwaysOnTop,
+    fullscreenable: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -651,6 +655,18 @@ function createWindow() {
   })
   mainWindow.on('unmaximize', () => {
     mainWindow?.webContents?.send('window:maximized-changed', false)
+  })
+  mainWindow.on('enter-full-screen', () => {
+    mainWindow?.webContents?.send('window:maximized-changed', true)
+  })
+  mainWindow.on('leave-full-screen', () => {
+    mainWindow?.webContents?.send('window:maximized-changed', false)
+  })
+  mainWindow.on('close', (event) => {
+    if (!appQuitting) {
+      event.preventDefault()
+      hideWindow()
+    }
   })
 
   const devUrl = process.env.VITE_DEV_SERVER_URL
@@ -797,17 +813,24 @@ ipcMain.handle('app:getVersion', () => {
 
 ipcMain.handle('window:toggleMaximize', () => {
   if (!mainWindow) return false
-  if (mainWindow.isMaximized()) {
-    mainWindow.unmaximize()
-    return false
+  if (process.platform === 'darwin') {
+    const next = !mainWindow.isFullScreen()
+    mainWindow.setFullScreen(next)
+    return next
   } else {
-    mainWindow.maximize()
-    return true
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize()
+      return false
+    } else {
+      mainWindow.maximize()
+      return true
+    }
   }
 })
 
 ipcMain.handle('window:isMaximized', () => {
-  return mainWindow ? mainWindow.isMaximized() : false
+  if (!mainWindow) return false
+  return process.platform === 'darwin' ? mainWindow.isFullScreen() : mainWindow.isMaximized()
 })
 
 ipcMain.on('focus:shutdown-ready', () => {
@@ -992,14 +1015,18 @@ function setupAppMenu() {
       submenu: [
         { role: 'minimize' },
         {
-          label: 'Zoom / Maximize',
-          accelerator: 'CmdOrCtrl+Alt+F',
+          label: isMac ? 'Toggle Full Screen' : 'Zoom / Maximize',
+          accelerator: isMac ? 'Ctrl+Cmd+F' : 'CmdOrCtrl+Alt+F',
           click: () => {
             if (!mainWindow) return
-            if (mainWindow.isMaximized()) {
-              mainWindow.unmaximize()
+            if (isMac) {
+              mainWindow.setFullScreen(!mainWindow.isFullScreen())
             } else {
-              mainWindow.maximize()
+              if (mainWindow.isMaximized()) {
+                mainWindow.unmaximize()
+              } else {
+                mainWindow.maximize()
+              }
             }
           },
         },

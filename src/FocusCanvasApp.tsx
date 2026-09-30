@@ -37,6 +37,13 @@ function FocusCanvasAppInner() {
   >("general");
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
+  const isMac =
+    typeof navigator !== "undefined" &&
+    /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform || navigator.userAgent);
+  const isElectron =
+    typeof window !== "undefined" && Boolean(window.focusStore?.getSettings);
+  const isMacDesktop = isElectron && isMac;
+
   const { settings, update } = useFocusAppSettings();
   const { online } = useOllama();
 
@@ -254,7 +261,11 @@ function FocusCanvasAppInner() {
         }}
       >
         {/* Left section: Brand + Board Menu */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div
+          className={`flex items-center gap-2 shrink-0 transition-all duration-150 ${
+            isMacDesktop && !isWindowMaximized ? "pl-[72px]" : ""
+          }`}
+        >
           <div className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-white mr-1 flex items-center gap-1.5">
             <span className="size-2 rounded-full bg-blue-500 inline-block" />
             <span>Foqz</span>
@@ -328,12 +339,12 @@ function FocusCanvasAppInner() {
             <Settings className="size-3.5" />
           </button>
 
-          {/* Maximize / Restore Window */}
+          {/* Maximize / Full Screen Window */}
           <button
             type="button"
             className="size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-            aria-label={isWindowMaximized ? "Restore window" : "Maximize window"}
-            title={isWindowMaximized ? "Restore window (⌘⌃F)" : "Maximize window (⌘⌃F)"}
+            aria-label={isWindowMaximized ? "Exit full screen" : "Enter full screen"}
+            title={isWindowMaximized ? "Exit full screen (⌘⌃F)" : "Enter full screen (⌘⌃F)"}
             onClick={() => void handleToggleMaximize()}
           >
             {isWindowMaximized ? (
