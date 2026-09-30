@@ -134,6 +134,14 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
     description: "Zoom to fit all nodes on screen",
   },
   {
+    id: "window-maximize",
+    name: "Maximize / Restore Window",
+    keys: ["meta+ctrl+f", "f11"],
+    keyDisplay: "⌘⌃F",
+    category: "Canvas & Navigation",
+    description: "Maximize application window to fill the screen or restore previous size",
+  },
+  {
     id: "canvas-undo",
     name: "Undo",
     keys: ["meta+z", "ctrl+z"],
