@@ -42,6 +42,14 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
     description: "Click to place a text note on canvas",
   },
   {
+    id: "tool-note",
+    name: "Paper Sticky Note",
+    keys: ["s"],
+    keyDisplay: "S",
+    category: "Tools",
+    description: "Click to place a tactile paper note on canvas",
+  },
+  {
     id: "tool-arrow",
     name: "Semantic Arrow / Connector",
     keys: ["a", "4"],

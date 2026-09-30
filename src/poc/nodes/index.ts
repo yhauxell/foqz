@@ -5,6 +5,7 @@ import { BoxNode } from "./BoxNode";
 import { CircleNode } from "./CircleNode";
 import { TextNode } from "./TextNode";
 import { PencilNode } from "./PencilNode";
+import { NoteNode } from "./NoteNode";
 
 export const nodeTypes: NodeTypes = {
   focusTask: FocusTaskNode,
@@ -13,6 +14,7 @@ export const nodeTypes: NodeTypes = {
   circle: CircleNode,
   text: TextNode,
   pencil: PencilNode,
+  note: NoteNode,
 };
 
 export * from "./CircleNode";

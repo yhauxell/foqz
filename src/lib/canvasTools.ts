@@ -133,6 +133,10 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
           type: 'string',
           description: 'Replaces existing notes or markdown content.',
         },
+        text: {
+          type: 'string',
+          description: 'Replaces note text or body content on a note or text node.',
+        },
         appendNotes: {
           type: 'string',
           description: 'Appends markdown text or checklists to existing notes.',
@@ -561,12 +565,26 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
             patch.text = String(args.title)
           }
         }
+        if (args.text !== undefined) {
+          patch.text = String(args.text)
+        }
         if (args.notes !== undefined) {
           patch.notes = String(args.notes)
+          if (targetNode.type === 'note' && args.text === undefined) {
+            patch.text = String(args.notes)
+          }
         }
         if (args.appendNotes !== undefined) {
-          const baseNotes = patch.notes !== undefined ? patch.notes : ((targetNode.data as any)?.notes || '')
-          patch.notes = baseNotes ? `${baseNotes}\n${args.appendNotes}` : String(args.appendNotes)
+          const baseContent = patch.text !== undefined
+            ? patch.text
+            : patch.notes !== undefined
+            ? patch.notes
+            : ((targetNode.data as any)?.text || (targetNode.data as any)?.notes || '')
+          const combined = baseContent ? `${baseContent}\n${args.appendNotes}` : String(args.appendNotes)
+          patch.notes = combined
+          if (targetNode.type === 'note' || targetNode.type === 'text') {
+            patch.text = combined
+          }
         }
         if (args.status !== undefined) {
           patch.status = args.status
@@ -576,6 +594,19 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
         }
         if (args.paper !== undefined) {
           patch.paper = args.paper
+          if (targetNode.type === 'note') {
+            patch.variant =
+              args.paper === 'fog'
+                ? 'blue'
+                : args.paper === 'sage'
+                ? 'green'
+                : args.paper === 'bloom'
+                ? 'rose'
+                : 'yellow'
+          }
+        }
+        if (args.variant !== undefined) {
+          patch.variant = args.variant
         }
         if (args.goal !== undefined) {
           patch.goal = String(args.goal)
