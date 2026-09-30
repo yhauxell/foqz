@@ -166,20 +166,60 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
   },
   {
     serverName: 'foqz',
+    name: 'spawn_notes',
+    description:
+      'Spawn one or more tactile paper sticky notes directly on the spatial canvas board.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        notes: {
+          type: 'array',
+          description: 'Array of sticky note items to create',
+          items: {
+            type: 'object',
+            properties: {
+              title: {
+                type: 'string',
+                description: 'Title of the sticky note',
+              },
+              text: {
+                type: 'string',
+                description: 'Body text content or markdown for the note',
+              },
+              variant: {
+                type: 'string',
+                enum: ['yellow', 'amber', 'cream', 'white', 'blue', 'green', 'rose', 'purple', 'zinc'],
+                description: 'Paper background theme (default: yellow)',
+              },
+            },
+            required: ['text'],
+          },
+        },
+      },
+      required: ['notes'],
+    },
+  },
+  {
+    serverName: 'foqz',
     name: 'expand_task',
     description:
-      'Deconstructs a focus task into subtasks, placing them directly below the parent task and wiring semantic dependency edges. Defaults to the selected task if taskId is omitted.',
+      'Deconstructs a focus task or sticky note into subtasks, placing them directly below the parent item on the canvas and wiring semantic dependency edges. Defaults to the selected node if taskId/nodeId is omitted.',
     inputSchema: {
       type: 'object',
       properties: {
         taskId: {
           type: 'string',
           description:
-            'Optional ID of parent task to expand. Defaults to the currently selected task if omitted.',
+            'Optional ID of parent task or note to expand. Defaults to the currently selected item if omitted.',
+        },
+        nodeId: {
+          type: 'string',
+          description:
+            'Optional ID of parent task or note to expand. Defaults to the currently selected item if omitted.',
         },
         subtasks: {
           type: 'array',
-          description: 'Array of concrete subtask objects to spawn under the parent task.',
+          description: 'Array of concrete subtask objects to spawn under the parent task or note.',
           items: {
             type: 'object',
             properties: {
@@ -335,6 +375,7 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
 
     switch (normalizedName) {
       case 'spawn_tasks': {
+        const liveStore = useFlowCanvasStore.getState()
         let rawTasks = args.tasks
         if (typeof rawTasks === 'string') {
           try {
@@ -344,9 +385,9 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
           }
         }
         if (!Array.isArray(rawTasks)) {
-          if (rawTasks && typeof rawTasks === 'object' && rawTasks.title) {
+          if (rawTasks && typeof rawTasks === 'object' && (rawTasks.title || rawTasks.text)) {
             rawTasks = [rawTasks]
-          } else if (args.title) {
+          } else if (args.title || args.text) {
             rawTasks = [args]
           } else {
             rawTasks = []
@@ -359,17 +400,116 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
           }
         }
 
-        const selectedFrame = nodes.find(
-          (n) => n.id === selectedNodeId && n.type === 'projectFrame'
-        )
+        const selectedNode = liveStore.nodes.find((n) => n.id === (defaultNodeId || liveStore.selectedNodeId))
+        const selectedFrame = selectedNode?.type === 'projectFrame' ? selectedNode : null
+        const parentId = selectedFrame?.id || selectedNode?.parentId
+        const isSelectedNote = selectedNode?.type === 'note'
+        const noteH = Number(selectedNode?.style?.height ?? selectedNode?.height ?? 180)
 
         let count = 0
-        for (const t of rawTasks) {
-          createTask({
-            title: String(t.title || 'Untitled Task'),
-            priority: typeof t.priority === 'number' ? t.priority : 3,
-            notes: t.notes ? String(t.notes) : undefined,
-            parentId: selectedFrame?.id,
+        const createdIds: string[] = []
+        for (let i = 0; i < rawTasks.length; i++) {
+          const t = rawTasks[i]
+          if (t.type === 'note' || (t.text && !t.title)) {
+            const newId = liveStore.createNote({
+              title: t.title || 'Note',
+              text: t.text || t.notes || '',
+              variant: t.variant || t.color || 'yellow',
+              parentId,
+              position: isSelectedNote
+                ? {
+                    x: Math.round(selectedNode.position.x),
+                    y: Math.round(selectedNode.position.y + noteH + 24 + 195 * count),
+                  }
+                : undefined,
+            })
+            createdIds.push(newId)
+          } else {
+            const newId = liveStore.createTask({
+              title: String(t.title || 'Untitled Task'),
+              priority: typeof t.priority === 'number' ? t.priority : 3,
+              notes: t.notes ? String(t.notes) : undefined,
+              parentId,
+              position: isSelectedNote
+                ? {
+                    x: Math.round(selectedNode.position.x),
+                    y: Math.round(selectedNode.position.y + noteH + 24 + 95 * count),
+                  }
+                : undefined,
+            })
+            createdIds.push(newId)
+          }
+          count++
+        }
+
+        if (isSelectedNote && createdIds.length > 0) {
+          const newEdges: Edge[] = createdIds.map((cid) => ({
+            id: `e-${selectedNode.id}-${cid}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            type: 'semantic',
+            source: selectedNode.id,
+            sourceHandle: 'bottom',
+            target: cid,
+            targetHandle: 'top',
+            animated: false,
+            data: { relation: 'depends' },
+          }))
+          liveStore.setEdges((prev) => [...prev, ...newEdges])
+        }
+
+        return {
+          isError: false,
+          content: [
+            {
+              type: 'text',
+              text: `Successfully created ${count} item${count === 1 ? '' : 's'} on the canvas.`,
+            },
+          ],
+        }
+      }
+
+      case 'spawn_notes': {
+        const liveStore = useFlowCanvasStore.getState()
+        let rawNotes = args.notes
+        if (typeof rawNotes === 'string') {
+          try {
+            rawNotes = JSON.parse(rawNotes)
+          } catch {}
+        }
+        if (!Array.isArray(rawNotes)) {
+          if (rawNotes && typeof rawNotes === 'object') {
+            rawNotes = [rawNotes]
+          } else if (args.text || args.title) {
+            rawNotes = [args]
+          } else {
+            rawNotes = []
+          }
+        }
+        if (rawNotes.length === 0) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'No notes provided to spawn.' }],
+          }
+        }
+
+        const selectedNode = liveStore.nodes.find((n) => n.id === (defaultNodeId || liveStore.selectedNodeId))
+        const parentId = selectedNode?.type === 'projectFrame' ? selectedNode.id : selectedNode?.parentId
+
+        let count = 0
+        for (let i = 0; i < rawNotes.length; i++) {
+          const n = rawNotes[i]
+          const notePos = selectedNode
+            ? {
+                x: Math.round(selectedNode.position.x + 260 * (i + 1)),
+                y: Math.round(selectedNode.position.y),
+              }
+            : undefined
+
+          liveStore.createNote({
+            title: n.title || 'Note',
+            text: n.text || n.notes || '',
+            variant: n.variant || n.color || 'yellow',
+            parentId,
+            position: notePos,
           })
           count++
         }
@@ -379,7 +519,7 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
           content: [
             {
               type: 'text',
-              text: `Successfully created ${count} task card${count === 1 ? '' : 's'} on the canvas.`,
+              text: `Successfully created ${count} sticky note${count === 1 ? '' : 's'} on the canvas.`,
             },
           ],
         }
@@ -677,20 +817,26 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
 
         const linkMode = args.linkMode === 'fanout' ? 'fanout' : 'chain'
         const isProjectFrame = parentTask.type === 'projectFrame'
+        const isNote = parentTask.type === 'note'
         const existingTasksCount = liveStore.nodes.filter(
-          (n) => n.parentId === (isProjectFrame ? parentTask.id : parentTask.parentId) && n.type === 'focusTask'
+          (n) => n.parentId === (isProjectFrame ? parentTask.id : parentTask.parentId) && (n.type === 'focusTask' || n.type === 'note')
         ).length
 
         const parentId = isProjectFrame ? parentTask.id : parentTask.parentId
         const parentX = isProjectFrame ? 40 : parentTask.position.x
+        const parentH = Number(parentTask.style?.height ?? parentTask.height ?? (isNote ? 180 : 82))
         const parentY = isProjectFrame ? 100 + existingTasksCount * 94 : parentTask.position.y
 
-        // Auto-expand frame height: if parentId exists, check if parentY + 95 * (rawSubtasks.length + 1) + 40 exceeds containing project frame height
+        // Auto-expand frame height: if parentId exists, check if neededHeight exceeds containing project frame height
         if (parentId) {
           const frameNode = liveStore.nodes.find((n) => n.id === parentId && n.type === 'projectFrame')
           if (frameNode) {
             const currentHeight = Number(frameNode.style?.height ?? frameNode.height ?? 420)
-            const neededHeight = Math.round(parentY + 95 * (rawSubtasks.length + 1) + 40)
+            const neededHeight = Math.round(
+              isProjectFrame
+                ? parentY + 95 * (rawSubtasks.length + 1) + 40
+                : parentY + parentH + 24 + 95 * rawSubtasks.length + 40
+            )
             if (neededHeight > currentHeight) {
               liveStore.setNodes((nodes) =>
                 nodes.map((n) =>
@@ -713,14 +859,18 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
           const priority = typeof st === 'object' && typeof st?.priority === 'number' ? (st.priority as 1 | 2 | 3 | 4) : 3
           const notes = typeof st === 'object' && st?.notes ? String(st.notes) : undefined
 
+          const subtaskY = isProjectFrame
+            ? parentY + 95 * i
+            : parentY + parentH + 24 + 95 * i
+
           const subtaskId = liveStore.createTask({
             title,
             priority,
             notes,
             parentId,
             position: {
-              x: Math.round(isProjectFrame ? parentX : parentX + 28),
-              y: Math.round(isProjectFrame ? parentY + 95 * i : parentY + 95 * (i + 1)),
+              x: Math.round(isProjectFrame ? parentX : parentX + (isNote ? 0 : 28)),
+              y: Math.round(subtaskY),
             },
           })
           createdSubtasks.push({ id: subtaskId, title })

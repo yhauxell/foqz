@@ -181,8 +181,15 @@ export interface FlowCanvasState {
     position?: { x: number; y: number };
   }) => string;
   createNote: (props: {
+    title?: string;
     text: string;
+    variant?: string;
+    color?: string;
+    corner?: string;
+    parentId?: string;
     position?: { x: number; y: number };
+    width?: number;
+    height?: number;
   }) => string;
   sweepToInbox: () => { inboxId: string; sweptCount: number };
   activeFocusNodeId: string | null;
@@ -577,42 +584,57 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
 
       createNote: (props) => {
         const state = get();
-        const id = `text-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const id = `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const maxZ = getMaxZIndex(state.nodes);
         const nextZ = Math.max(100, maxZ + 1);
 
+        let parentId = props.parentId;
         let pos = props.position;
-        let parentId: string | undefined = undefined;
 
-        if (!pos && state.cursorPosition) {
+        if (!parentId && pos) {
+          const frameMatch = findFrameAt(pos, state.nodes);
+          if (frameMatch) {
+            parentId = frameMatch.frame.id;
+            pos = { x: frameMatch.relX, y: frameMatch.relY };
+          }
+        } else if (!parentId && !pos && state.cursorPosition) {
           const frameMatch = findFrameAt(state.cursorPosition, state.nodes);
           if (frameMatch) {
             parentId = frameMatch.frame.id;
             pos = { x: frameMatch.relX, y: frameMatch.relY };
           } else {
             pos = {
-              x: Math.round(state.cursorPosition.x - 70),
-              y: Math.round(state.cursorPosition.y - 20),
+              x: Math.round(state.cursorPosition.x - 120),
+              y: Math.round(state.cursorPosition.y - 90),
             };
           }
         }
 
         if (!pos) {
-          pos = {
-            x: 320 + Math.random() * 40,
-            y: 200 + Math.random() * 40,
-          };
+          const defaultX = parentId ? 40 : 360 + Math.random() * 40;
+          const defaultY = parentId ? 100 : 220 + Math.random() * 40;
+          pos = { x: defaultX, y: defaultY };
         }
+
+        const isNew = !props.text && !props.title;
+        const normalizedVariant = props.variant || (props.color === 'pink' ? 'rose' : props.color) || 'yellow';
 
         const newNode: Node = {
           id,
-          type: "text",
+          type: "note",
           parentId,
           position: pos,
-          style: { zIndex: nextZ },
+          style: { width: props.width || 240, height: props.height || 180, zIndex: nextZ },
           data: {
-            text: props.text,
-            isNew: !props.text,
+            title: props.title || "Note",
+            text: props.text || "",
+            variant: normalizedVariant,
+            color: props.color,
+            corner: props.corner || "folded",
+            foldPosition: "top-right",
+            noise: true,
+            isNew,
+            autoEdit: isNew,
           },
           selected: true,
         };

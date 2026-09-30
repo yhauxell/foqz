@@ -743,13 +743,16 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
         })
         .filter((_, i) => selectedSet === null || selectedSet.has(i))
 
+      const isParentActive = !isCanvasScope && (node?.type === 'focusTask' || node?.type === 'note')
+      const parentH = Number(node?.style?.height ?? node?.height ?? (node?.type === 'note' ? 180 : 82))
+
       for (const act of targetActions) {
         if (act.type === 'task') {
           const taskPos =
-            isTaskActive && node
+            isParentActive && node
               ? {
-                  x: Math.round(node.position.x + 28),
-                  y: Math.round(node.position.y + 95 * (count + 1)),
+                  x: Math.round(node.position.x + (node.type === 'note' ? 0 : 28)),
+                  y: Math.round(node.position.y + parentH + 24 + 95 * count),
                 }
               : undefined
 
@@ -763,6 +766,25 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
 
           createdTaskIds.push(newId)
           count++
+        } else if (act.type === 'note') {
+          const notePos =
+            isParentActive && node
+              ? {
+                  x: Math.round(node.position.x + (node.type === 'note' ? 0 : 28)),
+                  y: Math.round(node.position.y + parentH + 24 + 195 * count),
+                }
+              : undefined
+
+          const newId = store.createNote({
+            title: act.title || 'Note',
+            text: act.text || act.notes || '',
+            variant: (act.color as any) || 'yellow',
+            parentId,
+            position: notePos,
+          })
+
+          createdTaskIds.push(newId)
+          count++
         } else if (act.type === 'project') {
           store.createProject({
             title: act.title || 'Untitled Project',
@@ -772,7 +794,7 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
         }
       }
 
-      if (isTaskActive && node && createdTaskIds.length > 0) {
+      if (isParentActive && node && createdTaskIds.length > 0) {
         const newEdges: Edge[] = []
         if (linkMode === 'fanout') {
           for (const childId of createdTaskIds) {
@@ -819,22 +841,23 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   const handleSpawnSingle = useCallback(
     (action: SpawnableShape, _index: number) => {
       const store = useFlowCanvasStore.getState()
-      const isTaskActive = !isCanvasScope && node?.type === 'focusTask'
+      const isParentActive = !isCanvasScope && (node?.type === 'focusTask' || node?.type === 'note')
+      const parentH = Number(node?.style?.height ?? node?.height ?? (node?.type === 'note' ? 180 : 82))
       const parentId = isCanvasScope ? undefined : (containingProject?.id || node?.parentId)
 
       if (action.type === 'task') {
-        const existingSubtasks =
-          isTaskActive && node
+        const existingChildren =
+          isParentActive && node
             ? store.nodes.filter(
-                (n) => n.parentId === (node.parentId || parentId) && n.type === 'focusTask'
+                (n) => n.parentId === (node.parentId || parentId) && (n.type === 'focusTask' || n.type === 'note')
               ).length
             : 0
 
         const taskPos =
-          isTaskActive && node
+          isParentActive && node
             ? {
-                x: Math.round(node.position.x + 28),
-                y: Math.round(node.position.y + 95 * Math.max(1, existingSubtasks + 1)),
+                x: Math.round(node.position.x + (node.type === 'note' ? 0 : 28)),
+                y: Math.round(node.position.y + parentH + 24 + 95 * existingChildren),
               }
             : undefined
 
@@ -846,7 +869,46 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
           position: taskPos,
         })
 
-        if (isTaskActive && node) {
+        if (isParentActive && node) {
+          store.setEdges((prev) => [
+            ...prev,
+            {
+              id: `e-${node.id}-${newId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              type: 'semantic',
+              source: node.id,
+              sourceHandle: 'bottom',
+              target: newId,
+              targetHandle: 'top',
+              animated: false,
+              data: { relation: 'depends' },
+            },
+          ])
+        }
+      } else if (action.type === 'note') {
+        const existingChildren =
+          isParentActive && node
+            ? store.nodes.filter(
+                (n) => n.parentId === (node.parentId || parentId) && (n.type === 'focusTask' || n.type === 'note')
+              ).length
+            : 0
+
+        const notePos =
+          isParentActive && node
+            ? {
+                x: Math.round(node.position.x + (node.type === 'note' ? 0 : 28)),
+                y: Math.round(node.position.y + parentH + 24 + 195 * existingChildren),
+              }
+            : undefined
+
+        const newId = store.createNote({
+          title: action.title || 'Note',
+          text: action.text || action.notes || '',
+          variant: (action.color as any) || 'yellow',
+          parentId,
+          position: notePos,
+        })
+
+        if (isParentActive && node) {
           store.setEdges((prev) => [
             ...prev,
             {
@@ -923,9 +985,15 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
       }
     } else if (text === '/expand' || text.startsWith('/expand ')) {
       const extra = text.replace(/^\/expand\s*/, '').trim()
-      text = extra
-        ? `Break this task down into subtasks and link them using expand_task: ${extra}`
-        : 'Break this task down into 3 concrete subtasks and link them using expand_task.'
+      if (node?.type === 'note') {
+        text = extra
+          ? `Deconstruct this note into concrete linked subtasks on the canvas using expand_task: ${extra}`
+          : 'Deconstruct this note into 3 concrete linked subtasks on the canvas using expand_task.'
+      } else {
+        text = extra
+          ? `Break this task down into subtasks and link them using expand_task: ${extra}`
+          : 'Break this task down into 3 concrete subtasks and link them using expand_task.'
+      }
     } else if (text === '/done' || text.startsWith('/done ')) {
       text = 'Mark this task as done using update_node.'
     } else if (text.startsWith('/prio')) {
@@ -1074,15 +1142,20 @@ ${noteContent || '(This note is currently empty / blank)'}
 Note Styling: Background Theme: ${noteData.variant || 'yellow'} | Corner: ${noteData.corner || 'folded'}
 ${containingProject ? `Parent Project: "${(containingProject.data as any)?.title}" (id: ${containingProject.id})` : 'No parent project.'}
 
-You have ACTIVE MUTATION TOOLS to directly manipulate this note and the canvas:
+You have ACTIVE MUTATION TOOLS to directly manipulate this note and expand ideas onto the canvas:
+- To expand or deconstruct this note into concrete connected task cards on the canvas, invoke \`expand_task(taskId: "${node.id}", subtasks: [...])\` or output a \`\`\`canvas block. This will automatically position the subtasks directly below the note and wire dependency edges.
+- To convert this note into focus tasks, invoke \`expand_task\` or \`spawn_tasks\`.
+- To create new sticky notes on the canvas, invoke \`spawn_notes(notes: [...])\` or output a \`\`\`canvas block.
 - To update, rewrite, or set the note text and title, invoke \`update_node(nodeId: "${node.id}", text: "...", title: "...")\`.
-- To append thoughts, checklists, or summaries to this note, invoke \`update_node(nodeId: "${node.id}", appendNotes: "...")\` or \`update_node(nodeId: "${node.id}", text: "...")\`.
+- To append thoughts, checklists, or summaries to this note, invoke \`update_node(nodeId: "${node.id}", appendNotes: "...")\`.
 - To change the background color/theme of this note, invoke \`update_node(nodeId: "${node.id}", paper: "cream" | "fog" | "bloom" | "sage")\`.
-- To convert this note's ideas into actionable task cards, invoke \`spawn_tasks\`.
 - To connect this note to other items, invoke \`connect_nodes\`.
 - To remove this note, invoke \`delete_node(nodeId: "${node.id}")\`.
 
-Always ground your answers in the note's text content above. When asked to edit, format, expand, or summarize the note, use \`update_node\` to directly apply the changes!`
+CRITICAL INSTRUCTIONS FOR EXPANDING ONTO CANVAS:
+1. When asked to "expand", "deconstruct", "turn into tasks", or "expand note into the canvas", ALWAYS invoke \`expand_task\` or output a \`\`\`canvas block to place the subtask cards on the canvas directly below this note.
+2. Only use \`update_node\` when specifically asked to edit, append, rewrite, or re-theme the note text itself.
+3. Ground your subtasks and suggestions in the note content above.`
     } else if (node?.type === 'text') {
       const textData = (node.data || {}) as Record<string, any>
       systemPrompt = `${FOQZ_SYSTEM_PROMPT}
@@ -1252,17 +1325,17 @@ Do NOT just passively describe what could be done — when the user asks to modi
         {
           cmd: '/expand',
           label: '/expand',
-          desc: 'Expand on the ideas and brainstorm next steps',
+          desc: 'Break down into 3 concrete linked subtasks on canvas',
           icon: <Zap className="size-3 text-amber-500" />,
-          prompt: 'Expand on the ideas in this note with deep brainstorming and concrete next steps.',
+          prompt: '/expand',
           autoExecute: true,
         },
         {
           cmd: '/convert',
           label: '/convert',
-          desc: 'Convert this note into actionable focus task cards',
+          desc: 'Convert this note into actionable focus task cards on canvas',
           icon: <CheckSquare className="size-3 text-emerald-500" />,
-          prompt: 'Convert the main points in this note into 3 actionable focus tasks using spawn_tasks.',
+          prompt: 'Deconstruct this note into 3 concrete linked subtasks on the canvas using expand_task.',
           autoExecute: true,
         },
         {
