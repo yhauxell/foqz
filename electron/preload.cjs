@@ -9,6 +9,13 @@ contextBridge.exposeInMainWorld('focusStore', {
   exportBoardToFile: (snapshot) => ipcRenderer.invoke('snapshot:exportToFile', snapshot),
   importBoardFromFile: () => ipcRenderer.invoke('snapshot:importFromFile'),
   clearBoardFile: () => ipcRenderer.invoke('snapshot:clear'),
+  toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+  isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  onMaximizedChange: (callback) => {
+    const listener = (_event, isMax) => callback(isMax)
+    ipcRenderer.on('window:maximized-changed', listener)
+    return () => ipcRenderer.removeListener('window:maximized-changed', listener)
+  },
   mcp: {
     getConfig: () => ipcRenderer.invoke('mcp:getConfig'),
     saveConfig: (config) => ipcRenderer.invoke('mcp:saveConfig', config),

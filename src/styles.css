@@ -132,6 +132,11 @@ body,
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #18181b;
+  transition: border-radius 0.15s ease-out;
+}
+
+.app.is-maximized {
+  border-radius: 0;
 }
 
 .dark .app,

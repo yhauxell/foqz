@@ -473,9 +473,11 @@ function applyAlwaysOnTop() {
 let boundsSaveTimer = null
 function scheduleSaveBounds() {
   if (!appSettings.rememberWindowBounds || !mainWindow) return
+  if (mainWindow.isMaximized()) return
   if (boundsSaveTimer) clearTimeout(boundsSaveTimer)
   boundsSaveTimer = setTimeout(() => {
     boundsSaveTimer = null
+    if (!mainWindow || mainWindow.isMaximized()) return
     const b = mainWindow.getBounds()
     appSettings.windowBounds = { x: b.x, y: b.y, width: b.width, height: b.height }
     saveSettingsToDisk().catch(() => {})
@@ -531,7 +533,7 @@ function createTrayIcon() {
 }
 
 function centerWindow() {
-  if (!mainWindow) return
+  if (!mainWindow || mainWindow.isMaximized()) return
 
   const { width, height } = mainWindow.getBounds()
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
@@ -563,7 +565,9 @@ function animateOpacity(from, to, duration, onDone) {
 
 function showWindow() {
   if (!mainWindow || animating) return
-  centerWindow()
+  if (!mainWindow.isMaximized()) {
+    centerWindow()
+  }
   mainWindow.setOpacity(0)
   mainWindow.show()
   mainWindow.focus()
@@ -614,6 +618,8 @@ function createWindow() {
     title: 'Foqz',
     width: 980,
     height: 720,
+    minWidth: 480,
+    minHeight: 360,
     show: false,
     frame: false,
     transparent: true,
@@ -639,6 +645,13 @@ function createWindow() {
   }
 
   mainWindow = new BrowserWindow(opts)
+
+  mainWindow.on('maximize', () => {
+    mainWindow?.webContents?.send('window:maximized-changed', true)
+  })
+  mainWindow.on('unmaximize', () => {
+    mainWindow?.webContents?.send('window:maximized-changed', false)
+  })
 
   const devUrl = process.env.VITE_DEV_SERVER_URL
   if (devUrl) {
@@ -780,6 +793,21 @@ ipcMain.handle('updater:quitAndInstall', () => {
 
 ipcMain.handle('app:getVersion', () => {
   return { version: app.getVersion(), isPackaged: app.isPackaged }
+})
+
+ipcMain.handle('window:toggleMaximize', () => {
+  if (!mainWindow) return false
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize()
+    return false
+  } else {
+    mainWindow.maximize()
+    return true
+  }
+})
+
+ipcMain.handle('window:isMaximized', () => {
+  return mainWindow ? mainWindow.isMaximized() : false
 })
 
 ipcMain.on('focus:shutdown-ready', () => {
@@ -963,7 +991,18 @@ function setupAppMenu() {
       label: 'Window',
       submenu: [
         { role: 'minimize' },
-        { role: 'zoom' },
+        {
+          label: 'Zoom / Maximize',
+          accelerator: 'CmdOrCtrl+Alt+F',
+          click: () => {
+            if (!mainWindow) return
+            if (mainWindow.isMaximized()) {
+              mainWindow.unmaximize()
+            } else {
+              mainWindow.maximize()
+            }
+          },
+        },
         ...(isMac
           ? [
               { type: 'separator' },

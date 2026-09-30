@@ -6,7 +6,7 @@ import { MonoFocusController } from "@/components/MonoFocusController";
 import { GlobalSpotlight } from "@/components/GlobalSpotlight";
 import { ProjectConnectorsModal } from "@/components/ProjectConnectorsModal";
 import { useOllama } from "@/lib/ollama";
-import { Keyboard, Search, Settings, Sparkles } from "lucide-react";
+import { Keyboard, Maximize2, Minimize2, Search, Settings, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ShortcutsModal } from "@/poc/components/ShortcutsModal";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -35,6 +35,7 @@ function FocusCanvasAppInner() {
   const [settingsInitialTab, setSettingsInitialTab] = useState<
     "general" | "workingHours" | "ai" | "mcp" | "data"
   >("general");
+  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
   const { settings, update } = useFocusAppSettings();
   const { online } = useOllama();
@@ -49,6 +50,41 @@ function FocusCanvasAppInner() {
     document.documentElement.classList.toggle("dark", isDark);
     document.body.classList.toggle("dark", isDark);
   }, [isDark]);
+
+  useEffect(() => {
+    if (window.focusStore?.isMaximized) {
+      window.focusStore.isMaximized().then(setIsWindowMaximized).catch(() => {});
+    }
+    if (window.focusStore?.onMaximizedChange) {
+      const unsub = window.focusStore.onMaximizedChange((max) => {
+        setIsWindowMaximized(max);
+      });
+      return () => unsub();
+    } else if (typeof document !== "undefined") {
+      const onFullscreenChange = () => {
+        setIsWindowMaximized(Boolean(document.fullscreenElement));
+      };
+      document.addEventListener("fullscreenchange", onFullscreenChange);
+      return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+    }
+  }, []);
+
+  const handleToggleMaximize = useCallback(async () => {
+    if (window.focusStore?.toggleMaximize) {
+      try {
+        const next = await window.focusStore.toggleMaximize();
+        setIsWindowMaximized(next);
+      } catch (e) {
+        console.error("Failed to toggle maximize:", e);
+      }
+    } else if (typeof document !== "undefined") {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      } else {
+        document.exitFullscreen?.().catch(() => {});
+      }
+    }
+  }, []);
 
   const handleOpenSettings = useCallback(
     (initialTab: "general" | "workingHours" | "ai" | "mcp" | "data" = "general") => {
@@ -192,6 +228,13 @@ function FocusCanvasAppInner() {
         );
         return;
       }
+
+      // Maximize / Restore Window (Cmd+Ctrl+F or F11)
+      if ((mod && e.ctrlKey && e.key.toLowerCase() === "f") || e.key === "F11") {
+        e.preventDefault();
+        void handleToggleMaximize();
+        return;
+      }
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -199,9 +242,17 @@ function FocusCanvasAppInner() {
   }, []);
 
   return (
-    <div className="app bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+    <div className={`app bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 ${isWindowMaximized ? "is-maximized" : ""}`}>
       {/* Vercel / shadcn Whisper Topbar */}
-      <header className="topbar h-12 px-4 flex items-center justify-between select-none z-50 border-b border-zinc-200/60 dark:border-zinc-800/60">
+      <header
+        className="topbar h-12 px-4 flex items-center justify-between select-none z-50 border-b border-zinc-200/60 dark:border-zinc-800/60"
+        onDoubleClick={(e) => {
+          const target = e.target as HTMLElement;
+          if (target && !target.closest("button, input, select, textarea, [role='button']")) {
+            void handleToggleMaximize();
+          }
+        }}
+      >
         {/* Left section: Brand + Board Menu */}
         <div className="flex items-center gap-2 shrink-0">
           <div className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-white mr-1 flex items-center gap-1.5">
@@ -231,7 +282,7 @@ function FocusCanvasAppInner() {
           </button>
         </div>
 
-        {/* Right section: Assistant + Shortcuts + Settings */}
+        {/* Right section: Assistant + Shortcuts + Settings + Window Maximize */}
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Space-Aware Assistant Trigger (Solid Black in Light Mode, White in Dark Mode) */}
           <button
@@ -275,6 +326,21 @@ function FocusCanvasAppInner() {
             onClick={() => handleOpenSettings("general")}
           >
             <Settings className="size-3.5" />
+          </button>
+
+          {/* Maximize / Restore Window */}
+          <button
+            type="button"
+            className="size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+            aria-label={isWindowMaximized ? "Restore window" : "Maximize window"}
+            title={isWindowMaximized ? "Restore window (⌘⌃F)" : "Maximize window (⌘⌃F)"}
+            onClick={() => void handleToggleMaximize()}
+          >
+            {isWindowMaximized ? (
+              <Minimize2 className="size-3.5" />
+            ) : (
+              <Maximize2 className="size-3.5" />
+            )}
           </button>
         </div>
       </header>

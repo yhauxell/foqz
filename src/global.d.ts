@@ -28,6 +28,9 @@ declare global {
         | { ok: false; error?: string; canceled?: boolean }
       >;
       clearBoardFile?: () => Promise<{ ok: boolean; error?: string }>;
+      toggleMaximize?: () => Promise<boolean>;
+      isMaximized?: () => Promise<boolean>;
+      onMaximizedChange?: (callback: (isMaximized: boolean) => void) => () => void;
       /** MCP client manager & transport supervisor API */
       mcp?: McpStoreApi;
       /** TypeSafe Jev System One IPC bridge */
