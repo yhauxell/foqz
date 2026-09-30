@@ -98,21 +98,23 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   const w = Math.max(200, width);
   const h = Math.max(76, height);
 
-  const activeFocusNodeId = useFlowCanvasStore((s) => s.activeFocusNodeId);
-  const isTimerRunning = useFlowCanvasStore((s) => s.isTimerRunning);
-  const timerSecondsRemaining = useFlowCanvasStore((s) => s.timerSecondsRemaining);
+  const isFocusTarget = useFlowCanvasStore((s) => s.activeFocusNodeId === id);
+  const isTimerRunning = useFlowCanvasStore((s) => (s.activeFocusNodeId === id ? s.isTimerRunning : false));
+  const timerSecondsRemaining = useFlowCanvasStore((s) =>
+    s.activeFocusNodeId === id ? s.timerSecondsRemaining : 0
+  );
   const setActiveFocusNodeId = useFlowCanvasStore((s) => s.setActiveFocusNodeId);
   const setIsTimerRunning = useFlowCanvasStore((s) => s.setIsTimerRunning);
   const setTimerSecondsRemaining = useFlowCanvasStore((s) => s.setTimerSecondsRemaining);
 
-  const isFocusTarget = id === activeFocusNodeId;
   const isDoing = data.status === "doing";
 
   const formattedTimer = useMemo(() => {
+    if (!isFocusTarget) return "0:00";
     const mins = Math.floor(timerSecondsRemaining / 60);
     const secs = timerSecondsRemaining % 60;
     return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
-  }, [timerSecondsRemaining]);
+  }, [isFocusTarget, timerSecondsRemaining]);
 
   const toggleTimer = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -196,7 +198,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   useEffect(() => {
     if (!svgRef.current) return;
     const svg = svgRef.current;
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    const fragment = document.createDocumentFragment();
 
     const rc = rough.svg(svg);
     const borderStyle = data.borderStyle || "solid";
@@ -219,7 +221,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
       fill: activeTheme.fill,
       fillStyle: "solid",
     });
-    svg.appendChild(cardRect);
+    fragment.appendChild(cardRect);
 
     // 2. Hand-drawn Left Priority Accent Tab
     const barHeight = Math.min(32, Math.max(20, h - 24));
@@ -231,7 +233,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
       fill: priorityHex,
       fillStyle: "solid",
     });
-    svg.appendChild(priorityBar);
+    fragment.appendChild(priorityBar);
 
     // 3. Hand-drawn Checkbox outline
     const checkOutline = rc.rectangle(16, 12, 16, 16, {
@@ -245,7 +247,8 @@ export const FocusTaskNode = memo(function FocusTaskNode({
         ? (isDark ? "rgba(74, 222, 128, 0.2)" : "rgba(22, 163, 74, 0.15)")
         : (isDark ? "rgba(255, 255, 255, 0.04)" : "transparent"),
     });
-    svg.appendChild(checkOutline);
+    fragment.appendChild(checkOutline);
+    svg.replaceChildren(fragment);
   }, [id, w, h, isDone, priorityHex, activeTheme, data.borderStyle, isDark]);
 
   const toggleStatus = (e: React.MouseEvent) => {
