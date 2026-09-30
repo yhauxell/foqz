@@ -120,6 +120,10 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
       const paper = (selectedNode.data?.paper as string) || "cream";
       return COLOR_PRESETS.find((c) => c.paper === paper)?.hex || "#f59e0b";
     }
+    if (selectedNode.type === "note") {
+      const variant = (selectedNode.data?.variant as string) || "yellow";
+      return COLOR_PRESETS.find((c) => c.accent === variant)?.hex || (selectedNode.data?.color as string) || "#f59e0b";
+    }
     return (selectedNode.data?.color as string) || "#71717a";
   })();
 
@@ -136,6 +140,17 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
         }
         if (node.type === "focusTask") {
           return { ...node, data: { ...node.data, paper: color.paper as TaskPaperTheme } };
+        }
+        if (node.type === "note") {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              variant: color.accent,
+              color: undefined,
+              bg: undefined,
+            },
+          };
         }
         return { ...node, data: { ...node.data, color: color.hex } };
       })

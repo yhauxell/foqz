@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   Sparkles,
   ArrowUp,
+  Square,
   X,
   Target,
   Zap,
@@ -290,6 +291,16 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   const [expandedToolIds, setExpandedToolIds] = useState<Set<string>>(new Set())
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  const handleStop = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    setIsStreaming(false)
+    setActiveTool(null)
+  }, [])
   const { selectedModel, setSelectedModel, online, models } = useOllama()
   const appSettingsCtx = useFocusAppSettingsOptional()
   const settings = appSettingsCtx?.settings || getCachedAppSettings()
@@ -401,18 +412,32 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     setIsMaximized(false)
   }, [nodeId])
 
-  // Close on Escape key
+  // Stop agent on Escape or close chat
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
         e.stopPropagation()
-        onClose()
+        if (abortControllerRef.current) {
+          handleStop()
+        } else {
+          onClose()
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown, { capture: true })
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
-  }, [onClose])
+  }, [onClose, handleStop])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
+    }
+  }, [])
 
   // Get reactive node from flowCanvasStore (or null for board root scope)
   const isCanvasScope = !nodeId || nodeId === '__canvas__'
@@ -465,6 +490,11 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     if (isCanvasScope) return 'Board Strategist'
     if (!node) return ''
     const d = (node.data || {}) as Record<string, any>
+    if (node.type === 'note') {
+      const title = d.title || 'Note'
+      const snippet = d.text ? ` — ${d.text.slice(0, 30)}` : ''
+      return `${title}${snippet}`
+    }
     return d.title || d.label || d.text || `[${node.type}]`
   }, [node, isCanvasScope])
 
@@ -869,22 +899,21 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   )
 
   const handleClearChat = useCallback(() => {
-    if (isStreaming) {
-      setIsStreaming(false)
-      setStreamingContent('')
-      setActiveTool(null)
-    }
+    handleStop()
     saveMessages([])
     if (isCanvasScope) {
       try {
         localStorage.removeItem('foqz_board_ai_messages')
       } catch {}
     }
-  }, [isStreaming, saveMessages, isCanvasScope])
+  }, [handleStop, saveMessages, isCanvasScope])
 
   const handleSend = async (overridePrompt?: string) => {
     let text = (overridePrompt || prompt).trim()
     if (!text || (!node && !isCanvasScope) || isStreaming) return
+
+    // Stop any existing stream
+    handleStop()
 
     if (text === '/eval' || text === '/evaluate' || text.startsWith('/eval ') || text.startsWith('/evaluate ')) {
       if (node?.type === 'projectFrame') {
@@ -912,8 +941,8 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     } else if (text.startsWith('/rename')) {
       const newTitle = text.replace(/^\/rename\s*/, '').trim()
       text = newTitle
-        ? `Update this task title to "${newTitle}" using update_node.`
-        : 'Update this task title using update_node.'
+        ? `Update this ${node?.type === 'note' ? 'note' : node?.type === 'projectFrame' ? 'project' : 'task'} title to "${newTitle}" using update_node.`
+        : `Update this ${node?.type || 'card'} title using update_node.`
     }
 
     const userMsg: ElementAiMessage = {
@@ -930,6 +959,9 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     setStreamingContent('')
     setActiveTool(null)
 
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     let currentTools = mcpTools
     if (typeof window !== 'undefined' && window.focusStore?.mcp?.listTools) {
       try {
@@ -945,15 +977,20 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     const localToolExecutor = createFlowCanvasToolExecutor(node?.id)
 
     // Build rich selectedNodeContext
+    const nodeData = (node?.data || {}) as Record<string, any>
     const selectedNodeContext = node
       ? {
           id: node.id,
           type: node.type,
-          title: currentShapeText,
-          status: (node.data as any)?.status || 'open',
-          priority: (node.data as any)?.priority ?? 3,
-          notes: (node.data as any)?.notes || '',
-          paper: (node.data as any)?.paper || 'cream',
+          title: nodeData.title || currentShapeText,
+          text: nodeData.text || '',
+          notes: nodeData.notes || nodeData.text || '',
+          content: nodeData.text || nodeData.notes || '',
+          status: nodeData.status || 'open',
+          priority: nodeData.priority ?? 3,
+          paper: nodeData.paper || nodeData.variant || 'cream',
+          variant: nodeData.variant || 'yellow',
+          corner: nodeData.corner || 'folded',
           parentId: node.parentId || null,
           parentProject: containingProject
             ? {
@@ -1022,6 +1059,37 @@ Your job is technical execution planning:
 1. Deconstruct milestone goals into concrete, bite-sized focus tasks with clear acceptance criteria.
 2. Maintain clean causality and dependencies between tasks.
 3. Directly apply project updates or create connected tasks using your tools rather than just describing them.`
+    } else if (node?.type === 'note') {
+      const noteData = (node.data || {}) as Record<string, any>
+      const noteContent = noteData.text || noteData.notes || ''
+      const noteTitle = noteData.title || 'Note'
+      systemPrompt = `${FOQZ_SYSTEM_PROMPT}
+
+You are an expert AI Thought Partner and Creative Collaborator chatting directly with this Paper Sticky Note (id: ${node.id}).
+Note Title: "${noteTitle}"
+Current Note Content:
+"""
+${noteContent || '(This note is currently empty / blank)'}
+"""
+Note Styling: Background Theme: ${noteData.variant || 'yellow'} | Corner: ${noteData.corner || 'folded'}
+${containingProject ? `Parent Project: "${(containingProject.data as any)?.title}" (id: ${containingProject.id})` : 'No parent project.'}
+
+You have ACTIVE MUTATION TOOLS to directly manipulate this note and the canvas:
+- To update, rewrite, or set the note text and title, invoke \`update_node(nodeId: "${node.id}", text: "...", title: "...")\`.
+- To append thoughts, checklists, or summaries to this note, invoke \`update_node(nodeId: "${node.id}", appendNotes: "...")\` or \`update_node(nodeId: "${node.id}", text: "...")\`.
+- To change the background color/theme of this note, invoke \`update_node(nodeId: "${node.id}", paper: "cream" | "fog" | "bloom" | "sage")\`.
+- To convert this note's ideas into actionable task cards, invoke \`spawn_tasks\`.
+- To connect this note to other items, invoke \`connect_nodes\`.
+- To remove this note, invoke \`delete_node(nodeId: "${node.id}")\`.
+
+Always ground your answers in the note's text content above. When asked to edit, format, expand, or summarize the note, use \`update_node\` to directly apply the changes!`
+    } else if (node?.type === 'text') {
+      const textData = (node.data || {}) as Record<string, any>
+      systemPrompt = `${FOQZ_SYSTEM_PROMPT}
+
+You are an AI Collaborator focused on this text element: "${textData.text || 'Untitled'}" (id: ${node.id}).
+Content: "${textData.text || '(empty)'}"
+To update this text, invoke \`update_node(nodeId: "${node.id}", title: "...")\` or \`update_node(nodeId: "${node.id}", text: "...")\`.`
     } else {
       const taskData = (node?.data || {}) as Record<string, any>
       systemPrompt = `${FOQZ_SYSTEM_PROMPT}
@@ -1078,6 +1146,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
           executedToolsList.push(evt)
         },
         localToolExecutor,
+        signal: controller.signal,
       })
 
       const finalContent = assistantText || result.finalText
@@ -1091,17 +1160,39 @@ Do NOT just passively describe what could be done — when the user asks to modi
 
       saveMessages([...updated, assistantMsg])
     } catch (err: any) {
-      const errorMsg: ElementAiMessage = {
-        id: `err_${Date.now()}`,
-        role: 'assistant',
-        content: `Error: ${err.message || 'Failed to complete AI request.'}`,
-        timestamp: Date.now(),
+      const isAborted =
+        err?.name === 'AbortError' ||
+        err?.message?.toLowerCase().includes('aborted') ||
+        controller.signal.aborted
+
+      if (isAborted) {
+        const partialText = assistantText.trim()
+        if (partialText || executedToolsList.length > 0) {
+          const stoppedMsg: ElementAiMessage = {
+            id: `asst_${Date.now()}`,
+            role: 'assistant',
+            content: partialText
+              ? `${partialText}\n\n*(Execution stopped)*`
+              : '*(Execution stopped by user)*',
+            timestamp: Date.now(),
+            executedTools: executedToolsList,
+          }
+          saveMessages([...updated, stoppedMsg])
+        }
+      } else {
+        const errorMsg: ElementAiMessage = {
+          id: `err_${Date.now()}`,
+          role: 'assistant',
+          content: `Error: ${err.message || 'Failed to complete AI request.'}`,
+          timestamp: Date.now(),
+        }
+        saveMessages([...updated, errorMsg])
       }
-      saveMessages([...updated, errorMsg])
     } finally {
       setIsStreaming(false)
       setStreamingContent('')
       setActiveTool(null)
+      abortControllerRef.current = null
     }
   }
 
@@ -1116,6 +1207,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
 
   const isTask = node?.type === 'focusTask'
   const isProject = node?.type === 'projectFrame'
+  const isNote = node?.type === 'note'
 
   const slashCommands = useMemo(() => {
     if (isCanvasScope) {
@@ -1143,6 +1235,43 @@ Do NOT just passively describe what could be done — when the user asks to modi
           icon: <Lock className="size-3 text-blue-500" />,
           prompt: '/focus',
           autoExecute: true,
+        },
+      ]
+    }
+
+    if (isNote) {
+      return [
+        {
+          cmd: '/summarize',
+          label: '/summarize',
+          desc: 'Summarize and polish this note into bullet points',
+          icon: <Sparkles className="size-3 text-amber-500" />,
+          prompt: 'Summarize and polish this note into clean bullet points.',
+          autoExecute: true,
+        },
+        {
+          cmd: '/expand',
+          label: '/expand',
+          desc: 'Expand on the ideas and brainstorm next steps',
+          icon: <Zap className="size-3 text-amber-500" />,
+          prompt: 'Expand on the ideas in this note with deep brainstorming and concrete next steps.',
+          autoExecute: true,
+        },
+        {
+          cmd: '/convert',
+          label: '/convert',
+          desc: 'Convert this note into actionable focus task cards',
+          icon: <CheckSquare className="size-3 text-emerald-500" />,
+          prompt: 'Convert the main points in this note into 3 actionable focus tasks using spawn_tasks.',
+          autoExecute: true,
+        },
+        {
+          cmd: '/rename',
+          label: '/rename <title>',
+          desc: 'Update this note title',
+          icon: <Edit3 className="size-3 text-zinc-500" />,
+          prompt: '/rename ',
+          autoExecute: false,
         },
       ]
     }
@@ -1250,7 +1379,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
         autoExecute: false,
       },
     ]
-  }, [isCanvasScope, isTask])
+  }, [isCanvasScope, isTask, isNote])
 
   const showSlashMenu = prompt.startsWith('/') && !prompt.includes(' ') && !prompt.includes('\n')
   const matchingCommands = useMemo(() => {
@@ -1524,6 +1653,18 @@ Do NOT just passively describe what could be done — when the user asks to modi
             </PopoverContent>
           </Popover>
 
+          {isStreaming && (
+            <button
+              type="button"
+              onClick={handleStop}
+              title="Stop agent execution (Esc)"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/50 transition-colors cursor-pointer active:scale-95 shrink-0"
+            >
+              <Square className="size-2.5 fill-current" />
+              <span>Stop</span>
+            </button>
+          )}
+
           {messages.length > 0 && (
             <button
               type="button"
@@ -1546,7 +1687,10 @@ Do NOT just passively describe what could be done — when the user asks to modi
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              handleStop()
+              onClose()
+            }}
             title="Close chat (Esc)"
             className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors cursor-pointer"
           >
@@ -1678,7 +1822,33 @@ Do NOT just passively describe what could be done — when the user asks to modi
                   </button>
                 </>
               )}
-              {!isTask && !isProject && (
+              {isNote && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleSend('/summarize')}
+                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Sparkles className="size-3 text-amber-500" />
+                    <span>✨ Summarize & Polish</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSend('Expand on the ideas in this note with deep brainstorming and concrete next steps.')}
+                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
+                  >
+                    💡 Brainstorm & Expand
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSend('Convert the main points in this note into 3 actionable focus tasks using spawn_tasks.')}
+                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
+                  >
+                    ⚡ Convert to Tasks
+                  </button>
+                </>
+              )}
+              {!isTask && !isProject && !isNote && (
                 <>
                   <button
                     type="button"
@@ -1832,10 +2002,32 @@ Do NOT just passively describe what could be done — when the user asks to modi
           </div>
         )}
 
-        {activeTool && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 text-[11px] font-mono w-fit animate-pulse border border-blue-200/60 dark:border-blue-800/60">
-            <Wrench className="size-3 animate-spin" />
-            <span>Calling tool: {activeTool}</span>
+        {isStreaming && (
+          <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 text-xs border border-blue-200/60 dark:border-blue-800/60 animate-in fade-in duration-150 shadow-2xs">
+            <div className="flex items-center gap-2 min-w-0">
+              {activeTool ? (
+                <>
+                  <Wrench className="size-3.5 animate-spin shrink-0 text-blue-500" />
+                  <span className="font-mono text-[11px] truncate">Calling tool: {activeTool}...</span>
+                </>
+              ) : (
+                <>
+                  <span className="size-2 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                  <span className="text-[11px] truncate">
+                    Thinking with {activeModelLabel}...
+                  </span>
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleStop}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/50 transition-colors cursor-pointer shrink-0 active:scale-95"
+              title="Stop agent execution (Esc)"
+            >
+              <Square className="size-2.5 fill-current" />
+              <span>Stop</span>
+            </button>
           </div>
         )}
       </div>
@@ -1989,6 +2181,14 @@ Do NOT just passively describe what could be done — when the user asks to modi
                 }
               }
 
+              if (e.key === 'Escape') {
+                if (isStreaming) {
+                  e.preventDefault()
+                  handleStop()
+                  return
+                }
+              }
+
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 handleSend()
@@ -1998,14 +2198,28 @@ Do NOT just passively describe what could be done — when the user asks to modi
             rows={1}
             className="flex-1 bg-transparent border-0 outline-none resize-none text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 leading-relaxed font-sans max-h-24"
           />
-          <button
-            type="button"
-            onClick={() => handleSend()}
-            disabled={!prompt.trim() || isStreaming}
-            className="size-7 rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white disabled:opacity-30 disabled:hover:bg-blue-600 flex items-center justify-center transition-all cursor-pointer shrink-0"
-          >
-            <ArrowUp className="size-3.5 stroke-[2.5]" />
-          </button>
+          {isStreaming ? (
+            <button
+              type="button"
+              onClick={handleStop}
+              title="Stop agent execution (Esc)"
+              aria-label="Stop agent execution"
+              className="size-7 rounded-full bg-zinc-900 hover:bg-rose-600 active:scale-95 text-white dark:bg-zinc-100 dark:hover:bg-rose-600 dark:text-zinc-900 dark:hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-xs"
+            >
+              <Square className="size-3 fill-current" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleSend()}
+              disabled={!prompt.trim()}
+              title="Send message (Enter)"
+              aria-label="Send message"
+              className="size-7 rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white disabled:opacity-30 disabled:hover:bg-blue-600 flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0"
+            >
+              <ArrowUp className="size-3.5 stroke-[2.5]" />
+            </button>
+          )}
         </div>
       </div>
 

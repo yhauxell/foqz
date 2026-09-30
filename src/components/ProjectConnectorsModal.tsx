@@ -25,12 +25,14 @@ import {
   type ProjectAccent,
 } from "@/types/canvas";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
+import { discoverRepoAgentFiles, type RepoDiscoveryResult } from "@/lib/githubAgentSync";
+import { parseAgentMarkdown } from "@/lib/agentProfiles";
 
 interface ProjectConnectorsModalProps {
   editor?: any;
   shapeId: string | null;
   onClose: () => void;
-  initialTab?: "connectors" | "context";
+  initialTab?: "connectors" | "context" | "agent";
 }
 
 export function normalizeGithubRepo(input: string): string {
@@ -237,7 +239,7 @@ export function ProjectConnectorsModal({
     return null;
   }, [shapeId, flowNode]);
 
-  const [activeTab, setActiveTab] = useState<"connectors" | "context">(initialTab);
+  const [activeTab, setActiveTab] = useState<"connectors" | "context" | "agent">(initialTab);
   const [accentDraft, setAccentDraft] = useState<ProjectAccent>("blue");
   const [githubRepoDraft, setGithubRepoDraft] = useState("");
   const [sentryDraft, setSentryDraft] = useState("");
@@ -253,6 +255,12 @@ export function ProjectConnectorsModal({
   const [lastSyncedAtDraft, setLastSyncedAtDraft] = useState<number | undefined>(undefined);
   const [isSyncingReadme, setIsSyncingReadme] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Agent & Skills state
+  const [customAgentDraft, setCustomAgentDraft] = useState("");
+  const [isDiscoveringGithub, setIsDiscoveringGithub] = useState(false);
+  const [discoveryResult, setDiscoveryResult] = useState<RepoDiscoveryResult | null>(null);
+  const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
 
   // Load shape state into drafts
   useEffect(() => {
@@ -271,6 +279,8 @@ export function ProjectConnectorsModal({
       setProjectContextDraft(currentContext);
     }
     setLastSyncedAtDraft(shape.props.readmeCachedAt);
+    const rawAgent = (flowNode?.data as any)?.customAgent || "";
+    setCustomAgentDraft(typeof rawAgent === "string" ? rawAgent : "");
 
     // Check available MCP servers
     if (typeof window !== "undefined" && window.focusStore?.mcp?.listServers) {
@@ -371,6 +381,7 @@ export function ProjectConnectorsModal({
       connectors: connectorsData,
       projectContext: projectContextData,
       readmeCachedAt: readmeCachedAtData,
+      customAgent: customAgentDraft.trim() || undefined,
     });
     onClose();
   };
@@ -531,6 +542,23 @@ export function ProjectConnectorsModal({
               <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
                 {configuredConnectorsCount}
               </span>
+            )}
+          </button>
+
+          <span className="text-zinc-300 dark:text-zinc-700 mx-2 select-none">|</span>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("agent")}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer ${
+              activeTab === "agent"
+                ? "border-blue-600 text-blue-600 dark:text-blue-400 font-semibold"
+                : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+            }`}
+          >
+            <span>Agent Persona</span>
+            {customAgentDraft.trim() && (
+              <span className="size-1.5 rounded-full bg-indigo-500" />
             )}
           </button>
         </div>
@@ -927,6 +955,69 @@ export function ProjectConnectorsModal({
               </div>
             </div>
           )}
+
+          {activeTab === "agent" ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                    Project AGENT.md Persona Profile
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Override default Copilot with a project-specific AGENT.md profile.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const repo = githubRepoDraft.trim() || shape.props.connectors?.githubRepo || "";
+                    if (!repo) {
+                      alert("Please connect a GitHub repository in the Connectors tab first.");
+                      return;
+                    }
+                    setIsDiscoveringGithub(true);
+                    try {
+                      const result = await discoverRepoAgentFiles(repo);
+                      setDiscoveryResult(result);
+                      setShowDiscoveryModal(true);
+                    } catch (e: any) {
+                      alert(`GitHub Discovery error: ${e.message}`);
+                    } finally {
+                      setIsDiscoveringGithub(false);
+                    }
+                  }}
+                  disabled={isDiscoveringGithub}
+                  className="px-3 py-1.5 rounded-lg border border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/50 text-xs font-medium flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isDiscoveringGithub ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                  <span>Sync / Import from GitHub</span>
+                </button>
+              </div>
+
+              {/* Textarea Editor */}
+              <div className="space-y-1.5">
+                <textarea
+                  value={customAgentDraft}
+                  onChange={(e) => setCustomAgentDraft(e.target.value)}
+                  placeholder={`# Sprint Planner\n## Role\nAgile sprint coach & project strategist for ${projectTitle}\n\n## Instructions\nYou break down milestones into sequential, bite-sized tasks.\nFocus on deliverables, acceptance criteria, and technical risks.`}
+                  rows={10}
+                  className="w-full p-3 rounded-xl bg-zinc-50/50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all resize-y leading-relaxed"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-900/40 flex items-start gap-2.5 text-[11px] text-indigo-800 dark:text-indigo-300">
+                <Sparkles className="size-3.5 shrink-0 mt-0.5 text-indigo-600 dark:text-indigo-400" />
+                <span>
+                  <strong>Automatic Context Switching:</strong> Selecting cards or focusing inside this
+                  Project Frame automatically activates this custom AGENT.md profile in the Copilot.
+                </span>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {/* Modal Footer */}
@@ -953,6 +1044,72 @@ export function ProjectConnectorsModal({
           </div>
         </div>
       </div>
+
+      {showDiscoveryModal && discoveryResult && (
+        <div className="fixed inset-0 z-[8000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl p-5 space-y-4 font-sans">
+            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-2">
+              <div className="flex items-center gap-2 font-semibold text-sm">
+                <FolderGit2 className="size-4 text-indigo-500" />
+                <span>Discovered Agent Files in GitHub</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDiscoveryModal(false)}
+                className="text-zinc-400 hover:text-zinc-600 cursor-pointer"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            {discoveryResult.agents.length === 0 && discoveryResult.skills.length === 0 ? (
+              <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 text-xs text-amber-800 dark:text-amber-300 text-center">
+                No <code>AGENT.md</code> or <code>SKILL.md</code> files found in repository root, <code>.foqz/</code>, or <code>.agents/</code>.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-60 overflow-y-auto">
+                {discoveryResult.agents.map((agentFile) => (
+                  <div
+                    key={agentFile.path}
+                    className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/50 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                        <span>{agentFile.profile.avatar || "🤖"}</span>
+                        <span>{agentFile.profile.name}</span>
+                        <span className="font-mono text-[10px] text-zinc-400">({agentFile.path})</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomAgentDraft(agentFile.content);
+                          setShowDiscoveryModal(false);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 cursor-pointer"
+                      >
+                        Import Profile
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 line-clamp-2">
+                      {agentFile.profile.instructions}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDiscoveryModal(false)}
+                className="px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

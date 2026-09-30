@@ -64,6 +64,10 @@ export function getFlowCanvasContext(
     } else if (n.type === "projectFrame") {
       label = d.title || "Untitled Project";
       fullText = `[Project Frame] "${label}" (Goal: "${d.goal || ""}")`;
+    } else if (n.type === "note") {
+      label = d.title || (d.text ? d.text.slice(0, 40) : "Sticky Note");
+      const content = d.text || d.notes || "";
+      fullText = `[Paper Sticky Note] "${d.title || "Note"}" (Theme: ${d.variant || "yellow"}${content ? `, Text: "${content}"` : ", Empty"})`;
     } else if (n.type === "box") {
       label = d.label || "Sketch Box";
       fullText = `[Sketch Box] "${label}"`;
@@ -138,6 +142,10 @@ export function getFlowCanvasContext(
     } else if (n.type === "projectFrame") {
       label = d.title || "Untitled Project";
       fullText = `[Project Frame] "${label}" (Goal: "${d.goal || ""}")`;
+    } else if (n.type === "note") {
+      label = d.title || (d.text ? d.text.slice(0, 40) : "Sticky Note");
+      const content = d.text || d.notes || "";
+      fullText = `[Paper Sticky Note] "${d.title || "Note"}" (Theme: ${d.variant || "yellow"}${content ? `, Text: "${content}"` : ", Empty"})`;
     } else if (n.type === "box") {
       label = d.label || "Sketch Box";
       fullText = `[Sketch Box] "${label}"`;
@@ -216,7 +224,11 @@ export function getFlowProjectFrameContents(
 
     if (isDirectChild || isContained) {
       const d = n.data || {};
-      const text = d.title || d.label || d.text || `[${n.type}]`;
+      let text = d.title || d.label || d.text || `[${n.type}]`;
+      if (n.type === "note") {
+        const body = d.text || d.notes || "";
+        text = d.title ? `${d.title}${body ? `: "${body}"` : ""}` : (body ? `"${body}"` : "Sticky Note");
+      }
       contained.push({
         id: n.id,
         type: n.type,

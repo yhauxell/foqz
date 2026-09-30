@@ -17,6 +17,7 @@ import {
   Zap,
 } from "lucide-react";
 import { McpSettingsTab } from "@/components/McpSettingsTab";
+import { AgentsSettingsTab } from "@/components/AgentsSettingsTab";
 import {
   OPENAI_DEFAULT_MODELS,
   GEMINI_DEFAULT_MODELS,
@@ -174,7 +175,7 @@ function parsePresetsText(s: string): number[] {
     .filter((n) => Number.isFinite(n) && n >= 1 && n <= 480);
 }
 
-type SettingsTab = "general" | "workingHours" | "ai" | "mcp" | "data";
+type SettingsTab = "general" | "workingHours" | "ai" | "mcp" | "agents" | "data";
 
 function formatTime(min: number): string {
   const m = Math.min(24 * 60, Math.max(0, Math.round(min)));
@@ -640,6 +641,18 @@ export function FocusSettings({
               onClick={() => setTab("mcp")}
             >
               MCP Servers
+            </button>
+            <button
+              type="button"
+              className={[
+                "h-8 flex-1 rounded-lg px-2 sm:px-3 text-xs sm:text-sm font-medium transition",
+                tab === "agents"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+              onClick={() => setTab("agents")}
+            >
+              Agents & Skills
             </button>
             <button
               type="button"
@@ -1378,6 +1391,12 @@ export function FocusSettings({
             {tab === "mcp" ? (
               <Section title="Model Context Protocol (MCP)">
                 <McpSettingsTab />
+              </Section>
+            ) : null}
+
+            {tab === "agents" ? (
+              <Section title="Agent Profiles & Custom Skills">
+                <AgentsSettingsTab />
               </Section>
             ) : null}
 

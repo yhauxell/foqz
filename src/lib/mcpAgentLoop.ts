@@ -472,6 +472,10 @@ When you receive tool execution results, summarize them naturally for the user i
 
       options.onToolCallEnd?.(callEvent)
 
+      if (options.signal?.aborted) {
+        throw new DOMException('Agent loop aborted by user', 'AbortError')
+      }
+
       // Format result content for the follow-up message
       let formattedContent =
         toolResult.content

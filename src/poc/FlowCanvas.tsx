@@ -37,6 +37,7 @@ import {
   Square,
   Circle,
   Type as TypeIcon,
+  StickyNote,
   MoveRight,
   Pencil,
   RotateCcw,
@@ -73,7 +74,7 @@ const MULTI_SELECTION_KEY_CODE = ["Meta", "Control", "Shift"];
 const ZOOM_ACTIVATION_KEY_CODE = ["Meta", "Control"];
 const PAN_ON_DRAG: number[] = [1, 2];
 
-export type ActiveTool = "select" | "task" | "box" | "circle" | "text" | "arrow" | "pencil";
+export type ActiveTool = "select" | "task" | "box" | "circle" | "text" | "note" | "arrow" | "pencil";
 
 interface FlowCanvasAppProps {
   sidebarOpen?: boolean;
@@ -734,6 +735,75 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     [setNodes, setSelectedNodeId]
   );
 
+  const handleCreateNoteAt = useCallback(
+    (pos: { x: number; y: number }) => {
+      const id = `note-${Date.now()}`;
+      const currentNodes = useFlowCanvasStore.getState().nodes;
+      const nextZ = Math.max(100, getMaxZIndex(currentNodes) + 1);
+      const frameMatch = findFrameAt(pos, currentNodes);
+
+      if (frameMatch) {
+        const newNode: Node = {
+          id,
+          type: "note",
+          parentId: frameMatch.frame.id,
+          position: { x: frameMatch.relX, y: frameMatch.relY },
+          style: { width: 240, height: 180, zIndex: nextZ },
+          data: {
+            title: "Note",
+            text: "",
+            variant: "yellow",
+            corner: "folded",
+            foldPosition: "top-right",
+            noise: true,
+            isNew: true,
+            autoEdit: true,
+          },
+          selected: true,
+        };
+        setNodes((nds) => {
+          const cleared = nds.map((n) => (n.selected ? { ...n, selected: false } : n));
+          const parentIdx = cleared.findIndex((n) => n.id === frameMatch.frame.id);
+          if (parentIdx !== -1) {
+            let insertIdx = parentIdx + 1;
+            while (insertIdx < cleared.length && cleared[insertIdx].parentId === frameMatch.frame.id) {
+              insertIdx++;
+            }
+            const copy = [...cleared];
+            copy.splice(insertIdx, 0, newNode);
+            return copy;
+          }
+          return [...cleared, newNode];
+        });
+      } else {
+        const newNode: Node = {
+          id,
+          type: "note",
+          position: pos,
+          style: { width: 240, height: 180, zIndex: nextZ },
+          data: {
+            title: "Note",
+            text: "",
+            variant: "yellow",
+            corner: "folded",
+            foldPosition: "top-right",
+            noise: true,
+            isNew: true,
+            autoEdit: true,
+          },
+          selected: true,
+        };
+        setNodes((nds) => [
+          ...nds.map((n) => (n.selected ? { ...n, selected: false } : n)),
+          newNode,
+        ]);
+      }
+      setSelectedNodeId(id);
+      setActiveTool("select");
+    },
+    [setNodes, setSelectedNodeId]
+  );
+
   const handleCreateProject = useCallback(() => {
     const store = useFlowCanvasStore.getState();
     let spawnPos = store.cursorPosition;
@@ -896,6 +966,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     onBoxTool: () => selectTool("box"),
     onCircleTool: () => selectTool("circle"),
     onTextTool: () => selectTool("text"),
+    onNoteTool: () => selectTool("note"),
     onArrowTool: () => selectTool("arrow"),
     onPencilTool: () => selectTool("pencil"),
     onCreateTask: handleCreateTask,
@@ -936,7 +1007,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     onEscape: handleEscape,
   });
 
-  // Canvas Click Handler (Click-to-place for Task and Text)
+  // Canvas Click Handler (Click-to-place for Task, Text, and Note)
   const handlePaneClick = useCallback(
     (event: React.MouseEvent) => {
       const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
@@ -945,6 +1016,8 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         handleCreateTaskAt(pos);
       } else if (activeTool === "text") {
         handleCreateTextAt(pos);
+      } else if (activeTool === "note") {
+        handleCreateNoteAt(pos);
       } else {
         setEdges((eds) =>
           eds.some((e) => e.selected)
@@ -953,10 +1026,10 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         );
       }
     },
-    [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, setEdges]
+    [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, handleCreateNoteAt, setEdges]
   );
 
-  // Node Click Handler (Places task/text inside node if tool active, otherwise selects node)
+  // Node Click Handler (Places task/text/note inside node if tool active, otherwise selects node)
   const handleNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
       if (activeTool === "task") {
@@ -969,11 +1042,16 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         handleCreateTextAt(pos);
         return;
       }
+      if (activeTool === "note") {
+        const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        handleCreateNoteAt(pos);
+        return;
+      }
       if (activeTool === "select") {
         setSelectedNodeId(node.id);
       }
     },
-    [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, setSelectedNodeId]
+    [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, handleCreateNoteAt, setSelectedNodeId]
   );
 
   // Edge Click Handler (Selects edge, deselects nodes)
@@ -1256,7 +1334,31 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           <TypeIcon className="size-5" />
         </button>
 
-        {/* 5. Semantic Arrow / Connector Tool */}
+        {/* 5. Paper Sticky Note Tool */}
+        <button
+          type="button"
+          onClick={() => {
+            if (activeTool === "note") {
+              const center = screenToFlowPosition({
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2,
+              });
+              handleCreateNoteAt(center);
+            } else {
+              selectTool("note");
+            }
+          }}
+          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            activeTool === "note"
+              ? "bg-amber-500 text-white shadow-md shadow-amber-500/30 ring-1 ring-white/25"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/80 dark:hover:bg-amber-950/40 active:scale-95"
+          }`}
+          title="Paper Sticky Note Tool (S) — Click canvas to place, or click again to spawn at center"
+        >
+          <StickyNote className="size-5" />
+        </button>
+
+        {/* 6. Semantic Arrow / Connector Tool */}
         <button
           type="button"
           onClick={() => selectTool("arrow")}

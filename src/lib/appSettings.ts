@@ -1,5 +1,12 @@
 /** Persisted app preferences (mirrors `app-settings.json` in Electron userData). */
 
+import {
+  BUILTIN_AGENT_PROFILES,
+  BUILTIN_CUSTOM_SKILLS,
+  type AgentProfile,
+  type CustomSkill,
+} from './agentProfiles'
+
 export type AppWindowBounds = {
   x: number;
   y: number;
@@ -43,6 +50,9 @@ export type AppSettings = {
   geminiApiKey?: string;
   geminiDefaultModel?: string;
   activeAiProvider?: "ollama" | "openai" | "gemini";
+  agentProfiles?: AgentProfile[];
+  customSkills?: CustomSkill[];
+  activeAgentProfileId?: string;
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -73,6 +83,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   geminiEnabled: false,
   geminiApiKey: "",
   geminiDefaultModel: "gemini-1.5-flash",
+  agentProfiles: BUILTIN_AGENT_PROFILES,
+  customSkills: BUILTIN_CUSTOM_SKILLS,
+  activeAgentProfileId: "default-copilot",
 };
 
 function isValidBounds(b: unknown): b is AppWindowBounds {
@@ -245,6 +258,15 @@ export function mergeAppSettings(
       parsed.activeAiProvider === "ollama"
         ? parsed.activeAiProvider
         : base.activeAiProvider,
+    agentProfiles: Array.isArray(parsed.agentProfiles) && parsed.agentProfiles.length > 0
+      ? parsed.agentProfiles
+      : base.agentProfiles,
+    customSkills: Array.isArray(parsed.customSkills) && parsed.customSkills.length > 0
+      ? parsed.customSkills
+      : base.customSkills,
+    activeAgentProfileId: typeof parsed.activeAgentProfileId === "string"
+      ? parsed.activeAgentProfileId
+      : base.activeAgentProfileId,
   };
 }
 

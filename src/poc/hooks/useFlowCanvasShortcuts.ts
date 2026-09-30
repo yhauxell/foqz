@@ -6,6 +6,7 @@ interface FlowCanvasShortcutsProps {
   onBoxTool: () => void;
   onCircleTool?: () => void;
   onTextTool: () => void;
+  onNoteTool?: () => void;
   onArrowTool: () => void;
   onPencilTool: () => void;
   onCreateTask: () => void;
@@ -28,6 +29,7 @@ export function useFlowCanvasShortcuts({
   onBoxTool,
   onCircleTool,
   onTextTool,
+  onNoteTool,
   onArrowTool,
   onPencilTool,
   onCreateTask,
@@ -48,6 +50,7 @@ export function useFlowCanvasShortcuts({
   useHotkeys(["b", "2"], () => onBoxTool(), { preventDefault: true, enabled });
   useHotkeys(["o"], () => onCircleTool?.(), { preventDefault: true, enabled });
   useHotkeys(["t", "3"], () => onTextTool(), { preventDefault: true, enabled });
+  useHotkeys(["s", "S"], () => onNoteTool?.(), { preventDefault: true, enabled });
   useHotkeys(["a", "4"], () => onArrowTool(), { preventDefault: true, enabled });
   useHotkeys(["p", "5", "d"], () => onPencilTool(), { preventDefault: true, enabled });
 
