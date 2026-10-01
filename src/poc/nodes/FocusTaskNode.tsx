@@ -18,7 +18,9 @@ import {
   ChevronUp,
   PlaneTakeoff,
   Sparkles,
+  GitPullRequest,
 } from "lucide-react";
+import { updateGitHubIssue } from "@/lib/githubSync";
 import type { SemanticRelation } from "../edges/SemanticEdge";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
@@ -457,6 +459,19 @@ export const FocusTaskNode = memo(function FocusTaskNode({
     e.stopPropagation();
     const nextStatus = data.status === "done" ? "open" : "done";
     useFlowCanvasStore.getState().updateNodeData(id, { status: nextStatus });
+
+    if (data.githubIssueNumber && data.githubRepo) {
+      updateGitHubIssue(String(data.githubRepo), Number(data.githubIssueNumber), {
+        state: nextStatus === "done" ? "closed" : "open",
+      })
+        .then(() => {
+          useFlowCanvasStore.getState().updateNodeData(id, { githubSyncStatus: "synced" });
+        })
+        .catch((err) => {
+          console.warn("[FocusTaskNode] GitHub status sync error:", err);
+          useFlowCanvasStore.getState().updateNodeData(id, { githubSyncStatus: "conflict" });
+        });
+    }
   };
 
   const handleSaveTitle = useCallback(() => {
@@ -1083,38 +1098,43 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                 )}
 
                 {/* Optional Origin Project Badge in Full Card View */}
-                {data.originProjectId && (
-                  <div className="flex items-center gap-1 mb-1">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        useFlowCanvasStore.getState().setSelectedNodeId(data.originProjectId as string);
-                        window.dispatchEvent(
-                          new CustomEvent("foqz:flow-center-on", { detail: { id: data.originProjectId } })
-                        );
-                      }}
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium border border-black/10 dark:border-white/10 bg-white/70 dark:bg-zinc-800/70 hover:bg-white dark:hover:bg-zinc-700 transition-colors shadow-2xs shrink-0 cursor-pointer"
-                      title={`Origin: ${data.originProjectTitle || 'Project'} (Click to jump)`}
-                    >
-                      <span
-                        className="size-1.5 rounded-full shrink-0"
-                        style={{ backgroundColor: originAccentDot }}
-                      />
-                      <span className="truncate max-w-[85px]">{data.originProjectTitle || "Project"}</span>
-                      <ExternalLink className="size-2 text-zinc-400 shrink-0" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        useFlowCanvasStore.getState().returnTaskToProject(id);
-                      }}
-                      className="p-0.5 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors cursor-pointer"
-                      title={`Return to ${data.originProjectTitle || 'origin project'}`}
-                    >
-                      <Undo2 className="size-2.5" />
-                    </button>
+                {(data.originProjectId || data.githubIssueNumber) && (
+                  <div className="flex items-center gap-1 mb-1 flex-wrap">
+                    {data.originProjectId && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          useFlowCanvasStore.getState().setSelectedNodeId(data.originProjectId as string);
+                          window.dispatchEvent(
+                            new CustomEvent("foqz:flow-center-on", { detail: { id: data.originProjectId } })
+                          );
+                        }}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium border border-black/10 dark:border-white/10 bg-white/70 dark:bg-zinc-800/70 hover:bg-white dark:hover:bg-zinc-700 transition-colors shadow-2xs shrink-0 cursor-pointer"
+                        title={`Origin: ${data.originProjectTitle || 'Project'} (Click to jump)`}
+                      >
+                        <span
+                          className="size-1.5 rounded-full shrink-0"
+                          style={{ backgroundColor: originAccentDot }}
+                        />
+                        <span className="truncate max-w-[85px]">{data.originProjectTitle || "Project"}</span>
+                        <ExternalLink className="size-2 text-zinc-400 shrink-0" />
+                      </button>
+                    )}
+
+                    {data.githubIssueNumber && (
+                      <a
+                        href={(data.githubIssueUrl as string) || `https://github.com/${data.githubRepo || ''}/issues/${data.githubIssueNumber}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/20 shrink-0 transition-colors"
+                        title={`GitHub #${data.githubIssueNumber} in ${data.githubRepo || ''} (${(data.githubSyncStatus as string) || 'synced'})`}
+                      >
+                        <GitPullRequest className="size-2.5 text-purple-500" />
+                        <span>#{data.githubIssueNumber}</span>
+                      </a>
+                    )}
                   </div>
                 )}
 

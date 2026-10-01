@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useRef, useState } from "react";
 import { NodeResizer, Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
-import { GitBranch, Sparkles } from "lucide-react";
+import { GitBranch, GitPullRequest, Sparkles } from "lucide-react";
 import {
   ACCENT_STYLES,
   type ProjectAccent,
@@ -207,6 +207,25 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
             <span className="truncate max-w-[120px]">{data.connectors.githubRepo}</span>
           )}
         </button>
+
+        {data.connectors?.githubRepo && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.dispatchEvent(
+                new CustomEvent("foqz:open-github-issues", {
+                  detail: { projectId: id, githubRepo: data.connectors?.githubRepo },
+                })
+              );
+            }}
+            className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-mono text-[10px] transition-colors cursor-pointer shadow-2xs ml-1.5 shrink-0"
+            title="Browse and import GitHub issues into this project"
+          >
+            <GitPullRequest className="size-3 shrink-0 text-purple-500" />
+            <span>Issues</span>
+          </button>
+        )}
       </div>
 
       {/* Goal Sub-header */}

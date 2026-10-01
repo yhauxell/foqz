@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Plug,
   GitBranch,
+  GitPullRequest,
   X,
   Check,
   ExternalLink,
@@ -639,17 +640,34 @@ export function ProjectConnectorsModal({
 
                     <div className="flex items-center justify-between text-[11px] text-zinc-500">
                       <span>Associates tasks with this repo for tool-calling (issues, commits, PRs).</span>
-                      <button
-                        type="button"
-                        onClick={handleSyncReadme}
-                        disabled={isSyncingReadme}
-                        className="text-blue-600 dark:text-blue-400 font-medium hover:underline flex items-center gap-1 shrink-0 ml-2 cursor-pointer disabled:opacity-50"
-                      >
-                        {isSyncingReadme ? (
-                          <Loader2 className="size-3 animate-spin" />
-                        ) : null}
-                        <span>Sync README &rarr;</span>
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onClose();
+                            window.dispatchEvent(
+                              new CustomEvent("foqz:open-github-issues", {
+                                detail: { projectId: shapeId, githubRepo: githubRepoDraft },
+                              })
+                            );
+                          }}
+                          className="text-purple-600 dark:text-purple-400 font-medium hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <GitPullRequest className="size-3" />
+                          <span>Browse Issues &rarr;</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSyncReadme}
+                          disabled={isSyncingReadme}
+                          className="text-blue-600 dark:text-blue-400 font-medium hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                        >
+                          {isSyncingReadme ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : null}
+                          <span>Sync README &rarr;</span>
+                        </button>
+                      </div>
                     </div>
 
                     {suggestedRepos.length > 0 && (

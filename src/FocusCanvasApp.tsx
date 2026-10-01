@@ -5,6 +5,8 @@ import { WaypointRail } from "@/components/WaypointRail";
 import { MonoFocusController } from "@/components/MonoFocusController";
 import { GlobalSpotlight } from "@/components/GlobalSpotlight";
 import { ProjectConnectorsModal } from "@/components/ProjectConnectorsModal";
+import { GitHubIssuesModal } from "@/components/GitHubIssuesModal";
+import { CreateGitHubIssueModal } from "@/components/CreateGitHubIssueModal";
 import { useOllama } from "@/lib/ollama";
 import { Keyboard, Maximize2, Minimize2, Search, Settings, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -36,6 +38,13 @@ function FocusCanvasAppInner() {
     "general" | "workingHours" | "ai" | "mcp" | "data"
   >("general");
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
+  const [githubIssuesOpen, setGithubIssuesOpen] = useState(false);
+  const [githubIssuesProjectId, setGithubIssuesProjectId] = useState<string | null>(null);
+  const [githubIssuesRepo, setGithubIssuesRepo] = useState<string>("");
+
+  const [createIssueOpen, setCreateIssueOpen] = useState(false);
+  const [createIssueTaskId, setCreateIssueTaskId] = useState<string | null>(null);
+
   const [runwayNotification, setRunwayNotification] = useState<{
     type: "advanced" | "cleared";
     message: string;
@@ -182,11 +191,27 @@ function FocusCanvasAppInner() {
       setShortcutsOpen(true);
     };
 
+    const onOpenGithubIssuesEvent = (e: any) => {
+      const projectId = e.detail?.projectId || null;
+      const repo = e.detail?.githubRepo || "";
+      setGithubIssuesProjectId(projectId);
+      setGithubIssuesRepo(repo);
+      setGithubIssuesOpen(true);
+    };
+
+    const onOpenCreateGithubIssueEvent = (e: any) => {
+      const taskId = e.detail?.taskId || null;
+      setCreateIssueTaskId(taskId);
+      setCreateIssueOpen(true);
+    };
+
     window.addEventListener("foqz:open-copilot", onOpenCopilotEvent);
     window.addEventListener("foqz:set-focus-target", onFocusTargetEvent);
     window.addEventListener("foqz:open-spotlight", onOpenSpotlightEvent);
     window.addEventListener("foqz:open-project-connectors", onOpenConnectorsEvent);
     window.addEventListener("foqz:open-shortcuts", onOpenShortcutsEvent);
+    window.addEventListener("foqz:open-github-issues", onOpenGithubIssuesEvent);
+    window.addEventListener("foqz:open-create-github-issue", onOpenCreateGithubIssueEvent);
 
     return () => {
       window.removeEventListener("foqz:open-copilot", onOpenCopilotEvent);
@@ -194,6 +219,8 @@ function FocusCanvasAppInner() {
       window.removeEventListener("foqz:open-spotlight", onOpenSpotlightEvent);
       window.removeEventListener("foqz:open-project-connectors", onOpenConnectorsEvent);
       window.removeEventListener("foqz:open-shortcuts", onOpenShortcutsEvent);
+      window.removeEventListener("foqz:open-github-issues", onOpenGithubIssuesEvent);
+      window.removeEventListener("foqz:open-create-github-issue", onOpenCreateGithubIssueEvent);
     };
   }, []);
 
@@ -439,6 +466,19 @@ function FocusCanvasAppInner() {
           <ShortcutsModal
             open={shortcutsOpen}
             onClose={() => setShortcutsOpen(false)}
+          />
+
+          <GitHubIssuesModal
+            open={githubIssuesOpen}
+            onClose={() => setGithubIssuesOpen(false)}
+            projectId={githubIssuesProjectId}
+            githubRepo={githubIssuesRepo}
+          />
+
+          <CreateGitHubIssueModal
+            open={createIssueOpen}
+            onClose={() => setCreateIssueOpen(false)}
+            taskId={createIssueTaskId}
           />
 
           {/* Runway Auto-Advance & Clearance HUD Toast */}

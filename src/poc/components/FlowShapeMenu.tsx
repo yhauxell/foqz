@@ -5,7 +5,7 @@ import {
   Position,
   type Node,
 } from "@xyflow/react";
-import { Copy, Crosshair, MessageSquare, Trash2 } from "lucide-react";
+import { Copy, Crosshair, GitPullRequest, MessageSquare, Trash2 } from "lucide-react";
 import { type ProjectAccent, type TaskPaperTheme } from "@/types/canvas";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
@@ -339,6 +339,33 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
         >
           <MessageSquare className="size-3" />
         </button>
+
+        {selectedNode.type === "focusTask" && (
+          <button
+            type="button"
+            title={(selectedNode.data as any)?.githubIssueNumber ? `GitHub #${(selectedNode.data as any).githubIssueNumber}` : "Create GitHub Issue"}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              const issueUrl = (selectedNode.data as any)?.githubIssueUrl;
+              if (issueUrl) {
+                window.open(issueUrl, "_blank", "noopener,noreferrer");
+              } else {
+                window.dispatchEvent(
+                  new CustomEvent("foqz:open-create-github-issue", {
+                    detail: { taskId: selectedNode.id },
+                  })
+                );
+              }
+            }}
+            className="size-5 rounded-full flex items-center justify-center hover:bg-purple-50 dark:hover:bg-purple-950/40 text-purple-600 dark:text-purple-400 transition-colors cursor-pointer"
+          >
+            <GitPullRequest className="size-3" />
+          </button>
+        )}
 
         <button
           type="button"

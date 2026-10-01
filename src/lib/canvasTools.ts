@@ -7,6 +7,7 @@ import {
   evaluateTaskActionability,
   evaluateProjectReadiness,
 } from './jev'
+import { createGitHubIssue } from './githubSync'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
 
 /**
@@ -354,6 +355,38 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
           type: 'string',
           description:
             'Optional ID of project frame to evaluate. Defaults to currently selected project.',
+        },
+      },
+    },
+  },
+  {
+    serverName: 'foqz',
+    name: 'create_github_issue',
+    description:
+      'Create or file an official GitHub issue in a connected repository from a canvas task card or given title/body.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: {
+          type: 'string',
+          description: 'ID of an existing canvas task card to export/link to GitHub',
+        },
+        repo: {
+          type: 'string',
+          description: 'GitHub repository in owner/repo format (defaults to connected project repo)',
+        },
+        title: {
+          type: 'string',
+          description: 'Issue title (defaults to task card title)',
+        },
+        body: {
+          type: 'string',
+          description: 'Issue body/description (defaults to task notes & checklist)',
+        },
+        labels: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional list of labels for the issue',
         },
       },
     },
@@ -1184,6 +1217,69 @@ ${evalRes.isReady ? '✅ This project has a concrete, unbroken path to delivery.
         return {
           isError: false,
           content: [{ type: 'text', text: textOutput }],
+        }
+      }
+
+      case 'create_github_issue': {
+        const liveStore = useFlowCanvasStore.getState()
+        const taskId = args.taskId
+        const targetTask = taskId ? liveStore.nodes.find((n) => n.id === taskId) : null
+
+        let targetRepo = args.repo || ''
+        if (!targetRepo && targetTask && targetTask.parentId) {
+          const parentProj = liveStore.nodes.find((n) => n.id === targetTask.parentId && n.type === 'projectFrame')
+          if (parentProj) {
+            targetRepo = (parentProj.data as any)?.connectors?.githubRepo || ''
+          }
+        }
+
+        const issueTitle = args.title || (targetTask ? (targetTask.data as any)?.title : '') || 'New Issue'
+        const issueBody = args.body || (targetTask ? (targetTask.data as any)?.notes : '') || ''
+
+        if (!targetRepo) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text',
+                text: 'Target repository not specified and no connected repository found on containing project frame.',
+              },
+            ],
+          }
+        }
+
+        try {
+          const issue = await createGitHubIssue(targetRepo, {
+            title: issueTitle,
+            body: issueBody,
+            labels: args.labels,
+          })
+
+          if (targetTask) {
+            const formattedTitle = issueTitle.startsWith('#') ? issueTitle : `#${issue.number} ${issueTitle}`
+            liveStore.updateNodeData(targetTask.id, {
+              title: formattedTitle,
+              githubIssueNumber: issue.number,
+              githubRepo: targetRepo,
+              githubIssueUrl: issue.html_url,
+              githubSyncStatus: 'synced',
+            })
+          }
+
+          return {
+            isError: false,
+            content: [
+              {
+                type: 'text',
+                text: `Successfully created GitHub Issue #${issue.number} in ${targetRepo}.\nLink: ${issue.html_url}`,
+              },
+            ],
+          }
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Failed to create GitHub issue: ${err.message}` }],
+          }
         }
       }
 
