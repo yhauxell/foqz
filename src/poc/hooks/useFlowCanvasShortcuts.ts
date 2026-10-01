@@ -12,6 +12,7 @@ interface FlowCanvasShortcutsProps {
   onCreateTask: () => void;
   onCreateProject: () => void;
   onFocusMode: () => void;
+  onSendToRunway?: () => void;
   onCenterFront: () => void;
   onInlineChat?: () => void;
   onDeleteSelected: () => void;
@@ -35,6 +36,7 @@ export function useFlowCanvasShortcuts({
   onCreateTask,
   onCreateProject,
   onFocusMode,
+  onSendToRunway,
   onCenterFront,
   onInlineChat,
   onDeleteSelected,
@@ -62,6 +64,7 @@ export function useFlowCanvasShortcuts({
     { preventDefault: true, enabled }
   );
   useHotkeys("f", () => onFocusMode(), { preventDefault: true, enabled });
+  useHotkeys(["r", "R"], () => onSendToRunway?.(), { preventDefault: true, enabled });
   useHotkeys("shift+c", () => onCenterFront(), { preventDefault: true, enabled });
   useHotkeys("c", () => {
     if (onInlineChat) {

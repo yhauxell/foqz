@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState } from "react";
+import React, { memo, useEffect, useRef, useState, useCallback } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -64,6 +64,8 @@ const RELATION_CONFIG: Record<
 
 export const SemanticEdge = memo(function SemanticEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -87,7 +89,45 @@ export const SemanticEdge = memo(function SemanticEdge({
   });
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
+
+  // Check if either connected node is in a runway frame
+  const isConnectedToRunway = useFlowCanvasStore(
+    useCallback(
+      (s) => {
+        const src = s.nodes.find((n) => n.id === source);
+        const tgt = s.nodes.find((n) => n.id === target);
+        if (!src || !tgt) return false;
+        const getParentRunwayId = (node: typeof src) => {
+          if (!node.parentId) return null;
+          const p = s.nodes.find((pNode) => pNode.id === node.parentId);
+          return p?.type === "runwayFrame" || String((p?.data as any)?.title || "").includes("Runway")
+            ? p.id
+            : null;
+        };
+        const srcRunway = getParentRunwayId(src);
+        const tgtRunway = getParentRunwayId(tgt);
+        // It's a cross-runway edge if one is in a runway and the other isn't, OR in different runways
+        return (srcRunway !== null || tgtRunway !== null) && srcRunway !== tgtRunway;
+      },
+      [source, target]
+    )
+  );
+
+  // Check if either connected endpoint is selected
+  const isEndpointSelected = useFlowCanvasStore(
+    useCallback(
+      (s) => {
+        const src = s.nodes.find((n) => n.id === source);
+        const tgt = s.nodes.find((n) => n.id === target);
+        return Boolean(src?.selected || tgt?.selected);
+      },
+      [source, target]
+    )
+  );
+
+  const isEdgeActive = selected || isEndpointSelected || isHovered || menuOpen;
 
   const isAnimated = Boolean(data?.animated);
   const relation: SemanticRelation = data?.relation || "depends";
@@ -166,17 +206,30 @@ export const SemanticEdge = memo(function SemanticEdge({
 
   return (
     <>
+      {/* Invisible wider interaction path for easy hovering/clicking */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={24}
+        className="cursor-pointer pointer-events-auto"
+        onPointerEnter={() => setIsHovered(true)}
+        onPointerLeave={() => setIsHovered(false)}
+      />
+
       <BaseEdge
         path={edgePath}
         markerEnd={markerEnd}
         style={{
           ...style,
           stroke: strokeColor,
-          strokeWidth: selected ? 2.5 : 2,
-          strokeDasharray,
+          strokeWidth: selected ? 2.5 : isConnectedToRunway && !isEdgeActive ? 1.5 : 2,
+          strokeDasharray: isConnectedToRunway && !isEdgeActive ? "4 4" : strokeDasharray,
           strokeLinecap,
-          animation: animationStyle ?? "none",
-          transition: "stroke 150ms ease, stroke-width 150ms ease",
+          opacity: isConnectedToRunway && !isEdgeActive ? 0.18 : 1,
+          animation: isConnectedToRunway && !isEdgeActive ? "none" : (animationStyle ?? "none"),
+          transition: "stroke 150ms ease, stroke-width 150ms ease, opacity 200ms ease",
+          filter: isEdgeActive && isConnectedToRunway ? `drop-shadow(0 0 4px ${strokeColor})` : undefined,
         }}
       />
 
@@ -236,10 +289,14 @@ export const SemanticEdge = memo(function SemanticEdge({
           style={{
             position: "absolute",
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            pointerEvents: "all",
+            pointerEvents: isConnectedToRunway && !isEdgeActive ? "none" : "all",
+            opacity: isConnectedToRunway && !isEdgeActive ? 0 : 1,
+            transition: "opacity 150ms ease",
             zIndex: menuOpen ? 10000 : selected ? 1002 : 1000,
           }}
           className="nodrag nopan"
+          onPointerEnter={() => setIsHovered(true)}
+          onPointerLeave={() => setIsHovered(false)}
         >
           {/* Main Clickable Relation Pill */}
           <div

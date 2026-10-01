@@ -14,6 +14,7 @@ import {
   FolderPlus,
   PanelLeft,
   Inbox,
+  PlaneTakeoff,
 } from 'lucide-react'
 import { prioritizeDailyFocusSlot } from '@/lib/jev'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
@@ -27,6 +28,13 @@ interface GlobalSpotlightProps {
 
 function getShapeBadge(type: string) {
   switch (type) {
+    case 'runway-frame':
+      return {
+        label: 'Runway',
+        icon: <PlaneTakeoff className="size-3 text-amber-500 shrink-0" />,
+        badgeClass:
+          'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/80',
+      }
     case 'project-frame':
       return {
         label: 'Project',
@@ -108,6 +116,7 @@ export function GlobalSpotlight({
       const d = (n.data || {}) as Record<string, any>
       let text = d.title || d.label || d.text || ''
       if (!text.trim() && n.type === 'projectFrame') text = 'Untitled Project'
+      if (!text.trim() && n.type === 'runwayFrame') text = "Today's Runway"
       if (text.trim()) {
         results.push({
           id: n.id,
@@ -117,13 +126,16 @@ export function GlobalSpotlight({
               ? 'focus-task'
               : n.type === 'projectFrame'
               ? 'project-frame'
+              : n.type === 'runwayFrame'
+              ? 'runway-frame'
               : n.type) || 'unknown',
           shape: n,
         })
       }
     }
     results.sort((a, b) => {
-      const typeRank = (t: string) => (t === 'project-frame' ? 0 : t === 'focus-task' ? 1 : 2)
+      const typeRank = (t: string) =>
+        t === 'runway-frame' ? 0 : t === 'project-frame' ? 1 : t === 'focus-task' ? 2 : 3
       return typeRank(a.type) - typeRank(b.type)
     })
     return results
@@ -201,11 +213,28 @@ type SpotlightEntry =
         },
       },
       {
+        id: 'action-send-to-runway',
+        title: 'Send Selected Task to Runway',
+        shortcut: 'R',
+        keywords: ['runway', 'send', 'stage', 'flight', 'today', 'focus', 'task'],
+        icon: <PlaneTakeoff className="size-3 text-blue-500 shrink-0" />,
+        perform: () => {
+          const currentNodes = useFlowCanvasStore.getState().nodes
+          const sel = currentNodes.find((n) => n.selected && n.type === 'focusTask')
+          if (sel) {
+            useFlowCanvasStore.getState().sendTaskToRunway(sel.id)
+          } else {
+            useFlowCanvasStore.getState().stageRunway()
+          }
+          onClose()
+        },
+      },
+      {
         id: 'action-stage-runway',
         title: "Stage Today's Runway Frame",
         shortcut: '/today',
-        keywords: ['today', 'runway', 'focus', 'sprint', 'daily', 'stage'],
-        icon: <Sparkles className="size-3 text-rose-500 shrink-0" />,
+        keywords: ['today', 'runway', 'focus', 'sprint', 'daily', 'stage', 'flight', 'template'],
+        icon: <PlaneTakeoff className="size-3 text-amber-500 shrink-0" />,
         perform: () => {
           useFlowCanvasStore.getState().stageRunway()
           onClose()

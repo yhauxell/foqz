@@ -146,3 +146,84 @@ export type TaskPaperTheme = "cream" | "fog" | "bloom" | "sage";
 export function focusTaskShellColorForPriority(_priority: number): string {
   return "#18181b";
 }
+
+export type RunwayTemplateId =
+  | "rule_of_3"
+  | "ultradian_90"
+  | "critical_path"
+  | "rapid_batch";
+
+export interface RunwayTemplateConfig {
+  id: RunwayTemplateId;
+  title: string;
+  subtitle: string;
+  description: string;
+  framework: string;
+  slots: number;
+  defaultDurationMinutes: number;
+  accent: ProjectAccent;
+  iconName: "PlaneTakeoff" | "Zap" | "GitBranch" | "Flame";
+}
+
+export const RUNWAY_TEMPLATES: Record<RunwayTemplateId, RunwayTemplateConfig> = {
+  rule_of_3: {
+    id: "rule_of_3",
+    title: "🎯 Rule of 3 (Daily Flight Deck)",
+    subtitle: "3 bounded slots for today's #1 outcomes",
+    description:
+      "Focus on exactly 3 high-impact outcomes for the day to maximize leverage and eliminate cognitive overload.",
+    framework: "Agile Results & Cal Newport Deep Work",
+    slots: 3,
+    defaultDurationMinutes: 25,
+    accent: "rose",
+    iconName: "PlaneTakeoff",
+  },
+  ultradian_90: {
+    id: "ultradian_90",
+    title: "⏱️ 90-Minute Ultradian Sprint",
+    subtitle: "1 Core Milestone + 2 atomic subtasks",
+    description:
+      "Structured around the brain's 90-minute biological alertness peak (Nathaniel Kleitman) followed by mandatory restorative rest.",
+    framework: "Kleitman Ultradian Biological Cycle",
+    slots: 3,
+    defaultDurationMinutes: 30,
+    accent: "amber",
+    iconName: "Zap",
+  },
+  critical_path: {
+    id: "critical_path",
+    title: "⛓️ Critical Path / Blocker Chain",
+    subtitle: "Sequential dependency strip: Slot 2 unlocks Slot 1",
+    description:
+      "Explicitly reveals upstream blockers and downstream leverage. Ideal for technical migrations and architectural refactors.",
+    framework: "Goldratt's Theory of Constraints",
+    slots: 4,
+    defaultDurationMinutes: 25,
+    accent: "indigo",
+    iconName: "GitBranch",
+  },
+  rapid_batch: {
+    id: "rapid_batch",
+    title: "⚡ 15-Minute Rapid Clearance",
+    subtitle: "4-5 shallow bug/admin slots to clear mental RAM",
+    description:
+      "Batch shallow tasks, production hotfixes, or quick admin checks into a rapid clearance strip to eliminate attention residue.",
+    framework: "GTD 2-Minute Rule & Shallow Quarantine",
+    slots: 5,
+    defaultDurationMinutes: 15,
+    accent: "emerald",
+    iconName: "Flame",
+  },
+};
+
+export interface RunwayFrameNodeData {
+  title: string;
+  templateId?: RunwayTemplateId;
+  date?: string;
+  dailyGoal?: string;
+  capacitySlots?: number;
+  targetSprintDuration?: number;
+  accent?: ProjectAccent;
+  borderStyle?: "solid" | "dashed" | "dotted";
+  [key: string]: unknown;
+}

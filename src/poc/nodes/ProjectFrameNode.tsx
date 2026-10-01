@@ -60,7 +60,7 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
     const fragment = document.createDocumentFragment();
 
     const rc = rough.svg(svg);
-    const borderStyle = data.borderStyle || "dashed";
+    const borderStyle = data.borderStyle || "solid";
     let dashArray: number[] | undefined;
     if (borderStyle === "dashed") dashArray = [6, 4];
     else if (borderStyle === "dotted") dashArray = [2, 4];
@@ -70,23 +70,23 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
         id.split("").reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0)
       ) || 1;
 
-    // 1. Hand-drawn outer frame container
+    // 1. Hand-drawn outer frame container (solid border by default)
     const outerRect = rc.rectangle(3, 3, w - 6, h - 6, {
       seed: nodeSeed,
-      roughness: 1.5,
+      roughness: 1.2,
       stroke: accent.dotHex || "#3b82f6",
-      strokeWidth: 2,
+      strokeWidth: 1.8,
       strokeLineDash: dashArray,
       fill: "transparent",
     });
     fragment.appendChild(outerRect);
 
-    // 2. Hand-drawn header divider line
-    const headerLine = rc.line(4, 48, w - 4, 48, {
+    // 2. Hand-drawn header divider line (cleanly below header content at y=66)
+    const headerLine = rc.line(4, 66, w - 4, 66, {
       seed: nodeSeed + 1,
-      roughness: 1.8,
+      roughness: 1.2,
       stroke: accent.dotHex || "#3b82f6",
-      strokeWidth: 1.5,
+      strokeWidth: 1.2,
     });
     fragment.appendChild(headerLine);
     svg.replaceChildren(fragment);
@@ -210,7 +210,7 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
       </div>
 
       {/* Goal Sub-header */}
-      <div className="relative z-10 px-5 pt-1.5 pb-1 text-[12px] text-zinc-600 dark:text-zinc-400 flex items-center gap-1.5">
+      <div className="relative z-10 px-5 pt-0.5 pb-2.5 text-[12px] text-zinc-600 dark:text-zinc-400 flex items-center gap-1.5">
         <Sparkles className="size-3 text-amber-500 shrink-0" />
         {isEditingGoal ? (
           <input

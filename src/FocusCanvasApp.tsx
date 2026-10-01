@@ -36,6 +36,42 @@ function FocusCanvasAppInner() {
     "general" | "workingHours" | "ai" | "mcp" | "data"
   >("general");
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
+  const [runwayNotification, setRunwayNotification] = useState<{
+    type: "advanced" | "cleared";
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const onAdvanced = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (timer) clearTimeout(timer);
+      setRunwayNotification({
+        type: "advanced",
+        message: `🛫 Landed! Cleared for next: "${detail.toTaskTitle || 'Next Task'}"`,
+      });
+      timer = setTimeout(() => setRunwayNotification(null), 3500);
+    };
+
+    const onCleared = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (timer) clearTimeout(timer);
+      setRunwayNotification({
+        type: "cleared",
+        message: `🎉 Runway Cleared! All tasks completed today.`,
+      });
+      timer = setTimeout(() => setRunwayNotification(null), 4000);
+    };
+
+    window.addEventListener("foqz:runway-advanced", onAdvanced);
+    window.addEventListener("foqz:runway-cleared", onCleared);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("foqz:runway-advanced", onAdvanced);
+      window.removeEventListener("foqz:runway-cleared", onCleared);
+    };
+  }, []);
 
   const isMac =
     typeof navigator !== "undefined" &&
@@ -404,6 +440,20 @@ function FocusCanvasAppInner() {
             open={shortcutsOpen}
             onClose={() => setShortcutsOpen(false)}
           />
+
+          {/* Runway Auto-Advance & Clearance HUD Toast */}
+          {runwayNotification && (
+            <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2.5 px-4 py-2 rounded-full bg-zinc-900/95 dark:bg-white/95 text-white dark:text-zinc-900 shadow-2xl backdrop-blur-xl border border-white/10 dark:border-black/10 text-xs font-medium animate-in fade-in slide-in-from-top-3 duration-200 select-none pointer-events-none">
+              <span
+                className={`size-2 rounded-full ${
+                  runwayNotification.type === "cleared"
+                    ? "bg-amber-400 animate-bounce"
+                    : "bg-emerald-400 animate-ping"
+                }`}
+              />
+              <span>{runwayNotification.message}</span>
+            </div>
+          )}
         </main>
       </div>
     </div>

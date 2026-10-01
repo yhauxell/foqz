@@ -60,7 +60,12 @@ export function getFlowCanvasContext(
 
     if (n.type === "focusTask") {
       label = d.title || "Untitled Task";
-      fullText = `[Focus Task] "${label}" (Status: ${d.status || "open"}, Priority: P${d.priority || 3}${d.notes ? `, Notes: ${d.notes}` : ""})`;
+      const originInfo = d.originProjectTitle ? `, Origin: "${d.originProjectTitle}"` : "";
+      const stagedInfo = n.parentId && nodes.find((p) => p.id === n.parentId && p.type === 'runwayFrame') ? `, Staged On: Runway` : "";
+      fullText = `[Focus Task] "${label}" (Status: ${d.status || "open"}, Priority: P${d.priority || 3}${originInfo}${stagedInfo}${d.notes ? `, Notes: ${d.notes}` : ""})`;
+    } else if (n.type === "runwayFrame") {
+      label = d.title || "Runway Frame";
+      fullText = `[Runway Frame] "${label}" (Template: ${d.templateId || "rule_of_3"}, Goal: "${d.dailyGoal || ""}", Cleared: ${d.clearedToday || 0})`;
     } else if (n.type === "projectFrame") {
       label = d.title || "Untitled Project";
       fullText = `[Project Frame] "${label}" (Goal: "${d.goal || ""}")`;
@@ -138,7 +143,12 @@ export function getFlowCanvasContext(
 
     if (n.type === "focusTask") {
       label = d.title || "Untitled Task";
-      fullText = `[Focus Task] "${label}" (Status: ${d.status || "open"}, Priority: P${d.priority || 3}${d.notes ? `, Notes: ${d.notes}` : ""})`;
+      const originInfo = d.originProjectTitle ? `, Origin: "${d.originProjectTitle}"` : "";
+      const stagedInfo = n.parentId && nodes.find((p) => p.id === n.parentId && p.type === 'runwayFrame') ? `, Staged On: Runway` : "";
+      fullText = `[Focus Task] "${label}" (Status: ${d.status || "open"}, Priority: P${d.priority || 3}${originInfo}${stagedInfo}${d.notes ? `, Notes: ${d.notes}` : ""})`;
+    } else if (n.type === "runwayFrame") {
+      label = d.title || "Runway Frame";
+      fullText = `[Runway Frame] "${label}" (Template: ${d.templateId || "rule_of_3"}, Goal: "${d.dailyGoal || ""}", Cleared: ${d.clearedToday || 0})`;
     } else if (n.type === "projectFrame") {
       label = d.title || "Untitled Project";
       fullText = `[Project Frame] "${label}" (Goal: "${d.goal || ""}")`;
@@ -218,13 +228,17 @@ export function getFlowProjectFrameContents(
     if (n.id === frame.id) continue;
 
     const isDirectChild = n.parentId === frame.id;
+    const isOrigin = (n.data as any)?.originProjectId === frame.id;
     const nx = n.position?.x ?? 0;
     const ny = n.position?.y ?? 0;
     const isContained = nx >= frameX && nx <= frameR && ny >= frameY && ny <= frameB;
 
-    if (isDirectChild || isContained) {
+    if (isDirectChild || isContained || isOrigin) {
       const d = n.data || {};
       let text = d.title || d.label || d.text || `[${n.type}]`;
+      if (isOrigin && !isDirectChild && !isContained) {
+        text = `${text} (Staged on Runway)`;
+      }
       if (n.type === "note") {
         const body = d.text || d.notes || "";
         text = d.title ? `${d.title}${body ? `: "${body}"` : ""}` : (body ? `"${body}"` : "Sticky Note");
@@ -254,5 +268,106 @@ export function getFlowProjectFrameContents(
     connectors: data.connectors,
     containedShapes: contained,
     summaryText: `Project: ${data.title || "Untitled"}\nGoal: ${data.goal || ""}${contextSection}\nBacklog items (${contained.length}):\n${summaryLines.join("\n")}`,
+  };
+}
+
+export interface RunwayFrameBundle {
+  frameId: string;
+  title: string;
+  templateId: string;
+  dailyGoal: string;
+  clearedToday: number;
+  maxCapacity: number;
+  stagedTasks: Array<{
+    id: string;
+    title: string;
+    status: string;
+    priority: number;
+    originProjectId?: string;
+    originProjectTitle?: string;
+    isBlocked: boolean;
+    shape: any;
+  }>;
+  summaryText: string;
+}
+
+/**
+ * Returns all flight tasks staged inside a given React Flow RunwayFrame,
+ * including origin project provenance and blocker status.
+ */
+export function getFlowRunwayFrameContents(
+  nodes: any[],
+  frameId: string,
+): RunwayFrameBundle | null {
+  const frame = nodes.find(
+    (n) =>
+      n.id === frameId &&
+      (n.type === "runwayFrame" ||
+        (n.type === "projectFrame" && String(n.data?.title || "").includes("Runway"))),
+  );
+  if (!frame) return null;
+
+  const data = (frame.data || {}) as Record<string, any>;
+  const frameX = frame.position?.x ?? 0;
+  const frameY = frame.position?.y ?? 0;
+  const frameW = Number(frame.style?.width ?? frame.width ?? 480);
+  const frameH = Number(frame.style?.height ?? frame.height ?? 600);
+  const frameR = frameX + frameW;
+  const frameB = frameY + frameH;
+
+  const staged: Array<{
+    id: string;
+    title: string;
+    status: string;
+    priority: number;
+    originProjectId?: string;
+    originProjectTitle?: string;
+    isBlocked: boolean;
+    shape: any;
+  }> = [];
+
+  for (const n of nodes) {
+    if (n.id === frame.id || n.type !== "focusTask") continue;
+    const isDirectChild = n.parentId === frame.id;
+    const nx = n.position?.x ?? 0;
+    const ny = n.position?.y ?? 0;
+    const isContained = nx >= frameX && nx <= frameR && ny >= frameY && ny <= frameB;
+
+    if (isDirectChild || isContained) {
+      const d = (n.data || {}) as Record<string, any>;
+      const deps = d.dependencies || [];
+      const isBlocked = deps.some((depId: string) => {
+        const dep = nodes.find((m) => m.id === depId);
+        return dep && (dep.data as any)?.status !== "done";
+      });
+
+      staged.push({
+        id: n.id,
+        title: d.title || "Untitled Task",
+        status: d.status || "open",
+        priority: d.priority ?? 3,
+        originProjectId: d.originProjectId,
+        originProjectTitle: d.originProjectTitle,
+        isBlocked,
+        shape: n,
+      });
+    }
+  }
+
+  const summaryLines = staged.map((t, idx) => {
+    const origin = t.originProjectTitle ? ` [From: ${t.originProjectTitle}]` : " [Direct Task]";
+    const blocked = t.isBlocked ? " [BLOCKED]" : "";
+    return `${idx + 1}. [${t.status.toUpperCase()}] "${t.title}"${origin}${blocked} (P${t.priority})`;
+  });
+
+  return {
+    frameId: frame.id,
+    title: data.title || "Today's Runway",
+    templateId: data.templateId || "rule_of_3",
+    dailyGoal: data.dailyGoal || "",
+    clearedToday: data.clearedToday || 0,
+    maxCapacity: data.maxCapacity || 5,
+    stagedTasks: staged,
+    summaryText: `Runway: ${data.title || "Today's Runway"}\nTemplate: ${data.templateId || "rule_of_3"}\nDaily Goal: ${data.dailyGoal || "Execute daily focus items"}\nStaged Items (${staged.length}):\n${summaryLines.join("\n")}`,
   };
 }

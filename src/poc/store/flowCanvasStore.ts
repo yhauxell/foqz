@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { temporal, type TemporalState } from "zundo";
 import type { Node, Edge } from "@xyflow/react";
+import { RUNWAY_TEMPLATES, type RunwayTemplateId } from "@/types/canvas";
 
 export const FLOW_STORAGE_KEY = "foqz_reactflow_poc_board_v1";
 
@@ -15,7 +16,7 @@ export const INITIAL_NODES: Node[] = [
       title: "React Flow Migration Milestone",
       goal: "Goal: Validate sketchy style, themes & connections",
       accent: "blue",
-      borderStyle: "dashed",
+      borderStyle: "solid",
       connectors: { githubRepo: "yhauxell/foqz" },
     },
   },
@@ -97,9 +98,9 @@ export const INITIAL_EDGES: Edge[] = [
     id: "e1-2",
     type: "semantic",
     source: "task-1",
-    sourceHandle: "bottom",
+    sourceHandle: "right",
     target: "task-2",
-    targetHandle: "top",
+    targetHandle: "left",
     data: { relation: "depends" },
   },
   {
@@ -129,7 +130,7 @@ export function findFrameAt(
   pos: { x: number; y: number },
   nodes: Node[]
 ): { frame: Node; relX: number; relY: number } | null {
-  const frames = nodes.filter((n) => n.type === "projectFrame");
+  const frames = nodes.filter((n) => n.type === "projectFrame" || n.type === "runwayFrame");
   for (let i = frames.length - 1; i >= 0; i--) {
     const f = frames[i];
     const fx = f.position.x;
@@ -138,6 +139,20 @@ export function findFrameAt(
     const fh = Number(f.style?.height ?? f.height ?? 420);
 
     if (pos.x >= fx && pos.x <= fx + fw && pos.y >= fy && pos.y <= fy + fh) {
+      const isRunway =
+        f.type === "runwayFrame" ||
+        String((f.data as any)?.title || "").includes("Runway");
+
+      if (isRunway) {
+        const dropRelY = Math.round(pos.y - fy);
+        const slotIdx = Math.max(0, Math.min(4, Math.round((dropRelY - 82) / 60)));
+        return {
+          frame: f,
+          relX: 24,
+          relY: 82 + slotIdx * 60,
+        };
+      }
+
       return {
         frame: f,
         relX: Math.max(20, Math.min(fw - 280 - 20, Math.round(pos.x - fx))),
@@ -146,6 +161,80 @@ export function findFrameAt(
     }
   }
   return null;
+}
+
+export function realignRunwayNodes(
+  nodes: Node[],
+  targetRunwayId: string,
+  activeFocusId: string | null
+): Node[] {
+  const runway = nodes.find((n) => n.id === targetRunwayId);
+  if (!runway) return nodes;
+
+  const runwayTasks = nodes
+    .filter((n) => n.parentId === targetRunwayId && n.type === "focusTask")
+    .sort((a, b) => a.position.y - b.position.y);
+
+  if (runwayTasks.length === 0) return nodes;
+
+  const runwayW = Number(runway.style?.width ?? runway.width ?? 680);
+  const taskW = Math.max(300, runwayW - 48);
+  let currentY = 82;
+
+  const taskUpdates = new Map<string, { y: number; h: number }>();
+
+  for (const t of runwayTasks) {
+    const isFocused = t.id === activeFocusId;
+    const isExpanded = Boolean((t.data as any)?.isExpanded);
+    let targetH = 50;
+    if (isFocused || isExpanded) {
+      const notes = (t.data as any)?.notes || "";
+      const lines = notes.trim().length > 0 ? (notes.match(/\n/g) || []).length + 1 : 1;
+      targetH = Math.max(140, Math.min(380, 96 + lines * 24));
+    }
+    taskUpdates.set(t.id, { y: currentY, h: targetH });
+    currentY += targetH + 12;
+  }
+
+  const currentRunwayH = Number(runway.style?.height ?? runway.height ?? 420);
+  const neededRunwayH = Math.max(currentRunwayH, currentY + 30);
+
+  return nodes.map((n) => {
+    if (n.id === targetRunwayId) {
+      if (neededRunwayH !== currentRunwayH) {
+        return {
+          ...n,
+          style: { ...n.style, height: neededRunwayH },
+          height: neededRunwayH,
+        };
+      }
+      return n;
+    }
+    const update = taskUpdates.get(n.id);
+    if (update) {
+      return {
+        ...n,
+        position: { x: 24, y: update.y },
+        style: { ...n.style, width: taskW, height: update.h },
+        width: taskW,
+        height: update.h,
+      };
+    }
+    return n;
+  });
+}
+
+export function realignAllRunways(nodes: Node[], activeFocusId: string | null): Node[] {
+  const runways = nodes.filter(
+    (n) =>
+      n.type === "runwayFrame" ||
+      (n.type === "projectFrame" && String((n.data as any)?.title || "").includes("Runway"))
+  );
+  let updated = nodes;
+  for (const rw of runways) {
+    updated = realignRunwayNodes(updated, rw.id, activeFocusId);
+  }
+  return updated;
 }
 
 export interface FlowCanvasState {
@@ -198,8 +287,21 @@ export interface FlowCanvasState {
   setActiveFocusNodeId: (id: string | null) => void;
   setTimerSecondsRemaining: (updater: number | ((prev: number) => number)) => void;
   setIsTimerRunning: (updater: boolean | ((prev: boolean) => boolean)) => void;
-  stageRunway: () => string;
-  updateNodeData: (id: string, patch: Record<string, any>) => void;
+  stageRunway: (options?: {
+    templateId?: RunwayTemplateId;
+    title?: string;
+    dailyGoal?: string;
+    position?: { x: number; y: number };
+    forceNew?: boolean;
+  }) => string;
+  returnTaskToProject: (taskId: string) => boolean;
+  sendTaskToRunway: (taskId: string, targetRunwayId?: string) => boolean;
+  advanceRunwayFocus: (completedTaskId: string) => boolean;
+  updateNodeData: (
+    id: string,
+    patch: Record<string, any>,
+    options?: { skipAutoAdvance?: boolean }
+  ) => void;
   deleteNode: (id: string) => void;
   updateEdgeData: (id: string, patch: Record<string, any>) => void;
   deleteEdge: (id: string) => void;
@@ -221,12 +323,16 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
       isTimerRunning: false,
 
       setActiveFocusNodeId: (id) =>
-        set((state) => ({
-          activeFocusNodeId: id,
-          isTimerRunning: id !== null,
-          timerSecondsRemaining: 25 * 60,
-          selectedNodeId: id || state.selectedNodeId,
-        })),
+        set((state) => {
+          const updatedNodes = realignAllRunways(state.nodes, id);
+          return {
+            nodes: updatedNodes,
+            activeFocusNodeId: id,
+            isTimerRunning: id !== null,
+            timerSecondsRemaining: 25 * 60,
+            selectedNodeId: id || state.selectedNodeId,
+          };
+        }),
 
       setTimerSecondsRemaining: (updater) =>
         set((state) => ({
@@ -240,29 +346,50 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
             typeof updater === "function" ? updater(state.isTimerRunning) : updater,
         })),
 
-      stageRunway: () => {
+      stageRunway: (options) => {
         const state = get();
-        const existingRunway = state.nodes.find(
-          (n) => n.type === "projectFrame" && String((n.data as any)?.title || "").includes("Runway")
-        );
-        if (existingRunway) {
-          window.dispatchEvent(
-            new CustomEvent("foqz:flow-center-on", { detail: { id: existingRunway.id } })
+        const template = RUNWAY_TEMPLATES[options?.templateId || "rule_of_3"];
+
+        if (!options?.forceNew) {
+          const existingRunway = state.nodes.find(
+            (n) =>
+              (n.type === "runwayFrame" ||
+                (n.type === "projectFrame" &&
+                  String((n.data as any)?.title || "").includes("Runway"))) &&
+              (!options?.templateId || (n.data as any)?.templateId === options.templateId)
           );
-          return existingRunway.id;
+          if (existingRunway) {
+            window.dispatchEvent(
+              new CustomEvent("foqz:flow-center-on", { detail: { id: existingRunway.id } })
+            );
+            return existingRunway.id;
+          }
         }
 
         const runwayId = `runway-${Date.now()}`;
+        const spawnPos =
+          options?.position ||
+          (state.cursorPosition
+            ? {
+                x: Math.round(state.cursorPosition.x - 340),
+                y: Math.round(state.cursorPosition.y - 120),
+              }
+            : { x: 100 + Math.random() * 60, y: 100 + Math.random() * 60 });
+
         const runwayNode: Node = {
           id: runwayId,
-          type: "projectFrame",
-          position: { x: 100, y: 100 },
-          style: { width: 720, height: 420 },
+          type: "runwayFrame",
+          position: spawnPos,
+          style: { width: 680, height: 420 },
           data: {
-            title: "📌 Today's Runway (Focus Sprints)",
-            goal: "Execute critical path milestones without interruption",
-            accent: "rose",
-            borderStyle: "dashed",
+            title: options?.title || template.title,
+            templateId: template.id,
+            date: new Date().toISOString().split("T")[0],
+            dailyGoal: options?.dailyGoal || template.subtitle,
+            capacitySlots: template.slots,
+            targetSprintDuration: template.defaultDurationMinutes,
+            accent: template.accent,
+            borderStyle: "solid",
           },
         };
 
@@ -272,6 +399,284 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           new CustomEvent("foqz:flow-center-on", { detail: { id: runwayId } })
         );
         return runwayId;
+      },
+
+      returnTaskToProject: (taskId) => {
+        const state = get();
+        const task = state.nodes.find((n) => n.id === taskId);
+        if (!task || !task.data?.originProjectId) return false;
+
+        const originProjId = task.data.originProjectId as string;
+        const originProj = state.nodes.find((n) => n.id === originProjId);
+        if (!originProj) return false;
+
+        const returnPos =
+          (task.data.originProjectPos as { x: number; y: number }) || { x: 40, y: 100 };
+
+        const stowedEdges = ((task.data as any)?.stowedEdges as Edge[]) || [];
+
+        const updatedNodes = state.nodes.map((n) => {
+          if (n.id !== taskId) return n;
+          const cleanData = { ...n.data };
+          delete cleanData.originProjectId;
+          delete cleanData.originProjectTitle;
+          delete cleanData.originProjectAccent;
+          delete cleanData.originProjectPos;
+          delete cleanData.stagedAt;
+          delete cleanData.stowedEdges;
+          return {
+            ...n,
+            parentId: originProjId,
+            position: returnPos,
+            style: { ...n.style, width: 280, height: 82 },
+            data: cleanData,
+          };
+        });
+
+        // Recreate stowed connections on move back to project
+        const currentEdges = state.edges;
+        const edgesToRestore = stowedEdges.filter(
+          (se) => !currentEdges.some((e) => e.id === se.id)
+        );
+        const realignedNodes = realignAllRunways(updatedNodes, state.activeFocusNodeId);
+        set({ nodes: realignedNodes, edges: updatedEdges, selectedNodeId: taskId });
+        window.dispatchEvent(
+          new CustomEvent("foqz:flow-center-on", { detail: { id: originProjId } })
+        );
+        return true;
+      },
+
+      sendTaskToRunway: (taskId, targetRunwayId) => {
+        const state = get();
+        const task = state.nodes.find((n) => n.id === taskId);
+        if (!task || task.type !== "focusTask") return false;
+
+        let runwayNode: Node | undefined;
+        let nodesList = [...state.nodes];
+
+        if (targetRunwayId) {
+          runwayNode = nodesList.find(
+            (n) =>
+              n.id === targetRunwayId &&
+              (n.type === "runwayFrame" ||
+                (n.type === "projectFrame" &&
+                  String((n.data as any)?.title || "").includes("Runway")))
+          );
+        }
+
+        if (!runwayNode) {
+          runwayNode = nodesList.find(
+            (n) =>
+              n.type === "runwayFrame" ||
+              (n.type === "projectFrame" &&
+                String((n.data as any)?.title || "").includes("Runway"))
+          );
+        }
+
+        // If no runway exists on the canvas, auto-stage Today's Runway
+        if (!runwayNode) {
+          const newRunwayId = state.stageRunway();
+          const freshState = get();
+          nodesList = [...freshState.nodes];
+          runwayNode = nodesList.find((n) => n.id === newRunwayId);
+        }
+
+        if (!runwayNode) return false;
+
+        const targetRunway = runwayNode;
+        const runwayW = Number(targetRunway.style?.width ?? targetRunway.width ?? 680);
+
+        // Find existing tasks in this runway to pick an open slot
+        const existingRunwayTasks = nodesList.filter(
+          (n) => n.id !== taskId && n.parentId === targetRunway.id && n.type === "focusTask"
+        );
+        const occupiedSlotIndices = new Set(
+          existingRunwayTasks.map((t) => Math.round((t.position.y - 82) / 60))
+        );
+
+        let chosenSlot = 0;
+        while (chosenSlot < 5 && occupiedSlotIndices.has(chosenSlot)) {
+          chosenSlot++;
+        }
+        if (chosenSlot >= 5) {
+          chosenSlot = existingRunwayTasks.length;
+        }
+
+        const snapX = 24;
+        const snapY = 82 + chosenSlot * 60;
+        const snapWidth = runwayW - 48;
+        const snapHeight = 50;
+
+        // Stow active canvas edges connected to this task
+        const currentEdges = get().edges;
+        const connectedEdges = currentEdges.filter(
+          (e) => e.source === taskId || e.target === taskId
+        );
+        const existingStowed = ((task.data as any)?.stowedEdges as Edge[]) || [];
+        const mergedStowed = [
+          ...existingStowed,
+          ...connectedEdges.filter((ce) => !existingStowed.some((se) => se.id === ce.id)),
+        ];
+
+        let updatedData: Record<string, any> = {
+          ...task.data,
+          stowedEdges: mergedStowed,
+        };
+
+        // Record origin project if coming from a projectFrame
+        const currentParent = task.parentId
+          ? nodesList.find((n) => n.id === task.parentId)
+          : null;
+        if (currentParent && currentParent.type === "projectFrame") {
+          updatedData = {
+            ...updatedData,
+            originProjectId: currentParent.id,
+            originProjectTitle: (currentParent.data as any)?.title || "Project",
+            originProjectAccent: (currentParent.data as any)?.accent || "blue",
+            originProjectPos: { x: task.position.x, y: task.position.y },
+            stagedAt: Date.now(),
+          };
+        }
+
+        const updatedTask: Node = {
+          ...task,
+          parentId: targetRunway.id,
+          position: { x: snapX, y: snapY },
+          style: { ...task.style, width: snapWidth, height: snapHeight },
+          width: snapWidth,
+          height: snapHeight,
+          data: updatedData,
+          selected: true,
+        };
+        delete (updatedTask as any).extent;
+
+        // Insert updated task right after the runway or its children
+        const withoutTask = nodesList.filter((n) => n.id !== taskId);
+        const parentIdx = withoutTask.findIndex((n) => n.id === targetRunway.id);
+        let finalNodes: Node[];
+        if (parentIdx !== -1) {
+          finalNodes = [...withoutTask];
+          finalNodes.splice(parentIdx + 1, 0, updatedTask);
+        } else {
+          finalNodes = [...withoutTask, updatedTask];
+        }
+
+        // Remove stowed edges from active canvas edges
+        const updatedEdges = currentEdges.filter(
+          (e) => e.source !== taskId && e.target !== taskId
+        );
+
+        const realignedNodes = realignAllRunways(
+          finalNodes.map((n) => (n.id === taskId ? updatedTask : { ...n, selected: false })),
+          state.activeFocusNodeId
+        );
+
+        set({
+          nodes: realignedNodes,
+          edges: updatedEdges,
+          selectedNodeId: taskId,
+        });
+
+        window.dispatchEvent(
+          new CustomEvent("foqz:flow-center-on", { detail: { id: targetRunway.id } })
+        );
+        return true;
+      },
+
+      advanceRunwayFocus: (completedTaskId) => {
+        const state = get();
+        const completedTask = state.nodes.find((n) => n.id === completedTaskId);
+        if (!completedTask || !completedTask.parentId) return false;
+
+        // ONLY trigger if the completed task was the currently active focus target!
+        if (state.activeFocusNodeId !== completedTaskId) {
+          return false;
+        }
+
+        const parent = state.nodes.find((n) => n.id === completedTask.parentId);
+        const isRunway = Boolean(
+          parent &&
+            (parent.type === "runwayFrame" ||
+              String((parent.data as any)?.title || "").includes("Runway"))
+        );
+
+        // ONLY trigger if the task is inside a Runway!
+        // Tasks in normal project frames or standalone canvas tasks will NEVER auto-advance.
+        if (!isRunway || !parent) return false;
+
+        const runwayTasks = state.nodes
+          .filter((n) => n.parentId === parent.id && n.type === "focusTask")
+          .sort((a, b) => a.position.y - b.position.y);
+
+        const nextTask = runwayTasks.find(
+          (t) => t.id !== completedTaskId && (t.data as any)?.status !== "done"
+        );
+
+        if (nextTask) {
+          const sprintMinutes = Number((parent.data as any)?.targetSprintDuration) || 25;
+          const nextSeconds = sprintMinutes * 60;
+
+          const updatedNodes = state.nodes.map((n) => {
+            if (n.id === nextTask.id) {
+              return {
+                ...n,
+                data: { ...n.data, status: "doing" },
+                selected: true,
+              };
+            }
+            if (n.id === completedTaskId) {
+              return { ...n, selected: false };
+            }
+            return n;
+          });
+
+          const realignedNodes = realignAllRunways(updatedNodes, nextTask.id);
+
+          set({
+            nodes: realignedNodes,
+            activeFocusNodeId: nextTask.id,
+            selectedNodeId: nextTask.id,
+            timerSecondsRemaining: nextSeconds,
+            isTimerRunning: true,
+          });
+
+          window.dispatchEvent(
+            new CustomEvent("foqz:flow-center-on", { detail: { id: nextTask.id } })
+          );
+          window.dispatchEvent(
+            new CustomEvent("foqz:set-focus-target", { detail: { shapeId: nextTask.id } })
+          );
+          window.dispatchEvent(
+            new CustomEvent("foqz:runway-advanced", {
+              detail: {
+                fromTaskId: completedTaskId,
+                toTaskId: nextTask.id,
+                toTaskTitle: (nextTask.data as any)?.title || "Next Task",
+                runwayTitle: (parent.data as any)?.title || "Runway",
+              },
+            })
+          );
+          return true;
+        } else {
+          // All tasks in the runway are completed!
+          set({
+            activeFocusNodeId: null,
+            isTimerRunning: false,
+            timerSecondsRemaining: 0,
+          });
+          window.dispatchEvent(
+            new CustomEvent("foqz:runway-cleared", {
+              detail: {
+                runwayId: parent.id,
+                runwayTitle: (parent.data as any)?.title || "Runway",
+              },
+            })
+          );
+          window.dispatchEvent(
+            new CustomEvent("foqz:set-focus-target", { detail: { shapeId: null } })
+          );
+          return true;
+        }
       },
 
       setNodes: (updater) =>
@@ -315,23 +720,40 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           }
         }
 
+        const parentFrame = parentId ? state.nodes.find((n) => n.id === parentId) : null;
+        const isParentRunway = Boolean(
+          parentFrame &&
+            (parentFrame.type === "runwayFrame" ||
+              String((parentFrame.data as any)?.title || "").includes("Runway"))
+        );
+
         if (!pos) {
           const existingTasks = state.nodes.filter(
             (n) => n.parentId === parentId && n.type === "focusTask"
           );
-          const defaultX = parentId ? 40 : 400 + Math.random() * 40;
-          const defaultY = parentId
-            ? 100 + existingTasks.length * 94
-            : 280 + Math.random() * 40;
-          pos = { x: defaultX, y: defaultY };
+          if (isParentRunway) {
+            const slotIdx = Math.min(4, existingTasks.length);
+            pos = { x: 24, y: 82 + slotIdx * 60 };
+          } else {
+            const defaultX = parentId ? 40 : 400 + Math.random() * 40;
+            const defaultY = parentId
+              ? 100 + existingTasks.length * 94
+              : 280 + Math.random() * 40;
+            pos = { x: defaultX, y: defaultY };
+          }
         }
+
+        const parentW = Number(parentFrame?.style?.width ?? parentFrame?.width ?? 680);
+        const taskStyle = isParentRunway
+          ? { width: parentW - 48, height: 50, zIndex: nextZ }
+          : { width: 280, height: 82, zIndex: nextZ };
 
         const newNode: Node = {
           id,
           type: "focusTask",
           parentId,
           position: pos,
-          style: { width: 280, height: 82, zIndex: nextZ },
+          style: taskStyle,
           data: {
             title: props.title,
             status: props.status || "open",
@@ -489,7 +911,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
             title: props.title,
             goal: props.goal || "",
             accent: props.accent || "blue",
-            borderStyle: "dashed",
+            borderStyle: "solid",
           },
           selected: true,
         };
@@ -688,7 +1110,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
               title: "📥 Scratchpad Inbox (Swept Items)",
               goal: "Triage unassigned thoughts, stickies, and notes",
               accent: "zinc",
-              borderStyle: "dashed",
+              borderStyle: "solid",
             },
           };
           nodesList.push(inboxFrame);
@@ -756,12 +1178,26 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         return { inboxId: targetInboxId, sweptCount: unparentedItems.length };
       },
 
-      updateNodeData: (id, patch) =>
-        set((state) => ({
-          nodes: state.nodes.map((n) =>
-            n.id === id ? { ...n, data: { ...n.data, ...patch } } : n
-          ),
-        })),
+      updateNodeData: (id, patch, options) => {
+        const state = get();
+        const currentTask = state.nodes.find((n) => n.id === id);
+        const wasDone = (currentTask?.data as any)?.status === "done";
+        const isBecomingDone = patch.status === "done" && !wasDone;
+
+        let updatedNodes = state.nodes.map((n) =>
+          n.id === id ? { ...n, data: { ...n.data, ...patch } } : n
+        );
+
+        if (patch.isExpanded !== undefined || patch.notes !== undefined || patch.status !== undefined) {
+          updatedNodes = realignAllRunways(updatedNodes, state.activeFocusNodeId);
+        }
+
+        set({ nodes: updatedNodes });
+
+        if (isBecomingDone && !options?.skipAutoAdvance) {
+          get().advanceRunwayFocus(id);
+        }
+      },
 
       deleteNode: (id) =>
         set((state) => {

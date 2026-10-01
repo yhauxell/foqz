@@ -96,3 +96,47 @@ export function toggleCheckboxInMarkdown(
 
   return updated.join("\n");
 }
+
+/**
+ * Extracts checklist statistics and the first pending actionable step from markdown.
+ */
+export function extractChecklistStats(text: string): {
+  total: number;
+  done: number;
+  nextPendingItem?: string;
+  firstLine?: string;
+} {
+  if (!text || !text.trim()) return { total: 0, done: 0 };
+  const lines = text.split("\n");
+  let total = 0;
+  let done = 0;
+  let nextPendingItem: string | undefined;
+  let firstLine: string | undefined;
+  let inCodeBlock = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("```")) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+
+    if (!firstLine && trimmed.length > 0) {
+      firstLine = trimmed.replace(/^#+\s*/, "").replace(/^[-*+]\s*/, "");
+    }
+
+    const checkMatch = line.match(/^(\s*[-*+]|\s*\d+\.)\s*\[([ xX])\]\s*(.*)$/);
+    if (checkMatch) {
+      total++;
+      const isDone = checkMatch[2].toLowerCase() === "x";
+      if (isDone) {
+        done++;
+      } else if (!nextPendingItem) {
+        nextPendingItem = checkMatch[3].trim();
+      }
+    }
+  }
+
+  return { total, done, nextPendingItem, firstLine };
+}
