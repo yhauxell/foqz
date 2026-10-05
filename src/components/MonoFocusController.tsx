@@ -464,6 +464,9 @@ export function MonoFocusController({
         />
       )}
 
+      {/* Ambient animated gradient — barely visible, lives under the dark veil */}
+      {isLocked && <div className="focus-backdrop-ambient z-[5999]" />}
+
       {/* Top Status Strip */}
       <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[6200] flex items-center gap-3 px-4 py-1.5 rounded-full bg-zinc-950/80 text-white border border-zinc-800/80 shadow-xl backdrop-blur-md select-none animate-in fade-in slide-in-from-top-2 duration-300">
         <div className="flex items-center gap-2">

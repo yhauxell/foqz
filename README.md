@@ -201,7 +201,31 @@ yarn dist
 yarn dist:dir
 ```
 
-### 4. Landing Page Preview
+### 4. Visual & Interaction Testing
+
+Foqz includes Playwright integration for automated visual regression and interactive testing across both the Web renderer and native Electron desktop shell:
+
+```bash
+# Run all end-to-end tests (Web renderer & Electron native window)
+npm run test:e2e
+
+# Run only the fast Web renderer canvas & modal suite
+npx playwright test --project=renderer
+
+# Run only native Electron desktop tests
+npx playwright test --project=electron
+
+# Start live interactive development with Chrome DevTools Protocol (CDP port 9222)
+npm run dev:debug
+
+# Drive live interactions or capture visual snapshots on-demand
+node scripts/live-interact.mjs screenshot my-feature
+node scripts/live-interact.mjs click "button[aria-label='Settings']"
+```
+
+> **AI Agent Skill**: Automated visual and interaction testing is codified in [`.agents/skills/visual-interaction-testing/SKILL.md`](.agents/skills/visual-interaction-testing/SKILL.md) for autonomous feature verification.
+
+### 5. Landing Page Preview
 
 ```bash
 yarn dev:landing

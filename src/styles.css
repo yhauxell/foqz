@@ -1776,6 +1776,62 @@ html.dark .canvas {
   }
 }
 
+/* ============================================================ */
+/* Focus Mode — animated ambient backdrop                        */
+/* ============================================================ */
+@keyframes focus-backdrop-drift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes focus-backdrop-rotate {
+  from { transform: rotate(0deg) scale(1.6); }
+  to   { transform: rotate(360deg) scale(1.6); }
+}
+
+.focus-backdrop-ambient {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.focus-backdrop-ambient::before {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(
+    from 0deg at 40% 60%,
+    transparent 0deg,
+    rgba(16, 185, 129, 0.04) 60deg,
+    transparent 120deg,
+    rgba(99, 102, 241, 0.03) 200deg,
+    transparent 260deg,
+    rgba(16, 185, 129, 0.025) 320deg,
+    transparent 360deg
+  );
+  animation: focus-backdrop-rotate 28s linear infinite;
+}
+
+.focus-backdrop-ambient::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 80% 60% at 30% 40%,
+    rgba(16, 185, 129, 0.045) 0%,
+    transparent 60%
+  ),
+  radial-gradient(
+    ellipse 60% 80% at 70% 65%,
+    rgba(99, 102, 241, 0.03) 0%,
+    transparent 55%
+  );
+  background-size: 200% 200%;
+  animation: focus-backdrop-drift 18s ease-in-out infinite;
+}
+
 /* Neutralize React Flow's default .animated path rule which forces stroke-dasharray: 5 and dashdraw */
 .react-flow__edge.animated path.react-flow__edge-path {
   stroke-dasharray: inherit;
