@@ -63,6 +63,64 @@ export function getEffectiveOllamaBaseUrl(): string {
   return OLLAMA_BASE_URL
 }
 
+export type LocalServerKind = 'ollama' | 'lmstudio' | 'llamacpp'
+
+export interface DiscoveredLocalServer {
+  kind: LocalServerKind
+  name: string
+  url: string
+  online: boolean
+  models: string[]
+  recommendedModel?: string
+}
+
+const LOCAL_CANDIDATES: Array<{ kind: LocalServerKind; name: string; url: string; checkPath: string }> = [
+  { kind: 'ollama', name: 'Ollama', url: 'http://127.0.0.1:11434', checkPath: '/api/tags' },
+  { kind: 'lmstudio', name: 'LM Studio', url: 'http://127.0.0.1:1234/v1', checkPath: '/models' },
+  { kind: 'llamacpp', name: 'llama.cpp', url: 'http://127.0.0.1:8080/v1', checkPath: '/models' },
+]
+
+/**
+ * Probe standard local LLM server ports (Ollama, LM Studio, llama.cpp / LocalAI).
+ * Runs concurrent checks with a short timeout to prevent UI freezes.
+ */
+export async function discoverLocalServers(timeoutMs = 1200): Promise<DiscoveredLocalServer[]> {
+  const probes = LOCAL_CANDIDATES.map(async (cand) => {
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      const res = await fetch(`${cand.url}${cand.checkPath}`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      })
+      clearTimeout(timer)
+      if (!res.ok) {
+        return { kind: cand.kind, name: cand.name, url: cand.url, online: false, models: [] }
+      }
+      const data = await res.json()
+      let models: string[] = []
+      if (Array.isArray(data?.models)) {
+        models = data.models.map((m: any) => (typeof m === 'string' ? m : m.name || m.id || m.model)).filter(Boolean)
+      } else if (Array.isArray(data?.data)) {
+        models = data.data.map((m: any) => m.id || m.name || m.model).filter(Boolean)
+      }
+      const recommendedModel = models.length ? pickDefaultOllamaModel(models) : undefined
+      return {
+        kind: cand.kind,
+        name: cand.name,
+        url: cand.url,
+        online: true,
+        models,
+        recommendedModel,
+      }
+    } catch {
+      return { kind: cand.kind, name: cand.name, url: cand.url, online: false, models: [] }
+    }
+  })
+
+  return Promise.all(probes)
+}
+
 /**
  * Check if local Ollama daemon is reachable and return available models and capabilities.
  */

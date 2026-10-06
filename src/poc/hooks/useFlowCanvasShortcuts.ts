@@ -7,6 +7,7 @@ interface FlowCanvasShortcutsProps {
   onCircleTool?: () => void;
   onTextTool: () => void;
   onNoteTool?: () => void;
+  onConnectionTool?: () => void;
   onArrowTool: () => void;
   onPencilTool: () => void;
   onCreateTask: () => void;
@@ -34,6 +35,7 @@ export function useFlowCanvasShortcuts({
   onCircleTool,
   onTextTool,
   onNoteTool,
+  onConnectionTool,
   onArrowTool,
   onPencilTool,
   onCreateTask,
@@ -59,8 +61,10 @@ export function useFlowCanvasShortcuts({
   useHotkeys(["o"], () => onCircleTool?.(), { preventDefault: true, enabled });
   useHotkeys(["t", "3"], () => onTextTool(), { preventDefault: true, enabled });
   useHotkeys(["s", "S"], () => onNoteTool?.(), { preventDefault: true, enabled });
-  useHotkeys(["a", "4"], () => onArrowTool(), { preventDefault: true, enabled });
+  useHotkeys(["a", "A"], () => onArrowTool(), { preventDefault: true, enabled });
+  useHotkeys(["4", "l"], () => onConnectionTool?.(), { preventDefault: true, enabled });
   useHotkeys(["p", "5", "d"], () => onPencilTool(), { preventDefault: true, enabled });
+
 
   // Creation & Context Actions
   useHotkeys(["n", "N", "meta+n", "ctrl+n", "alt+n"], () => onCreateTask(), { preventDefault: true, enabled });

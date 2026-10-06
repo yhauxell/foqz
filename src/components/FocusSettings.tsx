@@ -26,6 +26,7 @@ import {
   testGeminiConnection,
   testJevConnection,
 } from "@/lib/aiConnectors";
+import { discoverLocalServers, type DiscoveredLocalServer } from "@/lib/ollama";
 import { useCallback, useEffect, useState } from "react";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 
@@ -216,12 +217,14 @@ export function FocusSettings({
     formatTime(settings.workingHours.startMin),
   );
   const [workingEnd, setWorkingEnd] = useState(formatTime(settings.workingHours.endMin));
-  // Ollama
+  // Ollama & Local LLM Servers
   const [ollamaEnabled, setOllamaEnabled] = useState(settings.ollamaEnabled ?? true);
   const [ollamaUrlDraft, setOllamaUrlDraft] = useState(settings.ollamaBaseUrl || "http://127.0.0.1:11434");
   const [ollamaModelDraft, setOllamaModelDraft] = useState(settings.ollamaDefaultModel || "");
   const [testingOllama, setTestingOllama] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState<string | null>(null);
+  const [discoveredServers, setDiscoveredServers] = useState<DiscoveredLocalServer[]>([]);
+  const [probingLocal, setProbingLocal] = useState(false);
 
   // OpenAI
   const [openaiEnabled, setOpenaiEnabled] = useState(settings.openaiEnabled ?? false);
@@ -426,6 +429,29 @@ export function FocusSettings({
     },
     [update, typesafeEnabled, typesafeKeyDraft, typesafeUrlDraft],
   );
+
+  const handleProbeLocalServers = useCallback(async () => {
+    setProbingLocal(true);
+    try {
+      const servers = await discoverLocalServers();
+      setDiscoveredServers(servers);
+      const onlineFound = servers.find((s) => s.online);
+      if (onlineFound && !ollamaModelDraft) {
+        if (onlineFound.recommendedModel) {
+          setOllamaModelDraft(onlineFound.recommendedModel);
+          void persistOllamaConfig({ model: onlineFound.recommendedModel });
+        }
+      }
+    } finally {
+      setProbingLocal(false);
+    }
+  }, [ollamaModelDraft, persistOllamaConfig]);
+
+  useEffect(() => {
+    if (open && tab === "ai") {
+      void handleProbeLocalServers();
+    }
+  }, [open, tab, handleProbeLocalServers]);
 
   const handleTestOllama = useCallback(async () => {
     setTestingOllama(true);
@@ -1041,39 +1067,72 @@ export function FocusSettings({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={testingOllama}
-                      onClick={() => void handleTestOllama()}
-                    >
-                      {testingOllama ? (
-                        <>
-                          <RefreshCw className="size-3.5 animate-spin mr-1.5" />
-                          <span>Checking...</span>
-                        </>
-                      ) : (
-                        "Test & Detect Models"
-                      )}
-                    </Button>
-                    {ollamaStatus ? (
-                      <span
-                        className={`text-xs flex items-center gap-1 ${
-                          ollamaStatus.startsWith("Online")
-                            ? "text-emerald-500 font-medium"
-                            : "text-amber-500"
-                        }`}
-                      >
-                        {ollamaStatus.startsWith("Online") ? (
-                          <CheckCircle2 className="size-3.5 shrink-0" />
-                        ) : (
-                          <AlertCircle className="size-3.5 shrink-0" />
-                        )}
-                        <span>{ollamaStatus}</span>
+                  {/* Local Server Auto-Discovery HUD */}
+                  <div className="rounded-lg border border-border/70 bg-muted/30 p-2.5 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                        <Bot className="size-3.5 text-primary" />
+                        <span>Auto-Detected Local Inference Engines</span>
                       </span>
-                    ) : null}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={probingLocal}
+                        onClick={() => void handleProbeLocalServers()}
+                        title="Rescan local ports"
+                      >
+                        <RefreshCw className={`size-3 ${probingLocal ? "animate-spin text-primary" : "text-muted-foreground"}`} />
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {(discoveredServers.length > 0 ? discoveredServers : [
+                        { kind: 'ollama', name: 'Ollama', url: 'http://127.0.0.1:11434', online: false, models: [] },
+                        { kind: 'lmstudio', name: 'LM Studio', url: 'http://127.0.0.1:1234/v1', online: false, models: [] },
+                        { kind: 'llamacpp', name: 'llama.cpp', url: 'http://127.0.0.1:8080/v1', online: false, models: [] },
+                      ]).map((srv) => (
+                        <div
+                          key={srv.name}
+                          className={`p-2 rounded-md border text-xs flex flex-col justify-between gap-1.5 transition-all ${
+                            srv.online
+                              ? "border-emerald-500/40 bg-emerald-500/10 dark:bg-emerald-950/20"
+                              : "border-border/40 bg-background/50 opacity-70"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-foreground">{srv.name}</span>
+                            <span
+                              className={`size-2 rounded-full ${
+                                srv.online ? "bg-emerald-500 animate-pulse" : "bg-zinc-400 dark:bg-zinc-600"
+                              }`}
+                            />
+                          </div>
+                          <div className="text-[10px] text-muted-foreground truncate" title={srv.url}>
+                            {srv.online
+                              ? `${srv.models.length} model(s) active`
+                              : "Not running"}
+                          </div>
+                          {srv.online && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOllamaUrlDraft(srv.url);
+                                if (srv.recommendedModel) {
+                                  setOllamaModelDraft(srv.recommendedModel);
+                                  void persistOllamaConfig({ url: srv.url, model: srv.recommendedModel });
+                                } else {
+                                  void persistOllamaConfig({ url: srv.url });
+                                }
+                              }}
+                              className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 hover:underline text-left cursor-pointer pt-0.5"
+                            >
+                              Use this engine →
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </AiConnectorCard>
 
