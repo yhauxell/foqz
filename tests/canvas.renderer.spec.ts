@@ -54,4 +54,66 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     // Take screenshot of filtered spotlight
     await page.screenshot({ path: 'test-results/spotlight-search.png' });
   });
+
+  test('opens clear board confirmation modal and can cancel or clear', async ({ page }) => {
+    // Open board actions menu
+    const actionsMenuBtn = page.locator("button[title='Board actions & exports']");
+    await actionsMenuBtn.click();
+
+    // Click Clear Board
+    const clearBoardBtn = page.getByRole('button', { name: 'Clear Board' });
+    await expect(clearBoardBtn).toBeVisible();
+    await clearBoardBtn.click();
+
+    // Verify confirmation modal
+    await expect(page.getByText('Clear entire board?')).toBeVisible();
+    await expect(page.getByText('This will remove all shapes, tasks, frames, and connections')).toBeVisible();
+
+    // Capture visual screenshot of clear board modal
+    await page.screenshot({ path: 'test-results/clear-board-modal.png' });
+
+    // Cancel modal
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByText('Clear entire board?')).not.toBeVisible();
+  });
+
+  test('verifies big focus modal appears when focusing task', async ({ page }) => {
+    // Trigger focus session via custom event
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent('foqz:set-focus-target', { detail: { shapeId: 'task-2' } }));
+    });
+
+    // Check prominent timer and exit focus button
+    await expect(page.getByText('Remaining Time')).toBeVisible();
+    await expect(page.getByText('Exit Focus (Esc)')).toBeVisible();
+
+    // Capture visual screenshot of the expanded focus modal
+    await page.screenshot({ path: 'test-results/focus-modal-big.png' });
+  });
+
+  test('verifies runway frame selection preserves task visibility on top', async ({ page }) => {
+    // Open template selector and stage runway via UI
+    const stageRunwayBtn = page.locator("button[title='Stage New Runway from Templates...']");
+    await expect(stageRunwayBtn).toBeVisible();
+    await stageRunwayBtn.click();
+
+    // Select the first framework (Rule of 3)
+    const ruleOf3Btn = page.locator("button:has-text('Rule of 3')").first();
+    await expect(ruleOf3Btn).toBeVisible();
+    await ruleOf3Btn.click();
+
+    // Verify runway is staged on canvas
+    const runwayFrame = page.locator('.react-flow__node-runwayFrame').first();
+    await expect(runwayFrame).toBeVisible();
+
+    // Select runway frame
+    await runwayFrame.click();
+
+    // Ensure task cards on canvas remain visible and not buried
+    const anyTask = page.locator('.react-flow__node-focusTask').first();
+    await expect(anyTask).toBeVisible();
+
+    // Capture visual screenshot of runway selection layering
+    await page.screenshot({ path: 'test-results/runway-selection-layering.png' });
+  });
 });

@@ -82,11 +82,38 @@ function FocusCanvasAppInner() {
     };
   }, []);
 
+  // Global Link Click Interceptor: Ensure all links open in user's external browser
+  useEffect(() => {
+    const handleGlobalLinkClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const anchor = target?.closest("a");
+      if (
+        anchor &&
+        anchor.href &&
+        (anchor.href.startsWith("http:") ||
+          anchor.href.startsWith("https:") ||
+          anchor.href.startsWith("mailto:"))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (window.focusStore?.openExternal) {
+          void window.focusStore.openExternal(anchor.href);
+        } else if (window.electron?.openExternal) {
+          void window.electron.openExternal(anchor.href);
+        } else {
+          window.open(anchor.href, "_blank", "noopener,noreferrer");
+        }
+      }
+    };
+    window.addEventListener("click", handleGlobalLinkClick, true);
+    return () => window.removeEventListener("click", handleGlobalLinkClick, true);
+  }, []);
+
   const isMac =
     typeof navigator !== "undefined" &&
     /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform || navigator.userAgent);
   const isElectron =
-    typeof window !== "undefined" && Boolean(window.focusStore?.getSettings);
+    typeof window !== "undefined" && Boolean(window.focusStore?.getSettings || (window as any).focusStore);
   const isMacDesktop = isElectron && isMac;
 
   const { settings, update } = useFocusAppSettings();
@@ -326,7 +353,7 @@ function FocusCanvasAppInner() {
         {/* Left section: Brand + Board Menu */}
         <div
           className={`flex items-center gap-2 shrink-0 transition-all duration-150 ${
-            isMacDesktop && !isWindowMaximized ? "pl-[72px]" : ""
+            isMacDesktop ? "pl-[76px]" : ""
           }`}
         >
           <div className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-white mr-1 flex items-center gap-1.5">

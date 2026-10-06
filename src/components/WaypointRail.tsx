@@ -126,7 +126,7 @@ export function WaypointRail() {
     (targetId: string) => {
       setSelectedNodeId(targetId);
       window.dispatchEvent(
-        new CustomEvent("foqz:flow-center-on", { detail: { id: targetId } })
+        new CustomEvent("foqz:flow-center-on", { detail: { id: targetId, fullSpace: true } })
       );
     },
     [setSelectedNodeId]
@@ -137,15 +137,10 @@ export function WaypointRail() {
   }, []);
 
   const handleCreateProject = useCallback(() => {
-    const store = useFlowCanvasStore.getState();
-    const id = createProject({
-      title: "New Project",
-      goal: "Milestone goal & focus direction",
-      accent: "blue",
-      position: store.cursorPosition || undefined,
-    });
-    window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
-  }, [createProject]);
+    window.dispatchEvent(
+      new CustomEvent("foqz:new-project", { detail: { fullSpace: true } })
+    );
+  }, []);
 
   const handleSelectRunwayTemplate = (templateId: RunwayTemplateId) => {
     setTemplateMenuOpen(false);

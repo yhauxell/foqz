@@ -169,8 +169,23 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     const handleCenterOn = (e: any) => {
       const id = e.detail?.id;
       if (!id) return;
+      const fullSpace = Boolean(e.detail?.fullSpace);
       setTimeout(() => {
-        fitView({ nodes: [{ id }], duration: 350, maxZoom: 1.15, padding: 0.15 });
+        const currentNodes = useFlowCanvasStore.getState().nodes;
+        const targetNode = currentNodes.find((n) => n.id === id);
+        const isFrame =
+          targetNode?.type === "projectFrame" || targetNode?.type === "runwayFrame";
+        if (fullSpace || isFrame) {
+          fitView({
+            nodes: [{ id }],
+            duration: 400,
+            padding: 0.04,
+            minZoom: 0.2,
+            maxZoom: 2.5,
+          });
+        } else {
+          fitView({ nodes: [{ id }], duration: 350, maxZoom: 1.15, padding: 0.15 });
+        }
       }, 50);
     };
     const handleFitView = () => fitView({ duration: 300 });
@@ -199,21 +214,151 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
     const handleNewProject = (e: any) => {
       const title = e.detail?.title || "New Project";
-      const center = screenToFlowPosition({
-        x: window.innerWidth / 2,
-        y: window.innerHeight / 2,
+      // Calculate screen bounds in flow coordinates to fill visible screen
+      const marginX = 80;
+      const marginY = 80;
+      const topLeft = screenToFlowPosition({ x: marginX, y: marginY });
+      const bottomRight = screenToFlowPosition({
+        x: Math.max(300, window.innerWidth - marginX),
+        y: Math.max(200, window.innerHeight - marginY),
       });
-      const pos = e.detail?.position || useFlowCanvasStore.getState().cursorPosition || center;
+
+      const frameWidth = Math.max(720, Math.round(bottomRight.x - topLeft.x));
+      const frameHeight = Math.max(460, Math.round(bottomRight.y - topLeft.y));
+      const pos = e.detail?.position || topLeft;
+
       const id = useFlowCanvasStore.getState().createProject({
         title,
         goal: "Milestone goal & focus direction",
         accent: "blue",
         position: pos,
+        width: frameWidth,
+        height: frameHeight,
       });
-      window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
+      window.dispatchEvent(
+        new CustomEvent("foqz:flow-center-on", { detail: { id, fullSpace: true } })
+      );
       setActiveTool("select");
     };
 
+    const handlePaste = (e: ClipboardEvent) => {
+      const clipboardData = e.clipboardData;
+      if (!clipboardData) return;
+
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.isContentEditable);
+
+      // 1. If inside an active text/input field and pasting a URL over selection, format as [selectedText](url)
+      if (isInput) {
+        const text = clipboardData.getData("text/plain")?.trim();
+        if (text && /^https?:\/\/[^\s]+$/i.test(text)) {
+          if (
+            activeEl instanceof HTMLInputElement ||
+            activeEl instanceof HTMLTextAreaElement
+          ) {
+            const start = activeEl.selectionStart ?? 0;
+            const end = activeEl.selectionEnd ?? 0;
+            if (start !== end) {
+              e.preventDefault();
+              const selectedText = activeEl.value.slice(start, end);
+              const linkMarkdown = `[${selectedText}](${text})`;
+              const val = activeEl.value;
+              activeEl.value = val.slice(0, start) + linkMarkdown + val.slice(end);
+              activeEl.selectionStart = start;
+              activeEl.selectionEnd = start + linkMarkdown.length;
+              activeEl.dispatchEvent(new Event("input", { bubbles: true }));
+              return;
+            }
+          }
+        }
+        return;
+      }
+
+      // 2. Canvas-level paste
+      // Check for image files in clipboard
+      const items = Array.from(clipboardData.items || []);
+      const imageItem = items.find((item) => item.type.startsWith("image/"));
+
+      if (imageItem) {
+        const file = imageItem.getAsFile();
+        if (file) {
+          e.preventDefault();
+          const reader = new FileReader();
+          reader.onload = (loadEvent) => {
+            const dataUrl = loadEvent.target?.result as string;
+            if (!dataUrl) return;
+
+            const img = new Image();
+            img.onload = () => {
+              const naturalW = img.naturalWidth || 400;
+              const naturalH = img.naturalHeight || 300;
+              const displayW = Math.min(480, Math.max(160, naturalW));
+              const displayH = Math.round(displayW * (naturalH / naturalW));
+
+              const center = screenToFlowPosition({
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2,
+              });
+              const spawnPos = useFlowCanvasStore.getState().cursorPosition || center;
+
+              const store = useFlowCanvasStore.getState();
+              const imgId = store.createImage({
+                src: dataUrl,
+                width: displayW,
+                height: displayH,
+                position: {
+                  x: Math.round(spawnPos.x - displayW / 2),
+                  y: Math.round(spawnPos.y - displayH / 2),
+                },
+              });
+              store.setSelectedNodeId(imgId);
+            };
+            img.src = dataUrl;
+          };
+          reader.readAsDataURL(file);
+          return;
+        }
+      }
+
+      // Check for text/markdown in clipboard
+      const text = clipboardData.getData("text/plain");
+      if (text && text.trim()) {
+        e.preventDefault();
+        const center = screenToFlowPosition({
+          x: window.innerWidth / 2,
+          y: window.innerHeight / 2,
+        });
+        const spawnPos = useFlowCanvasStore.getState().cursorPosition || center;
+
+        const id = `text-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const newNode: Node = {
+          id,
+          type: "text",
+          position: {
+            x: Math.round(spawnPos.x - 80),
+            y: Math.round(spawnPos.y - 20),
+          },
+          data: {
+            text: text.trim(),
+            isNew: false,
+            autoEdit: false,
+          },
+          selected: true,
+        };
+
+        setNodes((nds) => [
+          ...nds.map((n) => (n.selected ? { ...n, selected: false } : n)),
+          newNode,
+        ]);
+        useFlowCanvasStore.getState().setSelectedNodeId(id);
+      }
+    };
+
+    window.addEventListener("paste", handlePaste);
     window.addEventListener("foqz:flow-center-on", handleCenterOn as EventListener);
     window.addEventListener("foqz:flow-fit-view", handleFitView);
     window.addEventListener("foqz:fit-view", handleFitView);
@@ -223,6 +368,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     window.addEventListener("foqz:new-task", handleNewTask as EventListener);
     window.addEventListener("foqz:new-project", handleNewProject as EventListener);
     return () => {
+      window.removeEventListener("paste", handlePaste);
       window.removeEventListener("foqz:flow-center-on", handleCenterOn as EventListener);
       window.removeEventListener("foqz:flow-fit-view", handleFitView);
       window.removeEventListener("foqz:fit-view", handleFitView);
@@ -232,7 +378,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       window.removeEventListener("foqz:new-task", handleNewTask as EventListener);
       window.removeEventListener("foqz:new-project", handleNewProject as EventListener);
     };
-  }, [fitView, screenToFlowPosition]);
+  }, [fitView, screenToFlowPosition, setNodes, setSelectedNodeId]);
 
   // 3. Debounced Auto-save to localStorage
   useEffect(() => {
@@ -1017,24 +1163,10 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   );
 
   const handleCreateProject = useCallback(() => {
-    const store = useFlowCanvasStore.getState();
-    let spawnPos = store.cursorPosition;
-    if (!spawnPos && typeof window !== "undefined") {
-      spawnPos = screenToFlowPosition({
-        x: window.innerWidth / 2,
-        y: window.innerHeight / 2,
-      });
-    }
-
-    const id = store.createProject({
-      title: "New Project",
-      goal: "Milestone goal & focus direction",
-      accent: "blue",
-      position: spawnPos || undefined,
-    });
-    window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
-    setActiveTool("select");
-  }, [screenToFlowPosition]);
+    window.dispatchEvent(
+      new CustomEvent("foqz:new-project", { detail: { fullSpace: true } })
+    );
+  }, []);
 
   const handleCreateTask = useCallback(() => {
     const store = useFlowCanvasStore.getState();
@@ -1152,8 +1284,8 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
             return res;
           }
         }
-        if (target.type === "projectFrame") {
-          // Keep project frames at base container level so child tasks stay above it
+        if (target.type === "projectFrame" || target.type === "runwayFrame") {
+          // Keep project and runway frames at base container level so child tasks stay above it
           return [target, ...without];
         }
         const maxZ = getMaxZIndex(nds);

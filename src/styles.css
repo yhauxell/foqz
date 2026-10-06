@@ -1722,10 +1722,12 @@ html.dark .canvas {
 /* React Flow canvas stacking fixes:
    1. Ensure project frames stay behind tasks, notes, and sketch boxes, even when selected.
    2. Ensure edge labels and interactive menus float above all nodes. */
-.react-flow__node-projectFrame {
+.react-flow__node-projectFrame,
+.react-flow__node-runwayFrame {
   z-index: 0 !important;
 }
-.react-flow__node-projectFrame.selected {
+.react-flow__node-projectFrame.selected,
+.react-flow__node-runwayFrame.selected {
   z-index: 1 !important;
 }
 .react-flow__node-focusTask,

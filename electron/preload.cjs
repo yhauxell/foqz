@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('focusStore', {
   exportBoardToFile: (snapshot) => ipcRenderer.invoke('snapshot:exportToFile', snapshot),
   importBoardFromFile: () => ipcRenderer.invoke('snapshot:importFromFile'),
   clearBoardFile: () => ipcRenderer.invoke('snapshot:clear'),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   onMaximizedChange: (callback) => {
@@ -58,4 +59,8 @@ contextBridge.exposeInMainWorld('focusStore', {
     ipcRenderer.on('focus:prepare-shutdown', wrapped)
     return () => ipcRenderer.removeListener('focus:prepare-shutdown', wrapped)
   },
+})
+
+contextBridge.exposeInMainWorld('electron', {
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 })

@@ -669,6 +669,24 @@ function createWindow() {
     }
   })
 
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http:') || url.startsWith('https:') || url.startsWith('mailto:')) {
+      void shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (
+      url !== mainWindow.webContents.getURL() &&
+      !url.startsWith('http://localhost') &&
+      !url.startsWith('http://127.0.0.1')
+    ) {
+      event.preventDefault();
+      void shell.openExternal(url);
+    }
+  });
+
   const devUrl = process.env.VITE_DEV_SERVER_URL
   if (devUrl) {
     mainWindow.loadURL(devUrl)
@@ -831,6 +849,14 @@ ipcMain.handle('window:toggleMaximize', () => {
 ipcMain.handle('window:isMaximized', () => {
   if (!mainWindow) return false
   return process.platform === 'darwin' ? mainWindow.isFullScreen() : mainWindow.isMaximized()
+})
+
+ipcMain.handle('shell:openExternal', async (_event, url) => {
+  if (typeof url === 'string' && (url.startsWith('http:') || url.startsWith('https:') || url.startsWith('mailto:'))) {
+    await shell.openExternal(url);
+    return true;
+  }
+  return false;
 })
 
 ipcMain.on('focus:shutdown-ready', () => {

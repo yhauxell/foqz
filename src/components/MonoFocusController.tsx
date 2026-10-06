@@ -501,7 +501,7 @@ export function MonoFocusController({
       {/* ========================================================================= */}
       {/* CENTER-FRONT HERO FOCUS CARD (Crisp, un-grayed, illuminated on center stage) */}
       {/* ========================================================================= */}
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[6100] w-full max-w-xl px-4 pointer-events-auto select-none">
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[6100] w-[92vw] sm:w-[80vw] lg:w-[66.666vw] max-w-5xl px-4 pointer-events-auto select-none">
         <div className="w-full rounded-2xl bg-zinc-950 text-zinc-100 border border-zinc-700/80 shadow-[0_0_90px_rgba(0,0,0,0.9),0_0_40px_rgba(16,185,129,0.18)] ring-1 ring-white/15 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 backdrop-blur-xl">
           {/* Card Header Strip */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-800 bg-zinc-900/60">
@@ -698,30 +698,30 @@ export function MonoFocusController({
             </div>
 
             {/* Prominent Pomodoro Timer Box */}
-            <div className="rounded-xl bg-zinc-900/90 border border-zinc-800 p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
+            <div className="rounded-2xl bg-zinc-900/90 border border-zinc-800 p-5 sm:p-7 flex flex-col md:flex-row items-center justify-between gap-6 shadow-inner">
+              <div className="flex items-center gap-5 sm:gap-6">
                 <div className="flex flex-col">
-                  <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500">
+                  <span className="text-[11px] uppercase font-mono tracking-wider text-zinc-400 font-medium mb-1">
                     Remaining Time
                   </span>
-                  <span className="text-3xl sm:text-4xl font-mono font-bold tracking-tight text-white">
+                  <span className="text-6xl sm:text-7xl lg:text-8xl font-mono font-extrabold tracking-tight text-white leading-none">
                     {formattedTime}
                   </span>
                 </div>
 
-                {/* Play / Pause Toggle */}
+                {/* Play / Pause Toggle - stays compact */}
                 <button
                   type="button"
                   onClick={() => useFlowCanvasStore.getState().setIsTimerRunning(!isRunning)}
-                  className="size-10 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white flex items-center justify-center transition-all shadow-md cursor-pointer shrink-0"
+                  className="size-11 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white flex items-center justify-center transition-all shadow-md cursor-pointer shrink-0"
                   title={isRunning ? 'Pause Timer' : 'Resume Timer'}
                 >
                   {isRunning ? <Pause className="size-4" /> : <Play className="size-4 ml-0.5" />}
                 </button>
               </div>
 
-              {/* Timer Presets & Reset */}
-              <div className="flex items-center gap-1.5">
+              {/* Timer Presets & Reset - buttons stay same size */}
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => handleAddMinutes(5)}
@@ -798,7 +798,7 @@ export function MonoFocusController({
                 ) : flowTaskData?.notes?.trim() ? (
                   <div
                     onClick={handleNotesCheckboxClick}
-                    className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-xs text-zinc-200 max-h-44 overflow-y-auto leading-relaxed ai-markdown space-y-1.5 cursor-pointer"
+                    className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-xs text-zinc-200 max-h-60 overflow-y-auto leading-relaxed ai-markdown space-y-1.5 cursor-pointer"
                     dangerouslySetInnerHTML={{
                       __html: renderMarkdownBlock(flowTaskData.notes || ""),
                     }}

@@ -8,6 +8,7 @@ import { PencilNode } from "./PencilNode";
 import { NoteNode } from "./NoteNode";
 
 import { RunwayFrameNode } from "./RunwayFrameNode";
+import { ImageNode } from "./ImageNode";
 
 export const nodeTypes: NodeTypes = {
   focusTask: FocusTaskNode,
@@ -18,7 +19,9 @@ export const nodeTypes: NodeTypes = {
   text: TextNode,
   pencil: PencilNode,
   note: NoteNode,
+  image: ImageNode,
 };
 
 export * from "./CircleNode";
 export * from "./RunwayFrameNode";
+export * from "./ImageNode";
