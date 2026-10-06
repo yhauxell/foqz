@@ -116,4 +116,45 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     // Capture visual screenshot of runway selection layering
     await page.screenshot({ path: 'test-results/runway-selection-layering.png' });
   });
+
+  test('verifies multiboard creation, switching, and renaming menu', async ({ page }) => {
+    // Open board selector
+    const boardSelector = page.locator("button[title='Board settings & name']");
+    await expect(boardSelector).toBeVisible();
+    await boardSelector.click();
+
+    // Verify multiboard dropdown header and create button
+    await expect(page.getByText('Canvas Boards')).toBeVisible();
+    const createBtn = page.getByRole('button', { name: 'Create New Board' });
+    await expect(createBtn).toBeVisible();
+
+    // Capture visual screenshot of multiboard dropdown
+    await page.screenshot({ path: 'test-results/multiboard-dropdown.png' });
+
+    // Click Create New Board
+    await createBtn.click();
+    await expect(page.getByText('Foqz Board 2')).toBeVisible();
+
+    // Capture visual screenshot of switched board
+    await page.screenshot({ path: 'test-results/new-board-canvas.png' });
+  });
+
+  test('stages Eisenhower Matrix runway template with 4 quadrants', async ({ page }) => {
+    // Open template selector
+    const stageRunwayBtn = page.locator("button[title='Stage New Runway from Templates...']");
+    await expect(stageRunwayBtn).toBeVisible();
+    await stageRunwayBtn.click();
+
+    // Select Eisenhower Matrix framework
+    const eisenhowerBtn = page.locator("button:has-text('Eisenhower Matrix')").first();
+    await expect(eisenhowerBtn).toBeVisible();
+    await eisenhowerBtn.click();
+
+    // Verify runway is staged with Eisenhower quadrant watermark guidelines
+    await expect(page.getByText('Q1: URGENT & IMPORTANT (DO NOW)')).toBeVisible();
+    await expect(page.getByText('Q2: NOT URGENT & IMPORTANT (SCHEDULE)')).toBeVisible();
+
+    // Capture visual screenshot of Eisenhower matrix runway
+    await page.screenshot({ path: 'test-results/eisenhower-runway.png' });
+  });
 });

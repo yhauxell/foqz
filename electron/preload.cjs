@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('focusStore', {
   importBoardFromFile: () => ipcRenderer.invoke('snapshot:importFromFile'),
   clearBoardFile: () => ipcRenderer.invoke('snapshot:clear'),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  fetchOgMetadata: (url) => ipcRenderer.invoke('link:fetchOgMetadata', url),
   toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   onMaximizedChange: (callback) => {

@@ -1,6 +1,6 @@
 import React, { memo, useState, useRef, useEffect } from "react";
-import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { renderMarkdownInline } from "@/lib/markdown";
+import { Handle, Position, NodeResizer, type NodeProps, type Node } from "@xyflow/react";
+import { renderMarkdownInline, renderMarkdownBlock } from "@/lib/markdown";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 export interface TextNodeData {
@@ -18,6 +18,8 @@ export const TextNode = memo(function TextNode({
   id,
   data,
   selected,
+  width,
+  height,
 }: NodeProps<TextNodeType>) {
   const [isEditing, setIsEditing] = useState(() => Boolean(data.isNew || data.autoEdit || !data.text));
   const [val, setVal] = useState(data.text || "");
@@ -31,7 +33,7 @@ export const TextNode = memo(function TextNode({
     if (isEditing && textareaRef.current) {
       const el = textareaRef.current;
       el.style.height = "auto";
-      el.style.height = `${Math.max(24, el.scrollHeight)}px`;
+      el.style.height = `${Math.max(32, el.scrollHeight)}px`;
       const timer = setTimeout(() => {
         el.focus();
         el.setSelectionRange(el.value.length, el.value.length);
@@ -73,21 +75,29 @@ export const TextNode = memo(function TextNode({
     useFlowCanvasStore.getState().updateNodeData(id, { text: val, isNew: false, autoEdit: false });
   };
 
+  const isMultiline = val.includes("\n");
+
   return (
     <div
-      className={`relative min-w-[120px] max-w-[400px] p-2 rounded-lg transition-all ${
+      className={`relative min-w-[120px] p-2.5 rounded-xl transition-all ${
         isEditing ? "cursor-text" : "cursor-default"
       } ${
         selected
-          ? "ring-1.5 ring-blue-500/70 bg-white/60 dark:bg-zinc-900/60 shadow-xs"
+          ? "ring-1.5 ring-blue-500/70 bg-white/70 dark:bg-zinc-900/70 shadow-xs"
           : "hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
       }`}
-      style={{ contain: "layout style" }}
+      style={{
+        contain: "layout style",
+        width: width ? `${width}px` : undefined,
+        height: height ? `${height}px` : undefined,
+      }}
       onDoubleClick={(e) => {
         e.stopPropagation();
         setIsEditing(true);
       }}
     >
+      <NodeResizer minWidth={120} minHeight={36} isVisible={selected} />
+
       {/* 4 Multi-Directional Handles on all sides */}
       <Handle
         type="source"
@@ -119,15 +129,15 @@ export const TextNode = memo(function TextNode({
           ref={textareaRef}
           value={val}
           rows={1}
-          placeholder="Type something..."
+          placeholder="Type something in markdown..."
           onChange={(e) => {
             setVal(e.target.value);
             e.target.style.height = "auto";
-            e.target.style.height = `${Math.max(24, e.target.scrollHeight)}px`;
+            e.target.style.height = `${Math.max(32, e.target.scrollHeight)}px`;
           }}
           onBlur={handleSave}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
               e.preventDefault();
               handleSave();
             } else if (e.key === "Escape") {
@@ -139,27 +149,29 @@ export const TextNode = memo(function TextNode({
               useFlowCanvasStore.getState().deleteNode(id);
             }
           }}
-          className="w-full min-w-[120px] bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none shadow-none focus:ring-0 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400/80 dark:placeholder:text-zinc-500/80"
+          className="w-full h-full min-w-[120px] bg-transparent outline-none resize-none overflow-auto p-0 m-0 border-none shadow-none focus:ring-0 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400/80 dark:placeholder:text-zinc-500/80 leading-relaxed font-sans"
           style={{
             fontSize: data.fontSize || 16,
             color: data.color,
             fontFamily: "'Shantell Sans', cursive, sans-serif",
-            lineHeight: 1.35,
+            lineHeight: 1.45,
           }}
         />
       ) : (
-        <span
-          className={`break-words block ${
+        <div
+          className={`break-words select-text ${
             !val ? "text-zinc-400/80 dark:text-zinc-500/80 italic select-none" : "text-zinc-900 dark:text-zinc-100"
-          }`}
+          } task-markdown-body leading-relaxed`}
           style={{
             fontSize: data.fontSize || 16,
             color: data.color,
             fontFamily: "'Shantell Sans', cursive, sans-serif",
-            lineHeight: 1.35,
+            lineHeight: 1.45,
           }}
           dangerouslySetInnerHTML={{
-            __html: renderMarkdownInline(val || "Type something..."),
+            __html: isMultiline
+              ? renderMarkdownBlock(val || "Type something...")
+              : renderMarkdownInline(val || "Type something..."),
           }}
         />
       )}

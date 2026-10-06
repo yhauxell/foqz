@@ -30,14 +30,41 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
   onZoomToFit,
   onZoomTo100,
 }: TopbarBoardMenuProps) {
-  const [boardName, setBoardName] = useState(() => {
+  interface BoardEntry {
+    id: string;
+    name: string;
+    createdAt: number;
+  }
+
+  const STORAGE_BOARDS_KEY = "foqz_multiboards_meta_v1";
+  const ACTIVE_BOARD_KEY = "foqz_active_board_id";
+
+  const [boards, setBoards] = useState<BoardEntry[]>(() => {
     try {
-      return localStorage.getItem("foqz_board_name") || "Foqz Board 1";
+      const raw = localStorage.getItem(STORAGE_BOARDS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      const initialName = localStorage.getItem("foqz_board_name") || "Foqz Board 1";
+      return [{ id: "board-default", name: initialName, createdAt: Date.now() }];
     } catch {
-      return "Foqz Board 1";
+      return [{ id: "board-default", name: "Foqz Board 1", createdAt: Date.now() }];
     }
   });
-  const [isRenaming, setIsRenaming] = useState(false);
+
+  const [activeBoardId, setActiveBoardId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(ACTIVE_BOARD_KEY) || "board-default";
+    } catch {
+      return "board-default";
+    }
+  });
+
+  const activeBoard = boards.find((b) => b.id === activeBoardId) || boards[0] || { id: "board-default", name: "Foqz Board 1" };
+  const boardName = activeBoard.name;
+
+  const [renamingBoardId, setRenamingBoardId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(boardName);
   const [pageMenuOpen, setPageMenuOpen] = useState(false);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
@@ -45,6 +72,92 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
 
   const pageMenuRef = useRef<HTMLDivElement>(null);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
+
+  // Synchronize boards list to local storage
+  const persistBoards = (updated: BoardEntry[]) => {
+    setBoards(updated);
+    try {
+      localStorage.setItem(STORAGE_BOARDS_KEY, JSON.stringify(updated));
+    } catch {}
+  };
+
+  const handleSwitchBoard = (targetId: string) => {
+    if (targetId === activeBoardId) return;
+
+    // 1. Snapshot current board
+    const { nodes, edges } = useFlowCanvasStore.getState();
+    const currentKey = activeBoardId === "board-default" ? "foqz_reactflow_poc_board_v1" : `foqz_board_snapshot_${activeBoardId}`;
+    try {
+      localStorage.setItem(currentKey, JSON.stringify({ nodes, edges, version: 1 }));
+    } catch {}
+
+    // 2. Set new active board
+    setActiveBoardId(targetId);
+    try {
+      localStorage.setItem(ACTIVE_BOARD_KEY, targetId);
+      const targetBoard = boards.find((b) => b.id === targetId);
+      if (targetBoard) {
+        localStorage.setItem("foqz_board_name", targetBoard.name);
+      }
+    } catch {}
+
+    // 3. Load target board nodes and edges
+    const targetKey = targetId === "board-default" ? "foqz_reactflow_poc_board_v1" : `foqz_board_snapshot_${targetId}`;
+    try {
+      const raw = localStorage.getItem(targetKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        useFlowCanvasStore.getState().setNodes(Array.isArray(parsed.nodes) ? parsed.nodes : []);
+        useFlowCanvasStore.getState().setEdges(Array.isArray(parsed.edges) ? parsed.edges : []);
+      } else {
+        useFlowCanvasStore.getState().setNodes([]);
+        useFlowCanvasStore.getState().setEdges([]);
+      }
+      useFlowCanvasStore.getState().setSelectedNodeId(null);
+      useFlowCanvasStore.getState().setActiveFocusNodeId(null);
+    } catch {}
+
+    setPageMenuOpen(false);
+  };
+
+  const handleCreateNewBoard = () => {
+    const newId = `board-${Date.now()}`;
+    const newName = `Foqz Board ${boards.length + 1}`;
+    const updated = [...boards, { id: newId, name: newName, createdAt: Date.now() }];
+    persistBoards(updated);
+    handleSwitchBoard(newId);
+  };
+
+  const handleDeleteBoard = (boardIdToDelete: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (boards.length <= 1) return; // Keep at least one board
+    const remaining = boards.filter((b) => b.id !== boardIdToDelete);
+    persistBoards(remaining);
+
+    // Clean up local storage
+    try {
+      const delKey = boardIdToDelete === "board-default" ? "foqz_reactflow_poc_board_v1" : `foqz_board_snapshot_${boardIdToDelete}`;
+      localStorage.removeItem(delKey);
+    } catch {}
+
+    if (activeBoardId === boardIdToDelete) {
+      handleSwitchBoard(remaining[0].id);
+    }
+  };
+
+  const handleSaveRename = useCallback((idToRename: string) => {
+    const trimmed = editingName.trim();
+    if (trimmed) {
+      const updated = boards.map((b) => (b.id === idToRename ? { ...b, name: trimmed } : b));
+      persistBoards(updated);
+      if (idToRename === activeBoardId) {
+        try {
+          localStorage.setItem("foqz_board_name", trimmed);
+        } catch {}
+      }
+    }
+    setRenamingBoardId(null);
+  }, [editingName, boards, activeBoardId]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -77,17 +190,6 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
     useFlowCanvasStore.temporal.getState().redo();
   }, []);
 
-  const handleSaveRename = useCallback(() => {
-    const trimmed = editingName.trim();
-    if (trimmed) {
-      setBoardName(trimmed);
-      try {
-        localStorage.setItem("foqz_board_name", trimmed);
-      } catch {}
-    }
-    setIsRenaming(false);
-  }, [editingName]);
-
   const handleExportJson = useCallback(() => {
     const { nodes, edges } = useFlowCanvasStore.getState();
     const data = JSON.stringify({ nodes, edges, version: 1 }, null, 2);
@@ -113,7 +215,7 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
 
   return (
     <div className="flex items-center gap-1.5">
-      {/* 1. Board Selector / Renamer */}
+      {/* 1. Board Selector / Renamer / Multiboard Switcher */}
       <div ref={pageMenuRef} className="relative">
         <button
           type="button"
@@ -134,50 +236,93 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
         </button>
 
         {pageMenuOpen && (
-          <div className="absolute left-0 top-full mt-1.5 w-56 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-xl text-zinc-900 dark:text-zinc-100 z-50 animate-in fade-in zoom-in-95 duration-100">
+          <div className="absolute left-0 top-full mt-1.5 w-60 p-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl rounded-2xl text-zinc-900 dark:text-zinc-100 z-50 animate-in fade-in zoom-in-95 duration-100">
             <div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold tracking-tight text-zinc-400 dark:text-zinc-500 uppercase">
-              <span>Canvas Board</span>
+              <span>Canvas Boards ({boards.length})</span>
             </div>
 
-            <div className="flex flex-col gap-0.5 py-1">
-              <div className="group flex items-center justify-between px-2 py-1.5 rounded-md text-xs bg-zinc-100 dark:bg-zinc-800/90 text-zinc-900 dark:text-white font-medium">
-                {isRenaming ? (
-                  <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="text"
-                      autoFocus
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveRename();
-                        if (e.key === "Escape") setIsRenaming(false);
-                      }}
-                      onBlur={handleSaveRename}
-                      className="w-full text-xs px-1.5 py-0.5 bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded outline-none text-zinc-900 dark:text-zinc-100"
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
-                      <Check className="size-3 text-emerald-500 shrink-0" />
-                      <span className="truncate">{boardName}</span>
-                    </div>
+            <div className="flex flex-col gap-1 py-1 max-h-52 overflow-y-auto">
+              {boards.map((b) => {
+                const isActive = b.id === activeBoardId;
+                const isRenamingThis = renamingBoardId === b.id;
 
-                    <button
-                      type="button"
-                      title="Rename board"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsRenaming(true);
-                        setEditingName(boardName);
-                      }}
-                      className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                    >
-                      <Edit2 className="size-2.5" />
-                    </button>
-                  </>
-                )}
-              </div>
+                return (
+                  <div
+                    key={b.id}
+                    onClick={() => !isRenamingThis && handleSwitchBoard(b.id)}
+                    className={`group flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                      isActive
+                        ? "bg-zinc-100 dark:bg-zinc-800/90 text-zinc-900 dark:text-white font-semibold"
+                        : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400"
+                    }`}
+                  >
+                    {isRenamingThis ? (
+                      <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          autoFocus
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSaveRename(b.id);
+                            if (e.key === "Escape") setRenamingBoardId(null);
+                          }}
+                          onBlur={() => handleSaveRename(b.id)}
+                          className="w-full text-xs px-2 py-0.5 bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-md outline-none text-zinc-900 dark:text-zinc-100"
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 min-w-0 flex-1 mr-1">
+                          {isActive ? (
+                            <Check className="size-3 text-emerald-500 shrink-0" />
+                          ) : (
+                            <div className="size-3 rounded-full border border-zinc-300 dark:border-zinc-700 shrink-0" />
+                          )}
+                          <span className="truncate">{b.name}</span>
+                        </div>
+
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            title="Rename board"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRenamingBoardId(b.id);
+                              setEditingName(b.name);
+                            }}
+                            className="p-1 rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 cursor-pointer"
+                          >
+                            <Edit2 className="size-2.5" />
+                          </button>
+
+                          {boards.length > 1 && (
+                            <button
+                              type="button"
+                              title="Delete board"
+                              onClick={(e) => handleDeleteBoard(b.id, e)}
+                              className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/60 text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
+                            >
+                              <Trash2 className="size-2.5" />
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-1.5 mt-1 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={handleCreateNewBoard}
+                className="w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors cursor-pointer"
+              >
+                <Plus className="size-3.5" />
+                <span>Create New Board</span>
+              </button>
             </div>
           </div>
         )}

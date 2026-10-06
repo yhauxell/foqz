@@ -324,15 +324,67 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         }
       }
 
-      // Check for text/markdown in clipboard
+      // Check for text/markdown or URL in clipboard
       const text = clipboardData.getData("text/plain");
       if (text && text.trim()) {
         e.preventDefault();
+        const trimmed = text.trim();
         const center = screenToFlowPosition({
           x: window.innerWidth / 2,
           y: window.innerHeight / 2,
         });
         const spawnPos = useFlowCanvasStore.getState().cursorPosition || center;
+
+        // If pasted content is a standalone URL, spawn as an interactive Link Card!
+        if (/^https?:\/\/[^\s]+$/i.test(trimmed)) {
+          const id = `link-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          let domain = trimmed;
+          try {
+            domain = new URL(trimmed).hostname.replace(/^www\./, "");
+          } catch {}
+
+          const newNode: Node = {
+            id,
+            type: "linkCard",
+            position: {
+              x: Math.round(spawnPos.x - 160),
+              y: Math.round(spawnPos.y - 70),
+            },
+            style: { width: 320, height: 180 },
+            data: {
+              url: trimmed,
+              title: domain,
+              description: trimmed,
+              siteName: domain,
+              image: null,
+            },
+            selected: true,
+          };
+
+          setNodes((nds) => [
+            ...nds.map((n) => (n.selected ? { ...n, selected: false } : n)),
+            newNode,
+          ]);
+          useFlowCanvasStore.getState().setSelectedNodeId(id);
+
+          // Asynchronously enrich with OpenGraph preview metadata if available
+          if (window.focusStore?.fetchOgMetadata) {
+            window.focusStore
+              .fetchOgMetadata(trimmed)
+              .then((meta) => {
+                if (meta) {
+                  useFlowCanvasStore.getState().updateNodeData(id, {
+                    title: meta.title || domain,
+                    description: meta.description || trimmed,
+                    image: meta.image || null,
+                    siteName: meta.siteName || domain,
+                  });
+                }
+              })
+              .catch(() => {});
+          }
+          return;
+        }
 
         const id = `text-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const newNode: Node = {
@@ -343,7 +395,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
             y: Math.round(spawnPos.y - 20),
           },
           data: {
-            text: text.trim(),
+            text: trimmed,
             isNew: false,
             autoEdit: false,
           },
