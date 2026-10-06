@@ -20,6 +20,9 @@ interface FlowCanvasShortcutsProps {
   onUndo?: () => void;
   onRedo?: () => void;
   onFitView: () => void;
+  onGroupSelected?: () => void;
+  onUngroupSelected?: () => void;
+  onArrangeLayout?: () => void;
   onToggleShortcutsModal: () => void;
   onEscape: () => void;
 }
@@ -44,6 +47,9 @@ export function useFlowCanvasShortcuts({
   onUndo,
   onRedo,
   onFitView,
+  onGroupSelected,
+  onUngroupSelected,
+  onArrangeLayout,
   onToggleShortcutsModal,
   onEscape,
 }: FlowCanvasShortcutsProps) {
@@ -73,6 +79,11 @@ export function useFlowCanvasShortcuts({
       onCenterFront();
     }
   }, { preventDefault: true, enabled });
+
+  // Grouping & Layout
+  useHotkeys(["ctrl+g", "meta+g"], () => onGroupSelected?.(), { preventDefault: true, enabled });
+  useHotkeys(["ctrl+alt+g", "meta+alt+g", "meta+shift+g", "ctrl+shift+g"], () => onUngroupSelected?.(), { preventDefault: true, enabled });
+  useHotkeys(["ctrl+shift+a", "meta+shift+a", "alt+shift+a"], () => onArrangeLayout?.(), { preventDefault: true, enabled });
 
   // Navigation & Actions
   useHotkeys(["delete", "backspace"], () => onDeleteSelected(), { preventDefault: true, enabled });

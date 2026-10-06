@@ -379,3 +379,70 @@ export async function updateGitHubIssue(
     updated_at: item.updated_at,
   }
 }
+
+export interface RelatedPullRequest {
+  number: number
+  title: string
+  html_url: string
+  state: 'open' | 'closed' | 'merged'
+  merged_at?: string | null
+}
+
+const prCache = new Map<string, { prs: RelatedPullRequest[]; timestamp: number }>()
+
+/**
+ * Fetch associated Pull Requests for a given GitHub issue via timeline cross-references.
+ */
+export async function getIssuePullRequests(
+  repoInput: string,
+  issueNumber: number
+): Promise<RelatedPullRequest[]> {
+  const repo = normalizeGithubRepoInput(repoInput)
+  if (!repo || !repo.includes('/') || !issueNumber) return []
+
+  const cacheKey = `${repo}:${issueNumber}`
+  const cached = prCache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < 60000) {
+    return cached.prs
+  }
+
+  try {
+    const resp = await fetch(`https://api.github.com/repos/${repo}/issues/${issueNumber}/timeline`, {
+      headers: {
+        ...getGithubHeaders(),
+        Accept: 'application/vnd.github.mockingbird-preview+json, application/vnd.github.v3+json',
+      },
+    })
+
+    if (!resp.ok) {
+      return []
+    }
+
+    const events = await resp.json()
+    const prMap = new Map<number, RelatedPullRequest>()
+
+    if (Array.isArray(events)) {
+      for (const ev of events) {
+        if (ev.event === 'cross-referenced' && ev.source && ev.source.issue && ev.source.issue.pull_request) {
+          const pr = ev.source.issue
+          const isMerged = Boolean(pr.pull_request.merged_at)
+          prMap.set(pr.number, {
+            number: pr.number,
+            title: pr.title,
+            html_url: pr.html_url,
+            state: isMerged ? 'merged' : pr.state === 'closed' ? 'closed' : 'open',
+            merged_at: pr.pull_request.merged_at || null,
+          })
+        }
+      }
+    }
+
+    const result = Array.from(prMap.values())
+    prCache.set(cacheKey, { prs: result, timestamp: Date.now() })
+    return result
+  } catch (e) {
+    console.warn(`[githubSync] Failed to fetch PRs for ${repo}#${issueNumber}:`, e)
+    return []
+  }
+}
+

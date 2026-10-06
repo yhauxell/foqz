@@ -859,6 +859,60 @@ ipcMain.handle('shell:openExternal', async (_event, url) => {
   return false;
 })
 
+ipcMain.handle('link:fetchOgMetadata', async (_event, targetUrl) => {
+  if (!targetUrl || typeof targetUrl !== 'string') return null
+  if (!targetUrl.startsWith('http:') && !targetUrl.startsWith('https:')) return null
+
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 6000)
+    const resp = await fetch(targetUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+    })
+    clearTimeout(timeout)
+    if (!resp.ok) return null
+
+    const html = await resp.text()
+
+    // Lightweight regex parser for OG tags and title
+    const getMeta = (prop) => {
+      const match =
+        html.match(new RegExp(`<meta[^>]+(?:property|name)=["'](?:og:)?${prop}["'][^>]+content=["']([^"']+)["']`, 'i')) ||
+        html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:)?${prop}["']`, 'i'))
+      return match ? match[1] : null
+    }
+
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
+    const title = getMeta('title') || (titleMatch ? titleMatch[1].trim() : targetUrl)
+    const description = getMeta('description') || ''
+    let image = getMeta('image') || null
+    const siteName = getMeta('site_name') || ''
+
+    if (image && !image.startsWith('http')) {
+      try {
+        const u = new URL(targetUrl)
+        image = new URL(image, u.origin).toString()
+      } catch {}
+    }
+
+    return {
+      url: targetUrl,
+      title: title.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"'),
+      description: description.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"'),
+      image,
+      siteName,
+    }
+  } catch (err) {
+    console.warn(`[link:fetchOgMetadata] Failed to fetch OG data for ${targetUrl}:`, err.message)
+    return null
+  }
+})
+
 ipcMain.on('focus:shutdown-ready', () => {
   if (shutdownTimeout) {
     clearTimeout(shutdownTimeout)

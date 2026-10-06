@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useRef, useState } from "react";
 import { NodeResizer, Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
-import { GitBranch, GitPullRequest, Sparkles } from "lucide-react";
+import { GitBranch, GitPullRequest, MessageSquare, Sparkles } from "lucide-react";
 import {
   ACCENT_STYLES,
   type ProjectAccent,
@@ -11,6 +11,7 @@ import { useFlowCanvasStore } from "../store/flowCanvasStore";
 export interface ProjectFrameNodeData {
   title: string;
   goal?: string;
+  description?: string;
   accent?: ProjectAccent;
   borderStyle?: "solid" | "dashed" | "dotted";
   connectors?: {
@@ -226,6 +227,23 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
             <span>Issues</span>
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            window.dispatchEvent(
+              new CustomEvent("foqz:open-inline-chat", {
+                detail: { nodeId: id },
+              })
+            );
+          }}
+          className="size-6 rounded-full border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-800 text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center transition-all cursor-pointer shadow-2xs ml-1.5 shrink-0"
+          title="Chat with this project/group via AI Copilot (Scope: Group)"
+          aria-label="Chat with project or group"
+        >
+          <MessageSquare className="size-3 shrink-0" />
+        </button>
       </div>
 
       {/* Goal Sub-header */}

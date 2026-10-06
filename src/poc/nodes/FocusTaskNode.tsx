@@ -19,8 +19,11 @@ import {
   PlaneTakeoff,
   Sparkles,
   GitPullRequest,
+  User,
+  Tag,
+  AlertTriangle,
 } from "lucide-react";
-import { updateGitHubIssue } from "@/lib/githubSync";
+import { updateGitHubIssue, getIssuePullRequests, type RelatedPullRequest } from "@/lib/githubSync";
 import type { SemanticRelation } from "../edges/SemanticEdge";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
@@ -126,6 +129,23 @@ export const FocusTaskNode = memo(function FocusTaskNode({
     : PAPER_COLORS_LIGHT[data.paper || "cream"] || PAPER_COLORS_LIGHT.cream;
 
   const [isExpanded, setIsExpanded] = useState(false);
+  const [relatedPrs, setRelatedPrs] = useState<RelatedPullRequest[]>([]);
+
+  useEffect(() => {
+    let isSubscribed = true;
+    if (data.githubIssueNumber && data.githubRepo) {
+      getIssuePullRequests(String(data.githubRepo), Number(data.githubIssueNumber))
+        .then((prs) => {
+          if (isSubscribed) setRelatedPrs(prs);
+        })
+        .catch(() => {});
+    } else {
+      setRelatedPrs([]);
+    }
+    return () => {
+      isSubscribed = false;
+    };
+  }, [data.githubIssueNumber, data.githubRepo]);
 
   const isInsideRunway = useFlowCanvasStore(
     useCallback(
@@ -1123,17 +1143,61 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                     )}
 
                     {data.githubIssueNumber && (
-                      <a
-                        href={(data.githubIssueUrl as string) || `https://github.com/${data.githubRepo || ''}/issues/${data.githubIssueNumber}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/20 shrink-0 transition-colors"
-                        title={`GitHub #${data.githubIssueNumber} in ${data.githubRepo || ''} (${(data.githubSyncStatus as string) || 'synced'})`}
-                      >
-                        <GitPullRequest className="size-2.5 text-purple-500" />
-                        <span>#{data.githubIssueNumber}</span>
-                      </a>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <a
+                          href={(data.githubIssueUrl as string) || `https://github.com/${data.githubRepo || ''}/issues/${data.githubIssueNumber}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/20 shrink-0 transition-colors"
+                          title={`GitHub #${data.githubIssueNumber} in ${data.githubRepo || ''} (${(data.githubSyncStatus as string) || 'synced'})`}
+                        >
+                          <GitPullRequest className="size-2.5 text-purple-500" />
+                          <span>#{data.githubIssueNumber}</span>
+                        </a>
+
+                        {data.githubAssignee && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono text-zinc-600 dark:text-zinc-300 bg-black/5 dark:bg-white/10 border border-black/5 dark:border-white/10 shrink-0"
+                            title={`Assignee: @${data.githubAssignee}`}
+                          >
+                            <User className="size-2 text-zinc-500" />
+                            <span>@{String(data.githubAssignee)}</span>
+                          </span>
+                        )}
+
+                        {Array.isArray(data.githubLabels) &&
+                          (data.githubLabels as string[]).slice(0, 2).map((lbl) => (
+                            <span
+                              key={lbl}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-medium bg-zinc-200/60 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0"
+                            >
+                              <Tag className="size-2 text-zinc-400" />
+                              <span className="truncate max-w-[60px]">{lbl}</span>
+                            </span>
+                          ))}
+
+                        {relatedPrs.map((pr) => (
+                          <a
+                            key={pr.number}
+                            href={pr.html_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-semibold border shrink-0 transition-colors ${
+                              pr.state === 'merged'
+                                ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30 hover:bg-purple-500/25'
+                                : pr.state === 'closed'
+                                ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30 hover:bg-rose-500/25'
+                                : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
+                            }`}
+                            title={`PR #${pr.number}: ${pr.title} (${pr.state})`}
+                          >
+                            <GitPullRequest className="size-2.5" />
+                            <span>PR #{pr.number}</span>
+                          </a>
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}
@@ -1406,6 +1470,32 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                 <span>Define what done looks like (click to add checklist steps)...</span>
               </button>
             ) : null}
+
+            {/* Related GitHub PR footer links */}
+            {relatedPrs.length > 0 && (
+              <div className="pt-2 mt-2 border-t border-black/5 dark:border-white/5 flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-mono text-zinc-400">Associated PRs:</span>
+                {relatedPrs.map((pr) => (
+                  <a
+                    key={pr.number}
+                    href={pr.html_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className={`inline-flex items-center gap-1 text-[10px] font-mono font-medium hover:underline ${
+                      pr.state === 'merged'
+                        ? 'text-purple-600 dark:text-purple-400'
+                        : pr.state === 'closed'
+                        ? 'text-zinc-400 line-through'
+                        : 'text-emerald-600 dark:text-emerald-400'
+                    }`}
+                  >
+                    <span>#{pr.number}</span>
+                    <span className="truncate max-w-[150px]">({pr.title})</span>
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

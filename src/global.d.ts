@@ -29,6 +29,13 @@ declare global {
       >;
       clearBoardFile?: () => Promise<{ ok: boolean; error?: string }>;
       openExternal?: (url: string) => Promise<boolean>;
+      fetchOgMetadata?: (url: string) => Promise<{
+        url: string;
+        title: string;
+        description: string;
+        image: string | null;
+        siteName: string;
+      } | null>;
       toggleMaximize?: () => Promise<boolean>;
       isMaximized?: () => Promise<boolean>;
       onMaximizedChange?: (callback: (isMaximized: boolean) => void) => () => void;

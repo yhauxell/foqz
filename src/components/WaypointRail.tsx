@@ -11,6 +11,7 @@ import {
   Sparkles,
   FolderPlus,
   Layers,
+  LayoutGrid,
 } from "lucide-react";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 import { RUNWAY_TEMPLATES, type RunwayTemplateId } from "@/types/canvas";
@@ -167,6 +168,8 @@ export function WaypointRail() {
         return <GitBranch className="size-4 text-indigo-500" />;
       case "rapid_batch":
         return <Flame className="size-4 text-emerald-500" />;
+      case "eisenhower_matrix":
+        return <LayoutGrid className="size-4 text-blue-500" />;
       case "rule_of_3":
       default:
         return <PlaneTakeoff className="size-4 text-rose-500" />;

@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { NodeResizer, Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
-import { PlaneTakeoff, Zap, GitBranch, Flame, Sparkles, CheckCircle2, Target, Play, Pause } from "lucide-react";
+import { PlaneTakeoff, Zap, GitBranch, Flame, Sparkles, CheckCircle2, Target, Play, Pause, LayoutGrid } from "lucide-react";
 import {
   ACCENT_STYLES,
   type ProjectAccent,
@@ -140,6 +140,7 @@ export const RunwayFrameNode = memo(function RunwayFrameNode({
     if (iconName === "Zap") return <Zap className="size-3.5 text-amber-500 shrink-0" />;
     if (iconName === "GitBranch") return <GitBranch className="size-3.5 text-indigo-500 shrink-0" />;
     if (iconName === "Flame") return <Flame className="size-3.5 text-emerald-500 shrink-0" />;
+    if (iconName === "Grid") return <LayoutGrid className="size-3.5 text-blue-500 shrink-0" />;
     return <PlaneTakeoff className="size-3.5 text-rose-500 shrink-0" />;
   };
 
@@ -327,17 +328,41 @@ export const RunwayFrameNode = memo(function RunwayFrameNode({
       {/* Watermark Slot Guidelines (Only shown when no tasks are staged) */}
       {taskCount === 0 && (
         <div className="absolute inset-x-6 top-[82px] bottom-4 pointer-events-none flex flex-col justify-start gap-2.5 opacity-30">
-          {Array.from({ length: totalSlots }).map((_, idx) => (
-            <div
-              key={idx}
-              className="h-[50px] rounded-xl border border-dashed border-zinc-400 dark:border-zinc-500 bg-black/[0.015] dark:bg-white/[0.015] flex items-center justify-between px-4 text-[10px] font-mono tracking-wider text-zinc-500 dark:text-zinc-400 select-none"
-            >
-              <span className="font-semibold">SLOT 0{idx + 1}</span>
-              <span className="text-[9px] uppercase tracking-widest opacity-75">
-                {idx === 0 ? "READY FOR TAKEOFF" : "STANDBY"}
-              </span>
-            </div>
-          ))}
+          {Array.from({ length: totalSlots }).map((_, idx) => {
+            const isEisenhower = data.templateId === "eisenhower_matrix";
+            const slotTitle = isEisenhower
+              ? idx === 0
+                ? "Q1: URGENT & IMPORTANT (DO NOW)"
+                : idx === 1
+                ? "Q2: NOT URGENT & IMPORTANT (SCHEDULE)"
+                : idx === 2
+                ? "Q3: URGENT & NOT IMPORTANT (DELEGATE)"
+                : "Q4: NOT URGENT & NOT IMPORTANT (ELIMINATE)"
+              : `SLOT 0${idx + 1}`;
+            const slotSubtitle = isEisenhower
+              ? idx === 0
+                ? "P1 PRIORITY"
+                : idx === 1
+                ? "P2 PRIORITY"
+                : idx === 2
+                ? "P3 PRIORITY"
+                : "P4 PRIORITY"
+              : idx === 0
+              ? "READY FOR TAKEOFF"
+              : "STANDBY";
+
+            return (
+              <div
+                key={idx}
+                className="h-[50px] rounded-xl border border-dashed border-zinc-400 dark:border-zinc-500 bg-black/[0.015] dark:bg-white/[0.015] flex items-center justify-between px-4 text-[10px] font-mono tracking-wider text-zinc-500 dark:text-zinc-400 select-none"
+              >
+                <span className="font-semibold">{slotTitle}</span>
+                <span className="text-[9px] uppercase tracking-widest opacity-75">
+                  {slotSubtitle}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 

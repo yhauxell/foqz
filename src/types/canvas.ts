@@ -151,7 +151,8 @@ export type RunwayTemplateId =
   | "rule_of_3"
   | "ultradian_90"
   | "critical_path"
-  | "rapid_batch";
+  | "rapid_batch"
+  | "eisenhower_matrix";
 
 export interface RunwayTemplateConfig {
   id: RunwayTemplateId;
@@ -162,7 +163,7 @@ export interface RunwayTemplateConfig {
   slots: number;
   defaultDurationMinutes: number;
   accent: ProjectAccent;
-  iconName: "PlaneTakeoff" | "Zap" | "GitBranch" | "Flame";
+  iconName: "PlaneTakeoff" | "Zap" | "GitBranch" | "Flame" | "Grid";
 }
 
 export const RUNWAY_TEMPLATES: Record<RunwayTemplateId, RunwayTemplateConfig> = {
@@ -213,6 +214,18 @@ export const RUNWAY_TEMPLATES: Record<RunwayTemplateId, RunwayTemplateConfig> = 
     defaultDurationMinutes: 15,
     accent: "emerald",
     iconName: "Flame",
+  },
+  eisenhower_matrix: {
+    id: "eisenhower_matrix",
+    title: "🧭 Eisenhower Matrix (Urgent & Important)",
+    subtitle: "4 quadrants: Do (P1), Schedule (P2), Delegate (P3), Eliminate (P4)",
+    description:
+      "Organize tasks by urgency and importance into structured execution lanes to prevent urgency addiction.",
+    framework: "Dwight D. Eisenhower & Stephen Covey",
+    slots: 4,
+    defaultDurationMinutes: 25,
+    accent: "blue",
+    iconName: "Grid",
   },
 };
 

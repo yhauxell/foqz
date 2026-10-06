@@ -3,6 +3,7 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { temporal, type TemporalState } from "zundo";
 import type { Node, Edge } from "@xyflow/react";
 import { RUNWAY_TEMPLATES, type RunwayTemplateId } from "@/types/canvas";
+import { findNonOverlappingPosition, arrangeLayout } from "@/lib/canvasLayout";
 
 export const FLOW_STORAGE_KEY = "foqz_reactflow_poc_board_v1";
 
@@ -258,10 +259,12 @@ export interface FlowCanvasState {
   createProject: (props: {
     title: string;
     goal?: string;
+    description?: string;
     accent?: string;
     position?: { x: number; y: number };
     width?: number;
     height?: number;
+    captureNodeIds?: string[];
   }) => string;
   createBox: (props: {
     label: string;
@@ -316,6 +319,9 @@ export interface FlowCanvasState {
   duplicateSelected: () => void;
   resetBoard: () => void;
   loadSnapshot: () => void;
+  arrangeLayout: () => void;
+  groupSelectedNodes: (title?: string, description?: string) => string | null;
+  ungroupSelectedNodes: () => boolean;
 }
 
 export const useFlowCanvasStore = create<FlowCanvasState>()(
@@ -757,9 +763,14 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         }
 
         const parentW = Number(parentFrame?.style?.width ?? parentFrame?.width ?? 680);
-        const taskStyle = isParentRunway
-          ? { width: parentW - 48, height: 50, zIndex: nextZ }
-          : { width: 280, height: 82, zIndex: nextZ };
+        const taskW = isParentRunway ? parentW - 48 : 280;
+        const taskH = isParentRunway ? 50 : 82;
+
+        if (!isParentRunway) {
+          pos = findNonOverlappingPosition(pos, { w: taskW, h: taskH }, state.nodes, parentId);
+        }
+
+        const taskStyle = { width: taskW, height: taskH, zIndex: nextZ };
 
         const newNode: Node = {
           id,
@@ -778,9 +789,22 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           selected: true,
         };
 
-        const clearedNodes = state.nodes.map((n) =>
+        let clearedNodes = state.nodes.map((n) =>
           n.selected ? { ...n, selected: false } : n
         );
+
+        // If child is placed inside a project frame and extends beyond bottom edge, expand frame!
+        if (parentId && parentFrame && !isParentRunway) {
+          const currentParentH = Number(parentFrame.style?.height ?? parentFrame.height ?? 440);
+          const requiredH = Math.max(currentParentH, pos.y + taskH + 40);
+          if (requiredH > currentParentH) {
+            clearedNodes = clearedNodes.map((n) =>
+              n.id === parentId
+                ? { ...n, style: { ...n.style, height: requiredH }, height: requiredH }
+                : n
+            );
+          }
+        }
 
         if (parentId) {
           const parentIdx = clearedNodes.findIndex((n) => n.id === parentId);
@@ -840,7 +864,10 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           return { nx, ny, nw, nh, ncx, ncy };
         };
 
+        const explicitCaptureIds = props.captureNodeIds ? new Set(props.captureNodeIds) : null;
+
         const capturedNodes = candidates.filter((n) => {
+          if (explicitCaptureIds) return explicitCaptureIds.has(n.id);
           if (n.selected) return true;
           const { nx, ny, nw, nh, ncx, ncy } = getCandidateMetrics(n);
 
@@ -923,6 +950,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           data: {
             title: props.title,
             goal: props.goal || "",
+            description: props.description || "",
             accent: props.accent || "blue",
             borderStyle: "solid",
           },
@@ -1386,6 +1414,72 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         } catch (err) {
           console.warn("Failed to load Flow snapshot:", err);
         }
+      },
+
+      arrangeLayout: () => {
+        const state = get();
+        const updated = arrangeLayout(state.nodes);
+        set({ nodes: updated });
+      },
+
+      groupSelectedNodes: (title?: string, description?: string) => {
+        const state = get();
+        const selected = state.nodes.filter(
+          (n) => n.selected && n.type !== "projectFrame" && n.type !== "runwayFrame"
+        );
+        if (selected.length === 0) return null;
+
+        const groupTitle = title || "Semantic Group";
+        const groupId = state.createProject({
+          title: groupTitle,
+          description: description || "",
+          goal: description || "Semantic group cluster",
+          accent: "indigo",
+          captureNodeIds: selected.map((s) => s.id),
+        });
+
+        return groupId;
+      },
+
+      ungroupSelectedNodes: () => {
+        const state = get();
+        const selectedFrames = state.nodes.filter(
+          (n) => n.selected && n.type === "projectFrame"
+        );
+        if (selectedFrames.length === 0) return false;
+
+        const frameIds = new Set(selectedFrames.map((f) => f.id));
+        const framesMap = new Map(selectedFrames.map((f) => [f.id, f]));
+
+        // Reparent children to canvas root by converting relative coordinates to absolute coordinates
+        const updatedNodes: Node[] = [];
+        for (const n of state.nodes) {
+          if (frameIds.has(n.id)) {
+            // Remove the grouping frame
+            continue;
+          }
+          if (n.parentId && frameIds.has(n.parentId)) {
+            const parent = framesMap.get(n.parentId)!;
+            const absX = Math.round(parent.position.x + n.position.x);
+            const absY = Math.round(parent.position.y + n.position.y);
+            const copy = {
+              ...n,
+              parentId: undefined,
+              position: { x: absX, y: absY },
+              selected: true,
+            };
+            delete copy.parentId;
+            updatedNodes.push(copy);
+          } else {
+            updatedNodes.push(n);
+          }
+        }
+
+        set({
+          nodes: updatedNodes,
+          selectedNodeId: null,
+        });
+        return true;
       },
     }),
     {
