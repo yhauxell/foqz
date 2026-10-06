@@ -1449,6 +1449,18 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     },
     onDeleteSelected: handleDeleteSelected,
     onDuplicateSelected: () => useFlowCanvasStore.getState().duplicateSelected(),
+    onGroupSelected: () => {
+      const groupId = useFlowCanvasStore.getState().groupSelectedNodes("Semantic Group", "Clustered concept");
+      if (groupId) {
+        window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id: groupId } }));
+      }
+    },
+    onUngroupSelected: () => {
+      useFlowCanvasStore.getState().ungroupSelectedNodes();
+    },
+    onArrangeLayout: () => {
+      useFlowCanvasStore.getState().arrangeLayout();
+    },
     onUndo: () => useFlowCanvasStore.temporal.getState().undo(),
     onRedo: () => useFlowCanvasStore.temporal.getState().redo(),
     onFitView: () => fitView({ duration: 300 }),

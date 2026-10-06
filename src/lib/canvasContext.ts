@@ -28,6 +28,7 @@ export interface ProjectFrameBundle {
   frameId: string;
   title: string;
   goal: string;
+  description?: string;
   projectContext?: string;
   connectors?: Record<string, any>;
   containedShapes: Array<{
@@ -68,7 +69,8 @@ export function getFlowCanvasContext(
       fullText = `[Runway Frame] "${label}" (Template: ${d.templateId || "rule_of_3"}, Goal: "${d.dailyGoal || ""}", Cleared: ${d.clearedToday || 0})`;
     } else if (n.type === "projectFrame") {
       label = d.title || "Untitled Project";
-      fullText = `[Project Frame] "${label}" (Goal: "${d.goal || ""}")`;
+      const descInfo = d.description ? `, Intent: "${d.description}"` : "";
+      fullText = `[Project / Semantic Group] "${label}" (Goal: "${d.goal || ""}"${descInfo})`;
     } else if (n.type === "note") {
       label = d.title || (d.text ? d.text.slice(0, 40) : "Sticky Note");
       const content = d.text || d.notes || "";
@@ -256,6 +258,7 @@ export function getFlowProjectFrameContents(
     (c, idx) => `${idx + 1}. [${c.type}] ${c.text}`,
   );
 
+  const descSection = data.description ? `\nIntent / Description: ${data.description}` : "";
   const contextSection = data.projectContext
     ? `\nProject Context:\n${String(data.projectContext).slice(0, 500)}${String(data.projectContext).length > 500 ? "..." : ""}`
     : "";
@@ -264,10 +267,11 @@ export function getFlowProjectFrameContents(
     frameId: frame.id,
     title: data.title || "Untitled Project",
     goal: data.goal || "",
+    description: data.description,
     projectContext: data.projectContext,
     connectors: data.connectors,
     containedShapes: contained,
-    summaryText: `Project: ${data.title || "Untitled"}\nGoal: ${data.goal || ""}${contextSection}\nBacklog items (${contained.length}):\n${summaryLines.join("\n")}`,
+    summaryText: `Project / Semantic Group: ${data.title || "Untitled"}\nGoal: ${data.goal || ""}${descSection}${contextSection}\nContained elements (${contained.length}):\n${summaryLines.join("\n")}`,
   };
 }
 

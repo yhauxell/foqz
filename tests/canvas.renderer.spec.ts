@@ -157,4 +157,31 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     // Capture visual screenshot of Eisenhower matrix runway
     await page.screenshot({ path: 'test-results/eisenhower-runway.png' });
   });
+
+  test('verifies arrange layout command in spotlight and project frame chat button', async ({ page }) => {
+    // 1. Verify project frame chat button exists and is accessible
+    const projectChatBtn = page.locator("button[aria-label='Chat with project or group']").first();
+    await expect(projectChatBtn).toBeVisible();
+
+    // 2. Open spotlight and search for arrange layout
+    const spotlightTrigger = page.locator("button[title*='Create task, jump to project, or command canvas']");
+    await spotlightTrigger.click();
+
+    const searchInput = page.getByPlaceholder(/Jump to project, task, or run an action/);
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill('Arrange Layout');
+
+    // Verify Arrange Layout command option appears
+    const arrangeOption = page.getByText(/Arrange Layout \(Tidy Non-overlapping\)/);
+    await expect(arrangeOption).toBeVisible();
+
+    // Take screenshot of spotlight with Arrange Layout
+    await page.screenshot({ path: 'test-results/spotlight-arrange-layout.png' });
+
+    // Execute arrange layout
+    await arrangeOption.click();
+
+    // Take visual screenshot of arranged canvas
+    await page.screenshot({ path: 'test-results/canvas-after-arrange.png' });
+  });
 });

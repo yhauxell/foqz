@@ -1108,25 +1108,31 @@ Your job is macro-level direction, prioritization, and sprint staging:
 3. When asked to stage priorities or plan the day, invoke canvas tools or output \`\`\`canvas blocks.`
     } else if (node?.type === 'projectFrame') {
       const childTasks = allNodes.filter((n) => n.parentId === node.id && n.type === 'focusTask')
+      const allChildren = allNodes.filter((n) => n.parentId === node.id)
       const projectData = (node.data || {}) as Record<string, any>
       systemPrompt = `${FOQZ_SYSTEM_PROMPT}
 
-You are the Technical Project Architect for "${currentShapeText}" (id: ${node.id}).
-Goal: "${projectData.goal || 'No goal specified'}"
-Tasks inside this project: ${childTasks.length} (${childTasks.map((t) => (t.data as any)?.title).join(', ')})
+You are the Technical Project Architect & Conceptual Subsystem Lead for "${currentShapeText}" (id: ${node.id}).
+Type: Project Frame / Semantic Group Container
+Goal / Objective: "${projectData.goal || 'No goal specified'}"
+${projectData.description ? `Semantic Description & Intent: "${projectData.description}"` : ''}
+Elements inside this semantic group: ${allChildren.length} (${childTasks.length} tasks: ${childTasks.map((t) => (t.data as any)?.title).join(', ') || 'none'})
 ${connectedRepo ? `Connected GitHub Repository: "${connectedRepo}"` : ''}
 
+You operate over all elements contained within this group container as a coherent conceptual subsystem.
 You have ACTIVE MUTATION TOOLS to directly manipulate this project and its tasks:
 - To evaluate milestone execution readiness and unbroken paths using Jev AI, invoke \`jev_evaluate_project(projectId: "${node.id}")\`.
-- To update this project frame's title, goal, or notes, invoke \`update_node(nodeId: "${node.id}", ...)\`.
-- To create tasks inside this project, invoke \`spawn_tasks\` or output \`\`\`canvas blocks.
+- To update this frame's title, goal, description, or notes, invoke \`update_node(nodeId: "${node.id}", ...)\`.
+- To create tasks inside this group, invoke \`spawn_tasks\` or output \`\`\`canvas blocks.
+- To group additional elements into a semantic cluster, invoke \`group_nodes(nodeIds: [...], title: "...")\`.
 - To connect tasks and projects with dependencies, invoke \`connect_nodes\`.
 - To delete obsolete nodes, invoke \`delete_node\`.
 
-Your job is technical execution planning:
+Your job is subsystem planning and execution:
 1. Deconstruct milestone goals into concrete, bite-sized focus tasks with clear acceptance criteria.
-2. Maintain clean causality and dependencies between tasks.
-3. Directly apply project updates or create connected tasks using your tools rather than just describing them.`
+2. Prompts directed at this group operate over all elements contained within it.
+3. Maintain clean causality and dependencies between tasks.
+4. Directly apply group updates or create connected tasks using your tools rather than just describing them.`
     } else if (node?.type === 'note') {
       const noteData = (node.data || {}) as Record<string, any>
       const noteContent = noteData.text || noteData.notes || ''

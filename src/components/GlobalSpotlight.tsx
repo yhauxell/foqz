@@ -15,6 +15,8 @@ import {
   PanelLeft,
   Inbox,
   PlaneTakeoff,
+  LayoutGrid,
+  Group,
 } from 'lucide-react'
 import { prioritizeDailyFocusSlot } from '@/lib/jev'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
@@ -269,6 +271,42 @@ type SpotlightEntry =
         icon: <Inbox className="size-3 text-zinc-500 shrink-0" />,
         perform: () => {
           useFlowCanvasStore.getState().sweepToInbox()
+          onClose()
+        },
+      },
+      {
+        id: 'action-arrange-layout',
+        title: 'Arrange Layout (Tidy Non-overlapping)',
+        shortcut: '⌘⇧A',
+        keywords: ['arrange', 'layout', 'tidy', 'align', 'organize', 'separate', 'clean', 'space'],
+        icon: <LayoutGrid className="size-3 text-emerald-500 shrink-0" />,
+        perform: () => {
+          useFlowCanvasStore.getState().arrangeLayout()
+          onClose()
+        },
+      },
+      {
+        id: 'action-group-selected',
+        title: 'Group Selected Nodes (Semantic Cluster)',
+        shortcut: '⌘G',
+        keywords: ['group', 'cluster', 'semantic', 'container', 'frame'],
+        icon: <Group className="size-3 text-indigo-500 shrink-0" />,
+        perform: () => {
+          const groupId = useFlowCanvasStore.getState().groupSelectedNodes()
+          if (groupId) {
+            window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: groupId } }))
+          }
+          onClose()
+        },
+      },
+      {
+        id: 'action-ungroup-selected',
+        title: 'Ungroup Selected Container',
+        shortcut: '⌃⌥G',
+        keywords: ['ungroup', 'release', 'break', 'remove', 'frame'],
+        icon: <Group className="size-3 text-zinc-400 shrink-0" />,
+        perform: () => {
+          useFlowCanvasStore.getState().ungroupSelectedNodes()
           onClose()
         },
       },

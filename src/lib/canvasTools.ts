@@ -162,6 +162,10 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
           type: 'string',
           description: 'Project frame goal.',
         },
+        description: {
+          type: 'string',
+          description: 'Project frame / semantic group description or intent.',
+        },
       },
     },
   },
@@ -389,6 +393,41 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
           description: 'Optional list of labels for the issue',
         },
       },
+    },
+  },
+  {
+    serverName: 'foqz',
+    name: 'group_nodes',
+    description:
+      'Group multiple canvas nodes into a semantic group container / project frame with title and intent description.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        nodeIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'IDs of the nodes to capture into the semantic group',
+        },
+        title: {
+          type: 'string',
+          description: 'Title of the semantic group container',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional description or conceptual intent of the group (e.g. "Authentication Flow", "Blockers")',
+        },
+      },
+      required: ['nodeIds', 'title'],
+    },
+  },
+  {
+    serverName: 'foqz',
+    name: 'arrange_layout',
+    description:
+      'Automatically arrange and tidy elements on the canvas or inside a container to prevent overlapping and improve spatial clarity.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
     },
   },
 ]
@@ -783,6 +822,9 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
         }
         if (args.goal !== undefined) {
           patch.goal = String(args.goal)
+        }
+        if (args.description !== undefined) {
+          patch.description = String(args.description)
         }
 
         if (Object.keys(patch).length === 0) {
@@ -1280,6 +1322,60 @@ ${evalRes.isReady ? '✅ This project has a concrete, unbroken path to delivery.
             isError: true,
             content: [{ type: 'text', text: `Failed to create GitHub issue: ${err.message}` }],
           }
+        }
+      }
+
+      case 'group_nodes': {
+        const liveStore = useFlowCanvasStore.getState()
+        const nodeIds: string[] = Array.isArray(args.nodeIds) ? args.nodeIds : []
+        const title: string = args.title || 'Semantic Group'
+        const description: string | undefined = args.description
+
+        if (nodeIds.length === 0) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'No nodeIds provided to group together.' }],
+          }
+        }
+
+        const validNodes = liveStore.nodes.filter((n) => nodeIds.includes(n.id))
+        if (validNodes.length === 0) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'None of the specified nodeIds were found on the canvas.' }],
+          }
+        }
+
+        const groupId = liveStore.createProject({
+          title,
+          description,
+          goal: description || 'Semantic group cluster',
+          accent: 'indigo',
+          captureNodeIds: nodeIds,
+        })
+
+        return {
+          isError: false,
+          content: [
+            {
+              type: 'text',
+              text: `Successfully clustered ${validNodes.length} nodes into semantic group "${title}" (id: ${groupId}).`,
+            },
+          ],
+        }
+      }
+
+      case 'arrange_layout': {
+        const liveStore = useFlowCanvasStore.getState()
+        liveStore.arrangeLayout()
+        return {
+          isError: false,
+          content: [
+            {
+              type: 'text',
+              text: 'Successfully rearranged canvas elements to eliminate overlaps and improve spatial clarity.',
+            },
+          ],
         }
       }
 
