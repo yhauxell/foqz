@@ -184,4 +184,53 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     // Take visual screenshot of arranged canvas
     await page.screenshot({ path: 'test-results/canvas-after-arrange.png' });
   });
+
+  test('verifies connection and arrow tools in dock toolbar and creates curved arrow', async ({ page }) => {
+    // 1. Verify Connection tool in dock toolbar
+    const connectionTool = page.locator("button[title*='Connection Tool']");
+    await expect(connectionTool).toBeVisible();
+
+    // 2. Verify Arrow pointer tool in dock toolbar
+    const arrowTool = page.locator("button[title*='Arrow Tool']");
+    await expect(arrowTool).toBeVisible();
+    await arrowTool.click();
+
+    // 3. Click canvas to spawn arrow
+    const canvas = page.locator('.react-flow__pane');
+    await canvas.click({ position: { x: 380, y: 320 } });
+
+    // 4. Verify arrow node is rendered on canvas
+    const arrowNode = page.locator('.react-flow__node-arrow');
+    await expect(arrowNode).toBeVisible();
+
+    // 5. Verify arrow toolbar appears with spear controls
+    const spearEndBtn = page.locator("button[title*='Arrowhead pointing right (end)']");
+    await expect(spearEndBtn).toBeVisible();
+
+    // 6. Capture visual screenshot of curved arrow with controls
+    await page.screenshot({ path: 'test-results/canvas-arrow-component.png' });
+  });
+
+  test('verifies local AI engine auto-discovery HUD in Settings', async ({ page }) => {
+    // 1. Open Focus Settings modal
+    const settingsBtn = page.locator("button[aria-label='Settings']");
+    await expect(settingsBtn).toBeVisible();
+    await settingsBtn.click();
+
+    // 2. Switch to AI tab
+    const aiTabBtn = page.getByRole('button', { name: 'AI', exact: true });
+    await expect(aiTabBtn).toBeVisible();
+    await aiTabBtn.click();
+
+    // 3. Verify Local Inference Engines Auto-Discovery HUD
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    await expect(dialog.getByText('Auto-Detected Local Inference Engines')).toBeVisible();
+    await expect(dialog.getByText(/model\(s\) active/)).toBeVisible();
+    await expect(dialog.getByText('LM Studio', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('llama.cpp', { exact: true })).toBeVisible();
+
+    // 4. Capture screenshot of local AI engine auto-discovery
+    await page.screenshot({ path: 'test-results/local-ai-discovery-settings.png' });
+  });
 });
+

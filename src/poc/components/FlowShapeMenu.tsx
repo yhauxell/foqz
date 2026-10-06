@@ -109,6 +109,9 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
 
   // Derive current color hex from node type
   const currentHex = (() => {
+    if (selectedNode.type === "arrow") {
+      return (selectedNode.data?.strokeColor as string) || (selectedNode.data?.color as string) || "#6366f1";
+    }
     if (selectedNode.type === "box" || selectedNode.type === "circle") {
       return (selectedNode.data?.strokeColor as string) || "#3b82f6";
     }
@@ -132,6 +135,9 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     setNodes((nodes) =>
       nodes.map((node) => {
         if (node.id !== selectedNode.id) return node;
+        if (node.type === "arrow") {
+          return { ...node, data: { ...node.data, strokeColor: color.hex, color: color.hex } };
+        }
         if (node.type === "box" || node.type === "circle") {
           return { ...node, data: { ...node.data, strokeColor: color.hex, color: color.bg } };
         }
@@ -157,6 +163,18 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     );
   };
 
+  const isArrow = selectedNode.type === "arrow";
+  const currentSpear = ((selectedNode.data?.spear as string) || "end") as "end" | "start" | "both" | "none";
+
+  const handleSpearChange = (spear: "end" | "start" | "both" | "none") => {
+    setNodes((nodes) =>
+      nodes.map((node) => {
+        if (node.id !== selectedNode.id) return node;
+        return { ...node, data: { ...node.data, spear } };
+      })
+    );
+  };
+
   const isFillEligible = selectedNode.type === "box" || selectedNode.type === "circle";
   const currentFillStyle = (selectedNode.data?.fillStyle as "hachure" | "solid" | "none") || "hachure";
 
@@ -173,7 +191,8 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     selectedNode.type === "box" ||
     selectedNode.type === "circle" ||
     selectedNode.type === "focusTask" ||
-    selectedNode.type === "projectFrame";
+    selectedNode.type === "projectFrame" ||
+    selectedNode.type === "arrow";
 
   const currentBorderStyle: "solid" | "dashed" | "dotted" =
     (selectedNode.data?.borderStyle as "solid" | "dashed" | "dotted") ||
@@ -194,6 +213,7 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
   const nodeInternal = getInternalNode(selectedNode.id);
   const nodeAbsY = nodeInternal?.internals?.positionAbsolute?.y ?? selectedNode.position.y;
   const toolbarPosition = nodeAbsY < 70 ? Position.Bottom : Position.Top;
+
 
   return (
     <NodeToolbar nodeId={selectedNode.id} isVisible={true} position={toolbarPosition} offset={10} align="center">
@@ -318,7 +338,53 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
           </>
         )}
 
+        {/* Arrowhead Spear Direction selector for Arrow nodes */}
+        {isArrow && (
+          <>
+            <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
+            <div className="flex items-center gap-0.5 bg-black/5 dark:bg-white/5 rounded-lg p-0.5">
+              <button
+                type="button"
+                title="Arrowhead pointing right (end)"
+                onClick={() => handleSpearChange("end")}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                  currentSpear === "end"
+                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                }`}
+              >
+                End →
+              </button>
+              <button
+                type="button"
+                title="Arrowhead pointing left (start)"
+                onClick={() => handleSpearChange("start")}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                  currentSpear === "start"
+                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                }`}
+              >
+                ← Start
+              </button>
+              <button
+                type="button"
+                title="Double spearheads (both)"
+                onClick={() => handleSpearChange("both")}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                  currentSpear === "both"
+                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                }`}
+              >
+                ↔ Both
+              </button>
+            </div>
+          </>
+        )}
+
         <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
+
 
         <button
           type="button"

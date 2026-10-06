@@ -39,6 +39,7 @@ import {
   Type as TypeIcon,
   StickyNote,
   MoveRight,
+  Link2,
   Pencil,
   RotateCcw,
 } from "lucide-react";
@@ -74,7 +75,7 @@ const MULTI_SELECTION_KEY_CODE = ["Meta", "Control", "Shift"];
 const ZOOM_ACTIVATION_KEY_CODE = ["Meta", "Control"];
 const PAN_ON_DRAG: number[] = [1, 2];
 
-export type ActiveTool = "select" | "task" | "box" | "circle" | "text" | "note" | "arrow" | "pencil";
+export type ActiveTool = "select" | "task" | "box" | "circle" | "text" | "note" | "connection" | "arrow" | "pencil";
 
 interface FlowCanvasAppProps {
   sidebarOpen?: boolean;
@@ -489,7 +490,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           eds
         )
       );
-      if (activeTool === "arrow") {
+      if (activeTool === "connection" || activeTool === "arrow") {
         setActiveTool("select");
       }
     },
@@ -1145,9 +1146,55 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     [setNodes, setSelectedNodeId]
   );
 
+  const handleCreateArrowAt = useCallback(
+    (pos: { x: number; y: number }, endDelta: { x: number; y: number } = { x: 220, y: 120 }) => {
+      const id = `arrow-${Date.now()}`;
+      const currentNodes = useFlowCanvasStore.getState().nodes;
+      const nextZ = Math.max(100, getMaxZIndex(currentNodes) + 1);
+
+      const w = Math.max(120, Math.abs(endDelta.x) + 40);
+      const h = Math.max(80, Math.abs(endDelta.y) + 40);
+
+      // Setup start and end points inside bounding box
+      const startX = endDelta.x >= 0 ? 20 : w - 20;
+      const startY = endDelta.y >= 0 ? h - 20 : 20;
+      const endX = endDelta.x >= 0 ? w - 20 : 20;
+      const endY = endDelta.y >= 0 ? 20 : h - 20;
+      const controlX = Math.round((startX + endX) / 2 + (endDelta.y >= 0 ? -30 : 30));
+      const controlY = Math.round((startY + endY) / 2 + (endDelta.x >= 0 ? -25 : 25));
+
+      const newNode: Node = {
+        id,
+        type: "arrow",
+        position: pos,
+        style: { width: w, height: h, zIndex: nextZ },
+        data: {
+          start: { x: startX, y: startY },
+          end: { x: endX, y: endY },
+          control: { x: controlX, y: controlY },
+          spear: "end",
+          color: "#6366f1",
+          strokeColor: "#6366f1",
+          borderStyle: "solid",
+          roughness: 1.2,
+        },
+        selected: true,
+      };
+
+      setNodes((nds) => [
+        ...nds.map((n) => (n.selected ? { ...n, selected: false } : n)),
+        newNode,
+      ]);
+      setSelectedNodeId(id);
+      setActiveTool("select");
+    },
+    [setNodes, setSelectedNodeId]
+  );
+
   const handleCreateNoteAt = useCallback(
     (pos: { x: number; y: number }) => {
       const id = `note-${Date.now()}`;
+
       const currentNodes = useFlowCanvasStore.getState().nodes;
       const nextZ = Math.max(100, getMaxZIndex(currentNodes) + 1);
       const frameMatch = findFrameAt(pos, currentNodes);
@@ -1363,6 +1410,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     onCircleTool: () => selectTool("circle"),
     onTextTool: () => selectTool("text"),
     onNoteTool: () => selectTool("note"),
+    onConnectionTool: () => selectTool("connection"),
     onArrowTool: () => selectTool("arrow"),
     onPencilTool: () => selectTool("pencil"),
     onCreateTask: handleCreateTask,
@@ -1550,9 +1598,9 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
   // Pointer Down (Box/Circle Drag-to-size OR Pencil drawing)
   const handlePointerDown = (e: React.PointerEvent) => {
-    // Only tools that require drag-drawing (pencil, box, circle) need pointer capture.
-    // Task, text, select, and arrow tools must NOT capture pointer, ensuring click-to-place and node clicks work!
-    if (activeTool !== "pencil" && activeTool !== "box" && activeTool !== "circle") return;
+    // Only tools that require drag-drawing (pencil, box, circle, arrow) need pointer capture.
+    // Task, text, note, connection, and select tools must NOT capture pointer, ensuring click-to-place and node clicks work!
+    if (activeTool !== "pencil" && activeTool !== "box" && activeTool !== "circle" && activeTool !== "arrow") return;
     try {
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     } catch {}
@@ -1573,7 +1621,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         streamline: 0.5,
       });
       setPencilPreviewSvgPath(getSvgPathFromStroke(stroke));
-    } else if (activeTool === "box" || activeTool === "circle") {
+    } else if (activeTool === "box" || activeTool === "circle" || activeTool === "arrow") {
       const containerRect = containerRef.current?.getBoundingClientRect();
       const clientX = e.clientX - (containerRect?.left ?? 0);
       const clientY = e.clientY - (containerRect?.top ?? 0);
@@ -1603,7 +1651,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         streamline: 0.5,
       });
       setPencilPreviewSvgPath(getSvgPathFromStroke(stroke));
-    } else if ((activeTool === "box" || activeTool === "circle") && boxDragStartRef.current) {
+    } else if ((activeTool === "box" || activeTool === "circle" || activeTool === "arrow") && boxDragStartRef.current) {
       const containerRect = containerRef.current?.getBoundingClientRect();
       const currentClientX = e.clientX - (containerRect?.left ?? 0);
       const currentClientY = e.clientY - (containerRect?.top ?? 0);
@@ -1617,7 +1665,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     }
   };
 
-  // Pointer Up (Finalize Box/Circle Drag OR Pencil drawing)
+  // Pointer Up (Finalize Box/Circle/Arrow Drag OR Pencil drawing)
   const handlePointerUp = (e: React.PointerEvent) => {
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
@@ -1650,7 +1698,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         setNodes((nds) => [...nds, newPencilNode]);
       }
       selectTool("select");
-    } else if ((activeTool === "box" || activeTool === "circle") && boxDragStartRef.current) {
+    } else if ((activeTool === "box" || activeTool === "circle" || activeTool === "arrow") && boxDragStartRef.current) {
       const currentFlow = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       const startFlow = boxDragStartRef.current.flow;
       boxDragStartRef.current = null;
@@ -1659,7 +1707,18 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       const dx = Math.abs(currentFlow.x - startFlow.x);
       const dy = Math.abs(currentFlow.y - startFlow.y);
 
-      if (activeTool === "circle") {
+      if (activeTool === "arrow") {
+        if (dx < 10 && dy < 10) {
+          // Single click fallback: spawn default arrow pointing forward right
+          handleCreateArrowAt({ x: startFlow.x - 30, y: startFlow.y - 30 }, { x: 200, y: 100 });
+        } else {
+          const startX = Math.min(startFlow.x, currentFlow.x);
+          const startY = Math.min(startFlow.y, currentFlow.y);
+          const deltaX = currentFlow.x - startFlow.x;
+          const deltaY = currentFlow.y - startFlow.y;
+          handleCreateArrowAt({ x: startX, y: startY }, { x: deltaX, y: deltaY });
+        }
+      } else if (activeTool === "circle") {
         if (dx < 6 && dy < 6) {
           // Single click fallback: spawn default size circle centered at click
           handleCreateCircleAt(startFlow.x - 80, startFlow.y - 80, 160, 160);
@@ -1821,21 +1880,35 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           <StickyNote className="size-5" />
         </button>
 
-        {/* 6. Semantic Arrow / Connector Tool */}
+        {/* 6. Semantic Connection / Wire Tool */}
+        <button
+          type="button"
+          onClick={() => selectTool("connection")}
+          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            activeTool === "connection"
+              ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-1 ring-white/25"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/40 active:scale-95"
+          }`}
+          title="Connection Tool (L / 4) — Drag between node handles to create dependencies"
+        >
+          <Link2 className="size-5" />
+        </button>
+
+        {/* 7. Canvas Pointer Arrow Element Tool */}
         <button
           type="button"
           onClick={() => selectTool("arrow")}
           className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             activeTool === "arrow"
-              ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-1 ring-white/25"
-              : "text-zinc-600 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/40 active:scale-95"
+              ? "bg-violet-600 text-white shadow-md shadow-violet-500/30 ring-1 ring-white/25"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50/80 dark:hover:bg-violet-950/40 active:scale-95"
           }`}
-          title="Semantic Arrow Tool (A) — Drag between node handles"
+          title="Arrow Tool (A) — Drag to draw arrow pointing at elements, with bending and arrowhead options"
         >
           <MoveRight className="size-5" />
         </button>
 
-        {/* 6. Freehand Pencil */}
+        {/* 8. Freehand Pencil */}
         <button
           type="button"
           onClick={() => selectTool("pencil")}
@@ -1858,7 +1931,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         edgeTypes={edgeTypes}
         nodesDraggable={activeTool === "select"}
         elementsSelectable={activeTool === "select"}
-        nodesConnectable={activeTool === "select" || activeTool === "arrow"}
+        nodesConnectable={activeTool === "select" || activeTool === "connection"}
         nodesFocusable={activeTool === "select"}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
