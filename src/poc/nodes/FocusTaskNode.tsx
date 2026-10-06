@@ -19,6 +19,9 @@ import {
   PlaneTakeoff,
   Sparkles,
   GitPullRequest,
+  User,
+  Tag,
+  AlertTriangle,
 } from "lucide-react";
 import { updateGitHubIssue, getIssuePullRequests, type RelatedPullRequest } from "@/lib/githubSync";
 import type { SemanticRelation } from "../edges/SemanticEdge";
@@ -1152,6 +1155,27 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                           <GitPullRequest className="size-2.5 text-purple-500" />
                           <span>#{data.githubIssueNumber}</span>
                         </a>
+
+                        {data.githubAssignee && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono text-zinc-600 dark:text-zinc-300 bg-black/5 dark:bg-white/10 border border-black/5 dark:border-white/10 shrink-0"
+                            title={`Assignee: @${data.githubAssignee}`}
+                          >
+                            <User className="size-2 text-zinc-500" />
+                            <span>@{String(data.githubAssignee)}</span>
+                          </span>
+                        )}
+
+                        {Array.isArray(data.githubLabels) &&
+                          (data.githubLabels as string[]).slice(0, 2).map((lbl) => (
+                            <span
+                              key={lbl}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-medium bg-zinc-200/60 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0"
+                            >
+                              <Tag className="size-2 text-zinc-400" />
+                              <span className="truncate max-w-[60px]">{lbl}</span>
+                            </span>
+                          ))}
 
                         {relatedPrs.map((pr) => (
                           <a
