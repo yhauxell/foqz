@@ -28,6 +28,7 @@ declare global {
         | { ok: false; error?: string; canceled?: boolean }
       >;
       clearBoardFile?: () => Promise<{ ok: boolean; error?: string }>;
+      openExternal?: (url: string) => Promise<boolean>;
       toggleMaximize?: () => Promise<boolean>;
       isMaximized?: () => Promise<boolean>;
       onMaximizedChange?: (callback: (isMaximized: boolean) => void) => () => void;
@@ -50,6 +51,9 @@ declare global {
       getAppVersion?: () => Promise<{ version: string; isPackaged: boolean }>;
       /** Electron: run before exit so timers can be stopped and the board saved. */
       onPrepareShutdown?: (handler: () => void | Promise<void>) => () => void;
+    };
+    electron?: {
+      openExternal: (url: string) => Promise<boolean>;
     };
   }
 

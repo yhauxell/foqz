@@ -117,7 +117,7 @@ export const INITIAL_EDGES: Edge[] = [
 export function getMaxZIndex(nodes: Node[]): number {
   let maxZ = 10;
   for (const n of nodes) {
-    if (n.type === "projectFrame") continue;
+    if (n.type === "projectFrame" || n.type === "runwayFrame") continue;
     const styleZ = typeof n.style?.zIndex === "number" ? n.style.zIndex : undefined;
     const directZ = typeof n.zIndex === "number" ? n.zIndex : undefined;
     const z = styleZ ?? directZ ?? 0;
@@ -280,6 +280,14 @@ export interface FlowCanvasState {
     width?: number;
     height?: number;
   }) => string;
+  createImage: (props: {
+    src: string;
+    alt?: string;
+    width?: number;
+    height?: number;
+    position?: { x: number; y: number };
+    parentId?: string;
+  }) => string;
   sweepToInbox: () => { inboxId: string; sweptCount: number };
   activeFocusNodeId: string | null;
   timerSecondsRemaining: number;
@@ -380,7 +388,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           id: runwayId,
           type: "runwayFrame",
           position: spawnPos,
-          style: { width: 680, height: 420 },
+          style: { width: 680, height: 420, zIndex: 0 },
           data: {
             title: options?.title || template.title,
             templateId: template.id,
@@ -407,8 +415,12 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         if (!task || !task.data?.originProjectId) return false;
 
         const originProjId = task.data.originProjectId as string;
-        const originProj = state.nodes.find((n) => n.id === originProjId);
+        let originProj = state.nodes.find((n) => n.id === originProjId);
+        if (!originProj) {
+          originProj = state.nodes.find((n) => n.type === "projectFrame");
+        }
         if (!originProj) return false;
+        const targetProjId = originProj.id;
 
         const returnPos =
           (task.data.originProjectPos as { x: number; y: number }) || { x: 40, y: 100 };
@@ -426,7 +438,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           delete cleanData.stowedEdges;
           return {
             ...n,
-            parentId: originProjId,
+            parentId: targetProjId,
             position: returnPos,
             style: { ...n.style, width: 280, height: 82 },
             data: cleanData,
@@ -438,10 +450,11 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         const edgesToRestore = stowedEdges.filter(
           (se) => !currentEdges.some((e) => e.id === se.id)
         );
+        const updatedEdges = [...currentEdges, ...edgesToRestore];
         const realignedNodes = realignAllRunways(updatedNodes, state.activeFocusNodeId);
         set({ nodes: realignedNodes, edges: updatedEdges, selectedNodeId: taskId });
         window.dispatchEvent(
-          new CustomEvent("foqz:flow-center-on", { detail: { id: originProjId } })
+          new CustomEvent("foqz:flow-center-on", { detail: { id: targetProjId } })
         );
         return true;
       },
@@ -1089,6 +1102,79 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         return id;
       },
 
+      createImage: (props) => {
+        const state = get();
+        const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const maxZ = getMaxZIndex(state.nodes);
+        const nextZ = Math.max(100, maxZ + 1);
+
+        let parentId = props.parentId;
+        let pos = props.position;
+
+        if (!parentId && pos) {
+          const frameMatch = findFrameAt(pos, state.nodes);
+          if (frameMatch) {
+            parentId = frameMatch.frame.id;
+            pos = { x: frameMatch.relX, y: frameMatch.relY };
+          }
+        } else if (!parentId && !pos && state.cursorPosition) {
+          const frameMatch = findFrameAt(state.cursorPosition, state.nodes);
+          if (frameMatch) {
+            parentId = frameMatch.frame.id;
+            pos = { x: frameMatch.relX, y: frameMatch.relY };
+          } else {
+            pos = {
+              x: Math.round(state.cursorPosition.x - (props.width ? props.width / 2 : 160)),
+              y: Math.round(state.cursorPosition.y - (props.height ? props.height / 2 : 120)),
+            };
+          }
+        }
+
+        if (!pos) {
+          pos = { x: 320, y: 220 };
+        }
+
+        const newNode: Node = {
+          id,
+          type: "image",
+          parentId,
+          position: pos,
+          style: { width: props.width || 320, height: props.height || 240, zIndex: nextZ },
+          data: {
+            src: props.src,
+            alt: props.alt || "Pasted Image",
+          },
+          selected: true,
+        };
+
+        const clearedNodes = state.nodes.map((n) =>
+          n.selected ? { ...n, selected: false } : n
+        );
+
+        if (parentId) {
+          const parentIdx = clearedNodes.findIndex((n) => n.id === parentId);
+          if (parentIdx !== -1) {
+            let insertIdx = parentIdx + 1;
+            while (
+              insertIdx < clearedNodes.length &&
+              clearedNodes[insertIdx].parentId === parentId
+            ) {
+              insertIdx++;
+            }
+            const copy = [...clearedNodes];
+            copy.splice(insertIdx, 0, newNode);
+            set({ nodes: copy, selectedNodeId: id });
+            return id;
+          }
+        }
+
+        set({
+          nodes: [...clearedNodes, newNode],
+          selectedNodeId: id,
+        });
+        return id;
+      },
+
       sweepToInbox: () => {
         const state = get();
         // Find existing Inbox frame or create a new one
@@ -1271,10 +1357,17 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         try {
           localStorage.removeItem(FLOW_STORAGE_KEY);
         } catch {}
+        if (typeof window !== "undefined" && window.focusStore?.clearBoardFile) {
+          try {
+            window.focusStore.clearBoardFile();
+          } catch {}
+        }
         set({
-          nodes: INITIAL_NODES,
-          edges: INITIAL_EDGES,
+          nodes: [],
+          edges: [],
           selectedNodeId: null,
+          activeFocusNodeId: null,
+          isTimerRunning: false,
         });
       },
 

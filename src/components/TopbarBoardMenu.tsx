@@ -1,5 +1,6 @@
 import { memo, useCallback, useState, useRef, useEffect } from "react";
 import {
+  AlertTriangle,
   Check,
   ChevronDown,
   Copy,
@@ -39,6 +40,7 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
   const [editingName, setEditingName] = useState(boardName);
   const [pageMenuOpen, setPageMenuOpen] = useState(false);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
 
   const pageMenuRef = useRef<HTMLDivElement>(null);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
@@ -99,10 +101,13 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
   }, [boardName]);
 
   const handleClearBoard = useCallback(() => {
-    if (window.confirm("Clear all shapes on this board?")) {
-      resetBoard();
-      setActionsMenuOpen(false);
-    }
+    setActionsMenuOpen(false);
+    setShowClearConfirmModal(true);
+  }, []);
+
+  const handleConfirmClearBoard = useCallback(() => {
+    resetBoard();
+    setShowClearConfirmModal(false);
   }, [resetBoard]);
 
   return (
@@ -314,6 +319,51 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
           </div>
         )}
       </div>
+
+      {/* Clear Board Confirmation Modal */}
+      {showClearConfirmModal && (
+        <div
+          className="fixed inset-0 z-[8000] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          onClick={() => setShowClearConfirmModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl p-5 text-zinc-900 dark:text-zinc-100 flex flex-col gap-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-full bg-red-100 dark:bg-red-950/50 flex items-center justify-center text-red-600 dark:text-red-400 shrink-0">
+                <AlertTriangle className="size-5" />
+              </div>
+              <div className="flex flex-col">
+                <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">Clear entire board?</h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  This will remove all shapes, tasks, frames, and connections from this board. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowClearConfirmModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={handleConfirmClearBoard}
+                className="bg-red-600 hover:bg-red-500 text-white"
+              >
+                Clear Board
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });

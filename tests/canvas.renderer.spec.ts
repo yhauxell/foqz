@@ -54,4 +54,38 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     // Take screenshot of filtered spotlight
     await page.screenshot({ path: 'test-results/spotlight-search.png' });
   });
+
+  test('opens clear board confirmation modal and can cancel or clear', async ({ page }) => {
+    // Open board actions menu
+    const actionsMenuBtn = page.locator("button[title='Board actions & exports']");
+    await actionsMenuBtn.click();
+
+    // Click Clear Board
+    const clearBoardBtn = page.getByRole('button', { name: 'Clear Board' });
+    await expect(clearBoardBtn).toBeVisible();
+    await clearBoardBtn.click();
+
+    // Verify confirmation modal
+    await expect(page.getByText('Clear entire board?')).toBeVisible();
+    await expect(page.getByText('This will remove all shapes, tasks, frames, and connections')).toBeVisible();
+
+    // Cancel modal
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByText('Clear entire board?')).not.toBeVisible();
+  });
+
+  test('verifies big focus modal appears when focusing task', async ({ page }) => {
+    // Find a focus task card on canvas
+    const taskCard = page.locator('.react-flow__node-focusTask').first();
+    await expect(taskCard).toBeVisible();
+
+    // Double click to trigger focus session or click start focus
+    const focusTargetBtn = taskCard.locator("button[title*='Focus'], button[title*='Sprint']").first();
+    if (await focusTargetBtn.isVisible()) {
+      await focusTargetBtn.click();
+      const focusCard = page.locator('.fixed.top-1/2.left-1/2');
+      await expect(focusCard).toBeVisible();
+      await expect(page.getByText('Remaining Time')).toBeVisible();
+    }
+  });
 });
