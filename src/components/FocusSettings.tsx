@@ -10,6 +10,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  GitPullRequest,
   RefreshCw,
   Sparkles,
   Target,
@@ -250,6 +251,21 @@ export function FocusSettings({
   const [testingJev, setTestingJev] = useState(false);
   const [jevStatus, setJevStatus] = useState<string | null>(null);
   const [showTypesafeKey, setShowTypesafeKey] = useState(false);
+
+  // GitHub Integration (PAT)
+  const [githubTokenDraft, setGithubTokenDraft] = useState(() => {
+    if (settings.githubToken) return settings.githubToken;
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        return localStorage.getItem("foqz_github_token") || "";
+      } catch {}
+    }
+    return "";
+  });
+  const [showGithubToken, setShowGithubToken] = useState(false);
+  const [githubTokenStatus, setGithubTokenStatus] = useState<string | null>(null);
+  const [testingGithub, setTestingGithub] = useState(false);
+
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const isElectron = typeof window.focusStore?.getSettings === "function";
@@ -316,6 +332,10 @@ export function FocusSettings({
     setTypesafeEnabled(settings.typesafeEnabled ?? true);
     setTypesafeKeyDraft(settings.typesafeApiKey || "");
     setTypesafeUrlDraft(settings.typesafeBaseUrl || "https://api.typesafe.ai");
+
+    if (settings.githubToken !== undefined) {
+      setGithubTokenDraft(settings.githubToken);
+    }
   }, [
     settings.globalToggleShortcut,
     settings.durationPresets,
@@ -333,6 +353,7 @@ export function FocusSettings({
     settings.typesafeEnabled,
     settings.typesafeApiKey,
     settings.typesafeBaseUrl,
+    settings.githubToken,
   ]);
 
   useEffect(() => {
@@ -429,6 +450,57 @@ export function FocusSettings({
     },
     [update, typesafeEnabled, typesafeKeyDraft, typesafeUrlDraft],
   );
+
+  const persistGithubToken = useCallback(
+    async (tokenVal?: string) => {
+      setSaveError(null);
+      const token = (tokenVal ?? githubTokenDraft).trim();
+      if (typeof window !== "undefined" && window.localStorage) {
+        try {
+          if (token) {
+            localStorage.setItem("foqz_github_token", token);
+          } else {
+            localStorage.removeItem("foqz_github_token");
+          }
+        } catch {}
+      }
+      const res = await update({ githubToken: token });
+      if (!res.ok) setSaveError(res.error ?? "Could not save GitHub configuration");
+    },
+    [update, githubTokenDraft],
+  );
+
+  const handleTestGithub = useCallback(async () => {
+    setTestingGithub(true);
+    setGithubTokenStatus(null);
+    void persistGithubToken();
+    const token = githubTokenDraft.trim();
+    if (!token) {
+      setGithubTokenStatus("Token is empty. Please enter a valid Personal Access Token.");
+      setTestingGithub(false);
+      return;
+    }
+    try {
+      const res = await fetch("https://api.github.com/user", {
+        headers: {
+          Accept: "application/vnd.github.v3+json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        const user = await res.json();
+        setGithubTokenStatus(`Connected as @${user.login} (${user.name || "GitHub User"})`);
+      } else if (res.status === 401) {
+        setGithubTokenStatus("Bad credentials (401). Check if your token is valid or expired.");
+      } else {
+        setGithubTokenStatus(`GitHub API error: ${res.statusText}`);
+      }
+    } catch (e: any) {
+      setGithubTokenStatus(e.message || "Network error testing GitHub connection");
+    } finally {
+      setTestingGithub(false);
+    }
+  }, [githubTokenDraft, persistGithubToken]);
 
   const handleProbeLocalServers = useCallback(async () => {
     setProbingLocal(true);
@@ -1444,8 +1516,102 @@ export function FocusSettings({
                     </div>
                   </div>
                 </AiConnectorCard>
+
+                {/* 4. GitHub Integration (PAT) */}
+                <div className="rounded-xl border border-border/90 bg-card/60 shadow-xs overflow-hidden">
+                  <div className="flex items-center justify-between p-4 bg-muted/10 border-b border-border/40">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`p-2 rounded-xl shrink-0 ${Boolean(githubTokenDraft.trim()) ? "bg-purple-500/15 text-purple-600 dark:text-purple-400" : "bg-muted text-muted-foreground"}`}>
+                        <GitPullRequest className="size-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm text-foreground">GitHub Integration</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                            Source Control
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          Synchronize spatial canvas task cards with GitHub Issues and cross-reference Pull Requests.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-3">
+                      <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
+                        {Boolean(githubTokenDraft.trim()) ? "Configured" : "Optional"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-4 space-y-3.5 bg-background/50">
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-foreground block mb-1">
+                        Personal Access Token (classic or fine-grained)
+                      </label>
+                      <div className="relative flex items-center">
+                        <Input
+                          inputSize="sm"
+                          type={showGithubToken ? "text" : "password"}
+                          placeholder="ghp_... or github_pat_..."
+                          value={githubTokenDraft}
+                          onChange={(e) => setGithubTokenDraft(e.target.value)}
+                          onBlur={() => void persistGithubToken()}
+                          className="pr-9 font-mono text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowGithubToken((prev) => !prev)}
+                          className="absolute right-2 text-muted-foreground hover:text-foreground p-1 rounded"
+                          tabIndex={-1}
+                          title={showGithubToken ? "Hide token" : "Show token"}
+                        >
+                          {showGithubToken ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Used for querying private repositories, importing issues, and updating issue state on completion. Needs <code className="px-1 py-0.5 rounded bg-muted font-mono text-[10px]">repo</code> scope.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={testingGithub || !githubTokenDraft.trim()}
+                        onClick={() => void handleTestGithub()}
+                      >
+                        {testingGithub ? (
+                          <>
+                            <RefreshCw className="size-3.5 animate-spin mr-1.5" />
+                            <span>Verifying...</span>
+                          </>
+                        ) : (
+                          "Test GitHub Token"
+                        )}
+                      </Button>
+                      {githubTokenStatus ? (
+                        <span
+                          className={`text-xs flex items-center gap-1 ${
+                            githubTokenStatus.startsWith("Connected")
+                              ? "text-emerald-500 font-medium"
+                              : "text-destructive"
+                          }`}
+                        >
+                          {githubTokenStatus.startsWith("Connected") ? (
+                            <CheckCircle2 className="size-3.5 shrink-0" />
+                          ) : (
+                            <AlertCircle className="size-3.5 shrink-0" />
+                          )}
+                          <span>{githubTokenStatus}</span>
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
               </div>
-            ) : null}
+            </div>
+          ) : null}
 
             {tab === "mcp" ? (
               <Section title="Model Context Protocol (MCP)">

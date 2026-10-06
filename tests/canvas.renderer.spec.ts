@@ -229,7 +229,14 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await expect(dialog.getByText('LM Studio', { exact: true })).toBeVisible();
     await expect(dialog.getByText('llama.cpp', { exact: true })).toBeVisible();
 
-    // 4. Capture screenshot of local AI engine auto-discovery
+    // 4. Verify GitHub Integration PAT card
+    const githubHeading = dialog.getByText('GitHub Integration', { exact: true });
+    await expect(githubHeading).toBeVisible();
+    await githubHeading.scrollIntoViewIfNeeded();
+    await expect(dialog.getByPlaceholder(/ghp_... or github_pat_.../)).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Test GitHub Token' })).toBeVisible();
+
+    // 5. Capture screenshot of local AI engine auto-discovery & GitHub PAT setting
     await page.screenshot({ path: 'test-results/local-ai-discovery-settings.png' });
   });
 });
