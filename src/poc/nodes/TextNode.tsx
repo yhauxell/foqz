@@ -25,6 +25,12 @@ export const TextNode = memo(function TextNode({
   const [isEditing, setIsEditing] = useState(() => Boolean(data.isNew || data.autoEdit || !data.text));
   const [val, setVal] = useState(data.text || "");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const valRef = useRef(val);
+
+  useEffect(() => {
+    valRef.current = val;
+  }, [val]);
 
   useEffect(() => {
     setVal(data.text || "");
@@ -77,17 +83,50 @@ export const TextNode = memo(function TextNode({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selected, isEditing]);
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     setIsEditing(false);
-    if (!val.trim() && data.isNew) {
+    const currentVal = valRef.current;
+    if (!currentVal.trim() && data.isNew) {
       useFlowCanvasStore.getState().deleteNode(id);
       return;
     }
-    useFlowCanvasStore.getState().updateNodeData(id, { text: val, isNew: false, autoEdit: false });
-  };
+    useFlowCanvasStore.getState().updateNodeData(id, { text: currentVal, isNew: false, autoEdit: false });
+  }, [id, data.isNew]);
+
+  // Automatically parse and save when node is deselected while editing
+  useEffect(() => {
+    if (!selected && isEditing) {
+      handleSave();
+    }
+  }, [selected, isEditing, handleSave]);
+
+  // Capture global outside pointerdown to commit editing and parse markdown
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const handleOutsidePointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (containerRef.current?.contains(target)) return;
+      if (
+        target.closest?.(".glass-panel") ||
+        target.closest?.("[data-node-toolbar]") ||
+        target.closest?.(".react-flow__node-toolbar")
+      ) {
+        return;
+      }
+      handleSave();
+    };
+
+    window.addEventListener("pointerdown", handleOutsidePointerDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", handleOutsidePointerDown, true);
+    };
+  }, [isEditing, handleSave]);
 
   return (
     <div
+      ref={containerRef}
       className={`relative min-w-[120px] p-2.5 rounded-xl transition-all ${
         isEditing ? "cursor-text" : "cursor-default"
       } ${
