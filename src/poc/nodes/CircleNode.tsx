@@ -1,6 +1,7 @@
-import React, { memo, useState } from "react";
+import React, { memo, useState, useRef, useEffect, useCallback } from "react";
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
+import { renderMarkdownInline } from "@/lib/markdown";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 export interface CircleNodeData {
@@ -24,7 +25,53 @@ export const CircleNode = memo(function CircleNode({
 }: NodeProps<CircleNodeType>) {
   const [isEditing, setIsEditing] = useState(false);
   const [val, setVal] = useState(data.label || "Double-click to write");
-  const svgRef = React.useRef<SVGSVGElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const valRef = useRef(val);
+
+  useEffect(() => {
+    valRef.current = val;
+  }, [val]);
+
+  useEffect(() => {
+    setVal(data.label || "Double-click to write");
+  }, [data.label]);
+
+  const handleSave = useCallback(() => {
+    setIsEditing(false);
+    useFlowCanvasStore.getState().updateNodeData(id, { label: valRef.current });
+  }, [id]);
+
+  // Automatically parse and save when node is deselected while editing
+  useEffect(() => {
+    if (!selected && isEditing) {
+      handleSave();
+    }
+  }, [selected, isEditing, handleSave]);
+
+  // Capture global outside pointerdown to commit editing and parse markdown
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const handleOutsidePointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (containerRef.current?.contains(target)) return;
+      if (
+        target.closest?.(".glass-panel") ||
+        target.closest?.("[data-node-toolbar]") ||
+        target.closest?.(".react-flow__node-toolbar")
+      ) {
+        return;
+      }
+      handleSave();
+    };
+
+    window.addEventListener("pointerdown", handleOutsidePointerDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", handleOutsidePointerDown, true);
+    };
+  }, [isEditing, handleSave]);
 
   const w = Math.max(80, width);
   const h = Math.max(80, height);
@@ -75,6 +122,7 @@ export const CircleNode = memo(function CircleNode({
 
   return (
     <div
+      ref={containerRef}
       className={`relative w-full h-full flex items-center justify-center select-none ${
         selected ? "ring-2 ring-indigo-500/80 rounded-full" : ""
       }`}
@@ -132,15 +180,11 @@ export const CircleNode = memo(function CircleNode({
               e.target.style.height = "auto";
               e.target.style.height = `${e.target.scrollHeight}px`;
             }}
-            onBlur={() => {
-              setIsEditing(false);
-              useFlowCanvasStore.getState().updateNodeData(id, { label: val });
-            }}
+            onBlur={handleSave}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                setIsEditing(false);
-                useFlowCanvasStore.getState().updateNodeData(id, { label: val });
+                handleSave();
               } else if (e.key === "Escape") {
                 e.preventDefault();
                 setVal(data.label || "");
@@ -160,16 +204,17 @@ export const CircleNode = memo(function CircleNode({
               e.stopPropagation();
               setIsEditing(true);
             }}
-            className="text-sm font-medium text-zinc-800 dark:text-zinc-200 break-words cursor-text select-text"
+            className="text-sm font-medium text-zinc-800 dark:text-zinc-200 break-words cursor-text select-text task-markdown-body"
             style={{
               fontFamily: "'Shantell Sans', cursive, sans-serif",
               fontSize: 16,
               lineHeight: 1.4,
             }}
             title="Double-click to edit text"
-          >
-            {data.label || val}
-          </span>
+            dangerouslySetInnerHTML={{
+              __html: renderMarkdownInline(data.label || val || ""),
+            }}
+          />
         )}
       </div>
     </div>
