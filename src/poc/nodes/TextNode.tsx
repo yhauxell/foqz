@@ -1,7 +1,8 @@
-import React, { memo, useState, useRef, useEffect } from "react";
+import React, { memo, useState, useRef, useEffect, useCallback } from "react";
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from "@xyflow/react";
-import { renderMarkdownInline, renderMarkdownBlock } from "@/lib/markdown";
+import { renderMarkdownBlock } from "@/lib/markdown";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import { applyFormattingToTextarea } from "../utils/textFormatting";
 
 export interface TextNodeData {
   text: string;
@@ -29,18 +30,28 @@ export const TextNode = memo(function TextNode({
     setVal(data.text || "");
   }, [data.text]);
 
+  const resizeTextarea = useCallback(() => {
+    if (!textareaRef.current) return;
+    const el = textareaRef.current;
+    el.style.height = "auto";
+    const lines = el.value.split("\n").length;
+    const fs = data.fontSize || 16;
+    const lineHeight = fs * 1.45;
+    const calculatedHeight = Math.max(36, el.scrollHeight, lines * lineHeight + 12);
+    el.style.height = `${calculatedHeight}px`;
+  }, [data.fontSize]);
+
   useEffect(() => {
     if (isEditing && textareaRef.current) {
+      resizeTextarea();
       const el = textareaRef.current;
-      el.style.height = "auto";
-      el.style.height = `${Math.max(32, el.scrollHeight)}px`;
       const timer = setTimeout(() => {
         el.focus();
         el.setSelectionRange(el.value.length, el.value.length);
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [isEditing]);
+  }, [isEditing, resizeTextarea]);
 
   // When selected but not editing, pressing Enter begins editing
   useEffect(() => {
@@ -75,8 +86,6 @@ export const TextNode = memo(function TextNode({
     useFlowCanvasStore.getState().updateNodeData(id, { text: val, isNew: false, autoEdit: false });
   };
 
-  const isMultiline = val.includes("\n");
-
   return (
     <div
       className={`relative min-w-[120px] p-2.5 rounded-xl transition-all ${
@@ -89,7 +98,7 @@ export const TextNode = memo(function TextNode({
       style={{
         contain: "layout style",
         width: width ? `${width}px` : undefined,
-        height: height ? `${height}px` : undefined,
+        minHeight: height ? `${height}px` : 36,
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
@@ -127,16 +136,17 @@ export const TextNode = memo(function TextNode({
       {isEditing ? (
         <textarea
           ref={textareaRef}
+          id={`text-node-input-${id}`}
           value={val}
           rows={1}
           placeholder="Type something in markdown..."
           onChange={(e) => {
             setVal(e.target.value);
-            e.target.style.height = "auto";
-            e.target.style.height = `${Math.max(32, e.target.scrollHeight)}px`;
+            resizeTextarea();
           }}
           onBlur={handleSave}
           onKeyDown={(e) => {
+            e.stopPropagation();
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
               e.preventDefault();
               handleSave();
@@ -147,9 +157,29 @@ export const TextNode = memo(function TextNode({
             } else if ((e.key === "Backspace" || e.key === "Delete") && !val) {
               e.preventDefault();
               useFlowCanvasStore.getState().deleteNode(id);
+            } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+              e.preventDefault();
+              const updated = applyFormattingToTextarea(e.currentTarget, "bold");
+              setVal(updated);
+            } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "i") {
+              e.preventDefault();
+              const updated = applyFormattingToTextarea(e.currentTarget, "italic");
+              setVal(updated);
+            } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "u") {
+              e.preventDefault();
+              const updated = applyFormattingToTextarea(e.currentTarget, "underline");
+              setVal(updated);
+            } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "x") {
+              e.preventDefault();
+              const updated = applyFormattingToTextarea(e.currentTarget, "strike");
+              setVal(updated);
+            } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+              e.preventDefault();
+              const updated = applyFormattingToTextarea(e.currentTarget, "link");
+              setVal(updated);
             }
           }}
-          className="w-full h-full min-w-[120px] bg-transparent outline-none resize-none overflow-auto p-0 m-0 border-none shadow-none focus:ring-0 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400/80 dark:placeholder:text-zinc-500/80 leading-relaxed font-sans"
+          className="w-full h-full min-w-[120px] bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none shadow-none focus:ring-0 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400/80 dark:placeholder:text-zinc-500/80 leading-relaxed font-sans"
           style={{
             fontSize: data.fontSize || 16,
             color: data.color,
@@ -161,7 +191,7 @@ export const TextNode = memo(function TextNode({
         <div
           className={`break-words select-text ${
             !val ? "text-zinc-400/80 dark:text-zinc-500/80 italic select-none" : "text-zinc-900 dark:text-zinc-100"
-          } task-markdown-body leading-relaxed`}
+          } task-markdown-body leading-relaxed whitespace-pre-wrap`}
           style={{
             fontSize: data.fontSize || 16,
             color: data.color,
@@ -169,9 +199,7 @@ export const TextNode = memo(function TextNode({
             lineHeight: 1.45,
           }}
           dangerouslySetInnerHTML={{
-            __html: isMultiline
-              ? renderMarkdownBlock(val || "Type something...")
-              : renderMarkdownInline(val || "Type something..."),
+            __html: renderMarkdownBlock(val || "Type something..."),
           }}
         />
       )}

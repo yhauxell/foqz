@@ -118,6 +118,9 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
   });
 
   test('verifies multiboard creation, switching, and renaming menu', async ({ page }) => {
+    // 1. Initial state: Foqz Board 1 with default tasks
+    await expect(page.getByText('Connect task cards to sketch boxes')).toBeVisible();
+
     // Open board selector
     const boardSelector = page.locator("button[title='Board settings & name']");
     await expect(boardSelector).toBeVisible();
@@ -131,12 +134,44 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     // Capture visual screenshot of multiboard dropdown
     await page.screenshot({ path: 'test-results/multiboard-dropdown.png' });
 
-    // Click Create New Board
+    // 2. Click Create New Board -> switches to Foqz Board 2
     await createBtn.click();
     await expect(page.getByText('Foqz Board 2')).toBeVisible();
 
+    // Verify Board 1 tasks are not present on the new Board 2
+    await expect(page.getByText('Connect task cards to sketch boxes')).not.toBeVisible();
+
+    // Wait for debounced auto-save timer
+    await page.waitForTimeout(700);
+
     // Capture visual screenshot of switched board
     await page.screenshot({ path: 'test-results/new-board-canvas.png' });
+
+    // 3. Switch back to Foqz Board 1
+    await boardSelector.click();
+    await page.getByText('Foqz Board 1').click();
+    await expect(page.getByText('Foqz Board 1')).toBeVisible();
+
+    // Verify Board 1 tasks were preserved and not wiped out
+    await expect(page.getByText('Connect task cards to sketch boxes')).toBeVisible();
+
+    // 4. Reload page and verify active board & nodes persist
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByText('Foqz Board 1')).toBeVisible();
+    await expect(page.getByText('Connect task cards to sketch boxes')).toBeVisible();
+
+    // 5. Switch to Foqz Board 2 after reload
+    await boardSelector.click();
+    await page.getByText('Foqz Board 2').click();
+    await expect(page.getByText('Foqz Board 2')).toBeVisible();
+    await expect(page.getByText('Connect task cards to sketch boxes')).not.toBeVisible();
+
+    // 6. Switch back to Foqz Board 1 to leave canvas clean for subsequent tests
+    await boardSelector.click();
+    await page.getByText('Foqz Board 1').click();
+    await expect(page.getByText('Foqz Board 1')).toBeVisible();
+    await expect(page.getByText('Connect task cards to sketch boxes')).toBeVisible();
   });
 
   test('stages Eisenhower Matrix runway template with 4 quadrants', async ({ page }) => {
@@ -253,5 +288,144 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     // 5. Capture screenshot of local AI engine auto-discovery & GitHub PAT setting
     await page.screenshot({ path: 'test-results/local-ai-discovery-settings.png' });
   });
+
+  test('verifies updated shortcuts: R (rectangle), N (sticky note), T (task)', async ({ page }) => {
+    const canvas = page.locator('.react-flow__pane');
+    await canvas.click({ position: { x: 50, y: 50 } });
+
+    // 1. Verify R activates Rectangle tool
+    await page.keyboard.press('r');
+    const rectToolBtn = page.locator("button[title*='Sketch Rectangle Tool (R)']");
+    await expect(rectToolBtn).toHaveClass(/bg-emerald-600/);
+
+    // 2. Verify N activates Sticky Note tool
+    await page.keyboard.press('n');
+    const noteToolBtn = page.locator("button[title*='Paper Sticky Note Tool (N)']");
+    await expect(noteToolBtn).toHaveClass(/bg-amber-500/);
+
+    // 3. Verify T creates a new Task Card
+    const initialTaskCount = await page.locator('.react-flow__node-focusTask').count();
+    await page.keyboard.press('t');
+    await page.waitForTimeout(300);
+    const newTaskCount = await page.locator('.react-flow__node-focusTask').count();
+    expect(newTaskCount).toBeGreaterThan(initialTaskCount);
+
+    await page.screenshot({ path: 'test-results/shortcuts-verified.png' });
+  });
+
+  test('verifies rectangle: no text by default, double click to edit, and solid background', async ({ page }) => {
+    const canvas = page.locator('.react-flow__pane');
+
+    // 1. Activate Rectangle tool via R shortcut
+    await page.keyboard.press('r');
+    await canvas.click({ position: { x: 400, y: 300 } });
+
+    // 2. Locate created box node
+    const boxNode = page.locator('.react-flow__node-box').last();
+    await expect(boxNode).toBeVisible();
+
+    // 3. Verify rectangle has NO text by default (not showing "Double-click to write" or "Sketch Box")
+    await expect(boxNode.locator('span')).not.toBeVisible();
+    await expect(boxNode.getByText('Sketch Box')).not.toBeVisible();
+    await expect(boxNode.getByText('Double-click to write')).not.toBeVisible();
+
+    // 4. Test solid background fill in floating menu
+    const colorBtn = page.locator("button[title='Change color']");
+    await expect(colorBtn).toBeVisible();
+    await colorBtn.click();
+
+    const solidFillBtn = page.locator("button[title*='Solid opaque background']");
+    await expect(solidFillBtn).toBeVisible();
+    await solidFillBtn.click();
+
+    // Verify solid background class applied to box
+    const boxInner = boxNode.locator('div.relative.w-full.h-full').first();
+    await expect(boxInner).toHaveClass(/rounded-xl/);
+
+    // 5. Double click box to add text
+    await boxNode.dblclick({ position: { x: 30, y: 30 } });
+    const textarea = boxNode.locator('textarea');
+    await expect(textarea).toBeVisible();
+    await textarea.fill('Architecture Block');
+    await page.keyboard.press('Enter');
+
+    // Verify text is now displayed after double click
+    await expect(boxNode.getByText('Architecture Block')).toBeVisible();
+
+    // 6. Capture visual screenshot
+    await page.screenshot({ path: 'test-results/rectangle-solid-verified.png' });
+  });
+
+  test('verifies text component formatting toolbar, font size (+-), and multi-line Enter', async ({ page }) => {
+    const canvas = page.locator('.react-flow__pane');
+
+    // 1. Click Text Tool in vertical toolbar
+    const textToolBtn = page.locator("button[title*='Text Note Tool']");
+    await expect(textToolBtn).toBeVisible();
+    await textToolBtn.click();
+
+    // 2. Click canvas in empty area to place Text note
+    await canvas.click({ position: { x: 920, y: 460 } });
+
+    const textNode = page.locator('.react-flow__node-text').last();
+    await expect(textNode).toBeVisible();
+
+    // 3. The newly spawned text node enters edit mode; fill and type multi-line text with Enter
+    const textarea = textNode.locator('textarea');
+    await expect(textarea).toBeVisible();
+    await textarea.fill('Title Line');
+    await textarea.press('Enter');
+    await textarea.pressSequentially('Subtitle Line');
+    await textarea.press('Enter');
+    await textarea.pressSequentially('Third Line content');
+    expect(await textarea.inputValue()).toContain('Subtitle Line');
+
+    // 4. Verify text formatting toolbar is visible on floating menu
+    const fontSizeDisplay = page.locator('span:has-text("px")').first();
+    await expect(fontSizeDisplay).toBeVisible();
+
+    const boldBtn = page.locator("button[title*='Bold']");
+    const italicBtn = page.locator("button[title*='Italic']");
+    const underlineBtn = page.locator("button[title*='Underline']");
+    const strikeBtn = page.locator("button[title*='Strikethrough']");
+    const linkBtn = page.locator("button[title*='Add Link']");
+    const highlightBtn = page.locator("button[title='Highlight text']");
+    const clearBtn = page.locator("button[title='Clear formatting']");
+
+    await expect(boldBtn).toBeVisible();
+    await expect(italicBtn).toBeVisible();
+    await expect(underlineBtn).toBeVisible();
+    await expect(strikeBtn).toBeVisible();
+    await expect(linkBtn).toBeVisible();
+    await expect(highlightBtn).toBeVisible();
+    await expect(clearBtn).toBeVisible();
+
+    // 5. Test font size increase (+)
+    const initialSize = parseInt((await fontSizeDisplay.textContent()) || "16");
+    const plusBtn = page.locator("button[title='Increase font size']");
+    await plusBtn.click();
+    await expect(fontSizeDisplay).toHaveText(`${initialSize + 2}px`);
+
+    // 6. Test font size decrease (-)
+    const minusBtn = page.locator("button[title='Decrease font size']");
+    await minusBtn.click();
+    await expect(fontSizeDisplay).toHaveText(`${initialSize}px`);
+
+    // 7. Test format action (Bold) on selection
+    await textarea.selectText();
+    await boldBtn.click();
+    expect(await textarea.inputValue()).toContain('**');
+
+    // 8. Capture screenshot with formatting toolbar active
+    await page.screenshot({ path: 'test-results/text-toolbar-verified.png' });
+
+    // 9. Exit editing with Cmd+Enter and verify markdown rendering
+    await page.keyboard.press('Meta+Enter');
+    await expect(textNode.locator('.task-markdown-body strong')).toBeVisible();
+
+    // 10. Capture screenshot of rendered multi-line markdown
+    await page.screenshot({ path: 'test-results/text-multiline-markdown-rendered.png' });
+  });
 });
+
 

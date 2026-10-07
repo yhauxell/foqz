@@ -8,9 +8,10 @@ import { ProjectConnectorsModal } from "@/components/ProjectConnectorsModal";
 import { GitHubIssuesModal } from "@/components/GitHubIssuesModal";
 import { CreateGitHubIssueModal } from "@/components/CreateGitHubIssueModal";
 import { useOllama } from "@/lib/ollama";
-import { Keyboard, Maximize2, Minimize2, Search, Settings, Sparkles } from "lucide-react";
+import { Keyboard, Maximize2, Minimize2, Search, Settings, Sparkles, MessageSquare, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ShortcutsModal } from "@/poc/components/ShortcutsModal";
+import { AnnotationsPanel } from "@/components/AnnotationsPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { FlowCanvasAppWrapper } from "./poc/FlowCanvasAppWrapper";
 import { useFlowCanvasStore } from "./poc/store/flowCanvasStore";
@@ -44,6 +45,8 @@ function FocusCanvasAppInner() {
 
   const [createIssueOpen, setCreateIssueOpen] = useState(false);
   const [createIssueTaskId, setCreateIssueTaskId] = useState<string | null>(null);
+  const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
+  const annotations = useFlowCanvasStore((s) => s.annotations);
 
   const [runwayNotification, setRunwayNotification] = useState<{
     type: "advanced" | "cleared";
@@ -302,10 +305,10 @@ function FocusCanvasAppInner() {
         return;
       }
 
-      // Create New Task (Cmd+N / Ctrl+N or Alt+N)
+      // Create New Task (Cmd+N / Ctrl+N, Cmd+T / Ctrl+T, Alt+T, Alt+N)
       if (
-        (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") ||
-        (e.altKey && !mod && !e.shiftKey && e.key.toLowerCase() === "n")
+        (mod && !e.shiftKey && !e.altKey && (e.key.toLowerCase() === "n" || e.key.toLowerCase() === "t")) ||
+        (e.altKey && !mod && !e.shiftKey && (e.key.toLowerCase() === "n" || e.key.toLowerCase() === "t"))
       ) {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent("foqz:new-task"));
@@ -407,6 +410,40 @@ function FocusCanvasAppInner() {
             />
           </button>
 
+          {/* Annotations Panel Toggle */}
+          {(() => {
+            const openCount = Object.values(annotations || {}).filter(
+              (a) => a.status === 'open'
+            ).length;
+            return (
+              <button
+                type="button"
+                className={`h-7 px-2.5 rounded-full border border-zinc-200/80 dark:border-zinc-800 ${
+                  annotationsPanelOpen
+                    ? "bg-amber-500 text-white border-amber-600 dark:border-amber-400"
+                    : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                } flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer text-xs font-medium`}
+                aria-label="Annotations Panel"
+                title="Annotations & Comments Panel"
+                onClick={() => setAnnotationsPanelOpen(!annotationsPanelOpen)}
+              >
+                <MessageSquare className="size-3.5" />
+                <span>Annotations</span>
+                {openCount > 0 && (
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold leading-none ${
+                      annotationsPanelOpen
+                        ? "bg-white text-amber-700"
+                        : "bg-amber-500 text-white"
+                    }`}
+                  >
+                    {openCount}
+                  </span>
+                )}
+              </button>
+            );
+          })()}
+
           {/* Keyboard Shortcuts Modal */}
           <button
             type="button"
@@ -450,6 +487,42 @@ function FocusCanvasAppInner() {
       <div className="flex-1 flex overflow-hidden relative">
         <main className="canvas w-full h-full relative overflow-hidden">
           <FlowCanvasAppWrapper />
+
+          {/* Floating Annotations Panel Sidebar Drawer */}
+          {annotationsPanelOpen && (
+            <aside
+              className="glass-panel pointer-events-auto backdrop-blur-xl backdrop-saturate-150 absolute top-3 bottom-3 right-3 w-80 max-w-[calc(100vw-2rem)] rounded-[24px] flex flex-col text-zinc-900 dark:text-zinc-100 font-sans select-none z-[5900] animate-in slide-in-from-right-4 duration-200 overflow-hidden shadow-2xl border border-white/60 dark:border-white/10 bg-white/90 dark:bg-zinc-900/90"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="h-12 px-3.5 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between bg-white/20 dark:bg-white/[0.02] shrink-0">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="size-4 text-amber-500" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                    Annotations
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAnnotationsPanelOpen(false)}
+                  className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                  title="Close Annotations Panel"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <AnnotationsPanel
+                  onSelectNode={(id) => {
+                    useFlowCanvasStore.getState().setSelectedNodeId(id);
+                  }}
+                  onSelectAnnotation={(id) => {
+                    useFlowCanvasStore.getState().setActiveAnnotationId(id);
+                  }}
+                />
+              </div>
+            </aside>
+          )}
 
           {/* Floating Spatial Waypoint Rail */}
           <WaypointRail />

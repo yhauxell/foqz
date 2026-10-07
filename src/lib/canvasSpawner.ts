@@ -27,13 +27,15 @@ Supported shape types:
 Always output valid JSON inside the \`\`\`canvas block when creating items. Never tell the user you cannot create cards or canvas elements—you DO have this direct ability through the Foqz canvas engine!`;
 
 export interface SpawnableShape {
-  type: 'task' | 'note' | 'timer' | 'project'
+  type: 'task' | 'note' | 'timer' | 'project' | 'image'
   title?: string
   text?: string
   priority?: number
   color?: 'yellow' | 'blue' | 'green' | 'pink' | 'red' | 'black' | 'grey' | 'violet'
   minutes?: number
   notes?: string
+  src?: string
+  alt?: string
 }
 
 export interface ProposedNodeUpdate {
@@ -57,7 +59,7 @@ export function isValidShape(item: any): item is SpawnableShape {
   return (
     item &&
     typeof item === 'object' &&
-    (item.type === 'task' || item.type === 'note' || item.type === 'timer' || item.type === 'project')
+    (item.type === 'task' || item.type === 'note' || item.type === 'timer' || item.type === 'project' || item.type === 'image')
   )
 }
 

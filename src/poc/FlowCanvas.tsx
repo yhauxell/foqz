@@ -42,12 +42,17 @@ import {
   Link2,
   Pencil,
   RotateCcw,
+  MessageSquare,
 } from "lucide-react";
 import { ElementInlineChat } from "@/components/ElementInlineChat";
+import { AnnotationPinsOverlay } from "./components/AnnotationPinsOverlay";
+import { AnnotationComposer } from "./components/AnnotationComposer";
+import { AnnotationThread } from "./components/AnnotationThread";
 import getStroke from "perfect-freehand";
 import {
   useFlowCanvasStore,
   FLOW_STORAGE_KEY,
+  getBoardStorageKey,
   INITIAL_NODES,
   INITIAL_EDGES,
   getMaxZIndex,
@@ -75,7 +80,7 @@ const MULTI_SELECTION_KEY_CODE = ["Meta", "Control", "Shift"];
 const ZOOM_ACTIVATION_KEY_CODE = ["Meta", "Control"];
 const PAN_ON_DRAG: number[] = [1, 2];
 
-export type ActiveTool = "select" | "task" | "box" | "circle" | "text" | "note" | "connection" | "arrow" | "pencil";
+export type ActiveTool = "select" | "task" | "box" | "circle" | "text" | "note" | "connection" | "arrow" | "pencil" | "comment";
 
 interface FlowCanvasAppProps {
   sidebarOpen?: boolean;
@@ -88,6 +93,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   const setEdges = useFlowCanvasStore((s) => s.setEdges);
   const setSelectedNodeId = useFlowCanvasStore((s) => s.setSelectedNodeId);
   const loadSnapshot = useFlowCanvasStore((s) => s.loadSnapshot);
+  const activeBoardId = useFlowCanvasStore((s) => s.activeBoardId);
   const resetBoard = useFlowCanvasStore((s) => s.resetBoard);
 
   const [activeTool, setActiveTool] = useState<ActiveTool>("select");
@@ -133,6 +139,20 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
   // In-Canvas Chat state
   const [inlineChatNodeId, setInlineChatNodeId] = useState<string | null>(null);
+
+  // In-Canvas Annotation Composer & Thread State
+  const [pendingComposer, setPendingComposer] = useState<{
+    screenPos: { x: number; y: number };
+    flowPos: { x: number; y: number };
+    targetNodeId: string | null;
+    targetTitle?: string;
+    rel?: { x: number; y: number };
+  } | null>(null);
+
+  const annotations = useFlowCanvasStore((s) => s.annotations);
+  const activeAnnotationId = useFlowCanvasStore((s) => s.activeAnnotationId);
+  const setActiveAnnotationId = useFlowCanvasStore((s) => s.setActiveAnnotationId);
+  const addAnnotation = useFlowCanvasStore((s) => s.addAnnotation);
 
   // 1. Persistence Bridge: Restore snapshot on mount
   useEffect(() => {
@@ -437,16 +457,17 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
+        const key = getBoardStorageKey(activeBoardId);
         localStorage.setItem(
-          FLOW_STORAGE_KEY,
-          JSON.stringify({ nodes, edges, updatedAt: Date.now() })
+          key,
+          JSON.stringify({ nodes, edges, annotations, updatedAt: Date.now() })
         );
       } catch (err) {
         console.warn("Failed to save React Flow snapshot:", err);
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [nodes, edges]);
+  }, [nodes, edges, annotations, activeBoardId]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -985,25 +1006,27 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           },
           style: { width: w, height: h, zIndex: nextZ },
           data: {
-            label: "Sketch Box",
+            label: "",
             color: "rgba(16, 185, 129, 0.08)",
             strokeColor: "#10b981",
             roughness: 1.8,
             borderStyle: "solid",
           },
+          selected: true,
         };
         setNodes((nds) => {
-          const parentIdx = nds.findIndex((n) => n.id === frameMatch.frame.id);
+          const cleared = nds.map((n) => (n.selected ? { ...n, selected: false } : n));
+          const parentIdx = cleared.findIndex((n) => n.id === frameMatch.frame.id);
           if (parentIdx !== -1) {
             let insertIdx = parentIdx + 1;
-            while (insertIdx < nds.length && nds[insertIdx].parentId === frameMatch.frame.id) {
+            while (insertIdx < cleared.length && cleared[insertIdx].parentId === frameMatch.frame.id) {
               insertIdx++;
             }
-            const copy = [...nds];
+            const copy = [...cleared];
             copy.splice(insertIdx, 0, newNode);
             return copy;
           }
-          return [...nds, newNode];
+          return [...cleared, newNode];
         });
       } else {
         const newNode: Node = {
@@ -1012,14 +1035,18 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           position: { x, y },
           style: { width: w, height: h, zIndex: nextZ },
           data: {
-            label: "Sketch Box",
+            label: "",
             color: "rgba(16, 185, 129, 0.08)",
             strokeColor: "#10b981",
             roughness: 1.8,
             borderStyle: "solid",
           },
+          selected: true,
         };
-        setNodes((nds) => [...nds, newNode]);
+        setNodes((nds) => [
+          ...nds.map((n) => (n.selected ? { ...n, selected: false } : n)),
+          newNode,
+        ]);
       }
       setSelectedNodeId(id);
       setActiveTool("select");
@@ -1053,19 +1080,21 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
             roughness: 1.8,
             borderStyle: "solid",
           },
+          selected: true,
         };
         setNodes((nds) => {
-          const parentIdx = nds.findIndex((n) => n.id === frameMatch.frame.id);
+          const cleared = nds.map((n) => (n.selected ? { ...n, selected: false } : n));
+          const parentIdx = cleared.findIndex((n) => n.id === frameMatch.frame.id);
           if (parentIdx !== -1) {
             let insertIdx = parentIdx + 1;
-            while (insertIdx < nds.length && nds[insertIdx].parentId === frameMatch.frame.id) {
+            while (insertIdx < cleared.length && cleared[insertIdx].parentId === frameMatch.frame.id) {
               insertIdx++;
             }
-            const copy = [...nds];
+            const copy = [...cleared];
             copy.splice(insertIdx, 0, newNode);
             return copy;
           }
-          return [...nds, newNode];
+          return [...cleared, newNode];
         });
       } else {
         const newNode: Node = {
@@ -1080,8 +1109,12 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
             roughness: 1.8,
             borderStyle: "solid",
           },
+          selected: true,
         };
-        setNodes((nds) => [...nds, newNode]);
+        setNodes((nds) => [
+          ...nds.map((n) => (n.selected ? { ...n, selected: false } : n)),
+          newNode,
+        ]);
       }
       setSelectedNodeId(id);
       setActiveTool("select");
@@ -1413,6 +1446,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     onConnectionTool: () => selectTool("connection"),
     onArrowTool: () => selectTool("arrow"),
     onPencilTool: () => selectTool("pencil"),
+    onCommentTool: () => selectTool("comment"),
     onCreateTask: handleCreateTask,
     onCreateProject: handleCreateProject,
     onSendToRunway: () => {
@@ -1529,6 +1563,14 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         handleCreateTextAt(pos);
       } else if (activeTool === "note") {
         handleCreateNoteAt(pos);
+      } else if (activeTool === "comment") {
+        setPendingComposer({
+          screenPos: { x: event.clientX, y: event.clientY },
+          flowPos: pos,
+          targetNodeId: null,
+          targetTitle: "Canvas",
+        });
+        setActiveTool("select");
       } else {
         setEdges((eds) =>
           eds.some((e) => e.selected)
@@ -1537,10 +1579,10 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         );
       }
     },
-    [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, handleCreateNoteAt, setEdges]
+    [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, handleCreateNoteAt, setEdges, setActiveTool]
   );
 
-  // Node Click Handler (Places task/text/note inside node if tool active, otherwise selects node)
+  // Node Click Handler (Places task/text/note/comment inside node if tool active, otherwise selects node)
   const handleNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
       if (activeTool === "task") {
@@ -1558,11 +1600,30 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         handleCreateNoteAt(pos);
         return;
       }
+      if (activeTool === "comment") {
+        event.stopPropagation();
+        const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        const width = Number(node.style?.width ?? node.width ?? 280);
+        const height = Number(node.style?.height ?? node.height ?? 82);
+        const relX = Math.max(0, Math.min(1, (pos.x - node.position.x) / (width || 1)));
+        const relY = Math.max(0, Math.min(1, (pos.y - node.position.y) / (height || 1)));
+        const title = (node.data as any)?.title || (node.data as any)?.label || (node.data as any)?.text || node.type;
+
+        setPendingComposer({
+          screenPos: { x: event.clientX, y: event.clientY },
+          flowPos: pos,
+          targetNodeId: node.id,
+          targetTitle: title,
+          rel: { x: relX, y: relY },
+        });
+        setActiveTool("select");
+        return;
+      }
       if (activeTool === "select") {
         setSelectedNodeId(node.id);
       }
     },
-    [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, handleCreateNoteAt, setSelectedNodeId]
+    [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, handleCreateNoteAt, setSelectedNodeId, setActiveTool]
   );
 
   // Edge Click Handler (Selects edge, deselects nodes)
@@ -1799,7 +1860,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-1 ring-white/25"
               : "text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50/80 dark:hover:bg-blue-950/40 active:scale-95"
           }`}
-          title="Task Card Tool (N) — Click canvas to place, or click again to spawn at center"
+          title="Task Card Tool (T) — Click canvas to place, or click again to spawn at center"
         >
           <CheckSquare className="size-5" />
         </button>
@@ -1813,7 +1874,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
               ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/30 ring-1 ring-white/25"
               : "text-zinc-600 dark:text-zinc-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40 active:scale-95"
           }`}
-          title="Sketch Box Tool (B) — Drag to size"
+          title="Sketch Rectangle Tool (R) — Drag to size"
         >
           <Square className="size-5" />
         </button>
@@ -1851,7 +1912,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
               ? "bg-amber-600 text-white shadow-md shadow-amber-500/30 ring-1 ring-white/25"
               : "text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/80 dark:hover:bg-amber-950/40 active:scale-95"
           }`}
-          title="Text Note Tool (T) — Click canvas to place, or click again to spawn at center"
+          title="Text Note Tool (3) — Click canvas to place, or click again to spawn at center"
         >
           <TypeIcon className="size-5" />
         </button>
@@ -1875,7 +1936,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
               ? "bg-amber-500 text-white shadow-md shadow-amber-500/30 ring-1 ring-white/25"
               : "text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/80 dark:hover:bg-amber-950/40 active:scale-95"
           }`}
-          title="Paper Sticky Note Tool (S) — Click canvas to place, or click again to spawn at center"
+          title="Paper Sticky Note Tool (N) — Click canvas to place, or click again to spawn at center"
         >
           <StickyNote className="size-5" />
         </button>
@@ -1920,6 +1981,23 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           title="Freehand Pencil Tool (P) — Draw anywhere"
         >
           <Pencil className="size-5" />
+        </button>
+
+        {/* Subtle separator */}
+        <div className="w-5 h-[1px] bg-black/[0.08] dark:bg-white/[0.12] my-0.5 rounded-full" />
+
+        {/* 9. Comment / Annotation Tool */}
+        <button
+          type="button"
+          onClick={() => selectTool("comment")}
+          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            activeTool === "comment"
+              ? "bg-amber-600 text-white shadow-md shadow-amber-500/30 ring-1 ring-white/25"
+              : "text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/80 dark:hover:bg-amber-950/40 active:scale-95"
+          }`}
+          title="Annotation & Comment Tool (C) — Pin feedback to elements or canvas"
+        >
+          <MessageSquare className="size-5" />
         </button>
       </div>
 
@@ -2015,6 +2093,67 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           nodeId={inlineChatNodeId}
           onClose={() => setInlineChatNodeId(null)}
         />
+      )}
+
+      {/* Canvas Annotation Pins Overlay (Figma-style interactive pins) */}
+      <AnnotationPinsOverlay
+        visible={true}
+        onSelectAnnotation={(id) => setActiveAnnotationId(id)}
+      />
+
+      {/* In-Canvas Annotation Composer Popover */}
+      {pendingComposer && (
+        <AnnotationComposer
+          position={pendingComposer.screenPos}
+          targetNodeId={pendingComposer.targetNodeId}
+          targetTitle={pendingComposer.targetTitle}
+          onSave={({ body, kind, aiVisible }) => {
+            addAnnotation({
+              anchor: {
+                nodeId: pendingComposer.targetNodeId,
+                rel: pendingComposer.rel,
+                canvas: pendingComposer.targetNodeId ? undefined : pendingComposer.flowPos,
+              },
+              body,
+              kind,
+              aiVisible,
+            });
+            setPendingComposer(null);
+          }}
+          onCancel={() => setPendingComposer(null)}
+        />
+      )}
+
+      {/* Active Annotation Thread Popover */}
+      {activeAnnotationId && annotations[activeAnnotationId] && (
+        <div
+          className="fixed top-18 right-20 z-50 animate-in fade-in zoom-in-95 duration-150"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <AnnotationThread
+            annotation={annotations[activeAnnotationId]}
+            elementTitle={
+              annotations[activeAnnotationId].anchor.nodeId
+                ? (() => {
+                    const n = nodes.find(
+                      (item) => item.id === annotations[activeAnnotationId].anchor.nodeId
+                    );
+                    return (
+                      (n?.data as any)?.title ||
+                      (n?.data as any)?.label ||
+                      (n?.data as any)?.text ||
+                      n?.type
+                    );
+                  })()
+                : 'Canvas'
+            }
+            onClose={() => setActiveAnnotationId(null)}
+            onOpenInlineChat={(nodeId) => {
+              setActiveAnnotationId(null);
+              setInlineChatNodeId(nodeId || '__canvas__');
+            }}
+          />
+        </div>
       )}
     </div>
   );
