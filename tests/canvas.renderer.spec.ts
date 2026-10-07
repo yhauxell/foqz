@@ -293,8 +293,13 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await expect(dialog.getByPlaceholder(/ghp_... or github_pat_.../)).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Test GitHub Token' })).toBeVisible();
 
-    // 5. Capture screenshot of local AI engine auto-discovery & GitHub PAT setting
+    // 5. Capture screenshot
     await page.screenshot({ path: 'test-results/local-ai-discovery-settings.png' });
+
+    // 6. Close Settings modal
+    const closeBtn = dialog.locator("button[aria-label='Close settings']");
+    await closeBtn.click();
+    await expect(dialog).not.toBeVisible();
   });
 
   test('verifies updated shortcuts: R (rectangle), N (sticky note), T (task)', async ({ page }) => {

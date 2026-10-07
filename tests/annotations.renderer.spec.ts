@@ -16,7 +16,7 @@ test.describe('Foqz Annotations Flow (Figma/Miro-style AI Context)', () => {
 
     // 3. Click canvas background to place a pin
     const canvasPane = page.locator('.react-flow__pane');
-    await canvasPane.click({ position: { x: 300, y: 300 } });
+    await canvasPane.click({ position: { x: 900, y: 350 } });
 
     // 4. Verify AnnotationComposer popover appears
     const composer = page.getByPlaceholder(/Type annotation feedback, decisions, or questions/);
