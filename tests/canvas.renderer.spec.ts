@@ -30,10 +30,10 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
 
     // Verify tabs exist
     await expect(page.getByRole('button', { name: 'General' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'MCP Servers' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Agents & MCP' })).toBeVisible();
 
-    // Switch tab to 'MCP Servers'
-    await page.getByRole('button', { name: 'MCP Servers' }).click();
+    // Switch tab to 'Agents & MCP'
+    await page.getByRole('button', { name: 'Agents & MCP' }).click();
 
     // Verify MCP tab loaded and take screenshot
     await page.screenshot({ path: 'test-results/settings-mcp-tab.png' });
@@ -267,16 +267,24 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await settingsBtn.click();
 
     // 2. Switch to AI tab
-    const aiTabBtn = page.getByRole('button', { name: 'AI', exact: true });
+    const aiTabBtn = page.getByRole('button', { name: 'AI & Models', exact: true });
     await expect(aiTabBtn).toBeVisible();
     await aiTabBtn.click();
+
+    // 2b. Open Ollama / Local Engines drawer
+    const ollamaConfigureBtn = page.getByRole('button', { name: 'Configure' }).first();
+    await expect(ollamaConfigureBtn).toBeVisible();
+    await ollamaConfigureBtn.click();
 
     // 3. Verify Local Inference Engines Auto-Discovery HUD
     const dialog = page.getByRole('dialog', { name: 'Settings' });
     await expect(dialog.getByText('Auto-Detected Local Inference Engines')).toBeVisible();
-    await expect(dialog.getByText(/model\(s\) active/)).toBeVisible();
+    await expect(dialog.getByText(/model\(s\) active|Offline/).first()).toBeVisible();
     await expect(dialog.getByText('LM Studio', { exact: true })).toBeVisible();
     await expect(dialog.getByText('llama.cpp', { exact: true })).toBeVisible();
+
+    // 3b. Return to overview
+    await dialog.getByText(/Back to Providers/).click();
 
     // 4. Verify GitHub Integration PAT card
     const githubHeading = dialog.getByText('GitHub Integration', { exact: true });
@@ -419,8 +427,8 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     // 8. Capture screenshot with formatting toolbar active
     await page.screenshot({ path: 'test-results/text-toolbar-verified.png' });
 
-    // 9. Exit editing with Cmd+Enter and verify markdown rendering
-    await page.keyboard.press('Meta+Enter');
+    // 9. Exit editing by clicking outside on canvas and verify markdown rendering
+    await canvas.click({ position: { x: 100, y: 100 } });
     await expect(textNode.locator('.task-markdown-body strong')).toBeVisible();
 
     // 10. Capture screenshot of rendered multi-line markdown

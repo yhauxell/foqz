@@ -51,6 +51,8 @@ export type AppSettings = {
   geminiDefaultModel?: string;
   githubToken?: string;
   activeAiProvider?: "ollama" | "openai" | "gemini";
+  imageProvider?: "auto" | "openai" | "gemini" | "pollinations";
+  imageModel?: string;
   agentProfiles?: AgentProfile[];
   customSkills?: CustomSkill[];
   activeAgentProfileId?: string;
@@ -85,6 +87,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   geminiApiKey: "",
   geminiDefaultModel: "gemini-1.5-flash",
   githubToken: "",
+  imageProvider: "auto",
+  imageModel: "dall-e-3",
   agentProfiles: BUILTIN_AGENT_PROFILES,
   customSkills: BUILTIN_CUSTOM_SKILLS,
   activeAgentProfileId: "default-copilot",
