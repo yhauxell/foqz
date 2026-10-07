@@ -1,7 +1,7 @@
 import React, { memo } from "react";
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from "@xyflow/react";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
-import { Trash2 } from "lucide-react";
+import { Trash2, Sparkles, MessageSquare } from "lucide-react";
 
 export interface ImageNodeData {
   src: string;
@@ -83,12 +83,29 @@ export const ImageNode = memo(function ImageNode({
 
       {/* Hover action toolbar */}
       {selected && (
-        <div className="absolute top-2 right-2 flex items-center gap-1 z-10 bg-black/60 backdrop-blur-xs rounded-lg p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-2 right-2 flex items-center gap-1 z-10 bg-black/70 backdrop-blur-md rounded-lg p-1 opacity-0 group-hover:opacity-100 transition-opacity border border-white/10 shadow-lg">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.dispatchEvent(
+                new CustomEvent("foqz:open-inline-chat", {
+                  detail: { nodeId: id, shapeId: id },
+                })
+              );
+            }}
+            title="Iterate or describe with AI Assistant"
+            className="flex items-center gap-1 px-1.5 py-1 rounded text-xs text-white/90 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
+          >
+            <Sparkles className="size-3 text-pink-400" />
+            <span className="text-[10px] font-medium hidden sm:inline">AI</span>
+          </button>
+          <div className="w-px h-3 bg-white/20" />
           <button
             type="button"
             onClick={handleDelete}
             title="Delete Image"
-            className="p-1 rounded text-white/80 hover:text-rose-400 hover:bg-white/10 transition-colors cursor-pointer"
+            className="p-1 rounded text-white/80 hover:text-rose-400 hover:bg-white/15 transition-colors cursor-pointer"
           >
             <Trash2 className="size-3.5" />
           </button>

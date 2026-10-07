@@ -5,21 +5,44 @@ import {
   Position,
   type Node,
 } from "@xyflow/react";
-import { Copy, Crosshair, GitPullRequest, MessageSquare, Trash2 } from "lucide-react";
+import {
+  Copy,
+  Crosshair,
+  GitPullRequest,
+  MessageSquare,
+  Trash2,
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  Link2,
+  Highlighter,
+  RemoveFormatting,
+  Minus,
+  Plus,
+} from "lucide-react";
 import { type ProjectAccent, type TaskPaperTheme } from "@/types/canvas";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import {
+  HIGHLIGHT_COLORS,
+  type HighlightColor,
+  type TextFormatType,
+  applyFormattingToString,
+  applyFormattingToTextarea,
+} from "../utils/textFormatting";
 
 interface FlowShapeMenuProps {
   selectedNode: Node | null;
 }
 
-const COLOR_PRESETS = [
-  { name: "Blue",    hex: "#3b82f6", bg: "rgba(59, 130, 246, 0.12)",  accent: "blue",    paper: "fog"   },
-  { name: "Emerald", hex: "#10b981", bg: "rgba(16, 185, 129, 0.12)",  accent: "emerald", paper: "sage"  },
-  { name: "Amber",   hex: "#f59e0b", bg: "rgba(245, 158, 11, 0.12)",  accent: "amber",   paper: "cream" },
-  { name: "Rose",    hex: "#f43f5e", bg: "rgba(244, 63, 94, 0.12)",   accent: "rose",    paper: "bloom" },
-  { name: "Indigo",  hex: "#6366f1", bg: "rgba(99, 102, 241, 0.12)",  accent: "indigo",  paper: "fog"   },
-  { name: "Zinc",    hex: "#71717a", bg: "rgba(113, 113, 122, 0.12)", accent: "zinc",    paper: "cream" },
+export const COLOR_PRESETS = [
+  { name: "Blue",    hex: "#3b82f6", bg: "rgba(59, 130, 246, 0.12)",  solidLight: "#eff6ff", solidDark: "#172554", accent: "blue",    paper: "fog"   },
+  { name: "Emerald", hex: "#10b981", bg: "rgba(16, 185, 129, 0.12)",  solidLight: "#ecfdf5", solidDark: "#064e3b", accent: "emerald", paper: "sage"  },
+  { name: "Amber",   hex: "#f59e0b", bg: "rgba(245, 158, 11, 0.12)",  solidLight: "#fffbeb", solidDark: "#451a03", accent: "amber",   paper: "cream" },
+  { name: "Rose",    hex: "#f43f5e", bg: "rgba(244, 63, 94, 0.12)",   solidLight: "#fff1f2", solidDark: "#4c0519", accent: "rose",    paper: "bloom" },
+  { name: "Indigo",  hex: "#6366f1", bg: "rgba(99, 102, 241, 0.12)",  solidLight: "#eef2ff", solidDark: "#1e1b4b", accent: "indigo",  paper: "fog"   },
+  { name: "Zinc",    hex: "#71717a", bg: "rgba(113, 113, 122, 0.12)", solidLight: "#f4f4f5", solidDark: "#27272a", accent: "zinc",    paper: "cream" },
+  { name: "White",   hex: "#ffffff", bg: "rgba(255, 255, 255, 0.8)",  solidLight: "#ffffff", solidDark: "#18181b", accent: "zinc",    paper: "fog"   },
 ];
 
 const BORDER_STYLES = [
@@ -66,17 +89,25 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
   const { setNodes, getInternalNode, deleteElements, fitView } = useReactFlow();
   const [colorOpen, setColorOpen] = useState(false);
   const [borderOpen, setBorderOpen] = useState(false);
+  const [highlightOpen, setHighlightOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkInput, setLinkInput] = useState("https://");
+
   const colorRef = useRef<HTMLDivElement>(null);
   const borderRef = useRef<HTMLDivElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
+  const linkRef = useRef<HTMLDivElement>(null);
 
   const closeColor = useCallback(() => setColorOpen(false), []);
   const closeBorder = useCallback(() => setBorderOpen(false), []);
+  const closeHighlight = useCallback(() => setHighlightOpen(false), []);
+  const closeLink = useCallback(() => setLinkOpen(false), []);
+
   useOutsideClick(colorRef, closeColor);
   useOutsideClick(borderRef, closeBorder);
+  useOutsideClick(highlightRef, closeHighlight);
+  useOutsideClick(linkRef, closeLink);
 
-  // handleCenter must be declared BEFORE the early return so hook count stays
-  // consistent across renders (moving selectedNode from non-null → null would
-  // otherwise skip this useCallback, causing "Rendered fewer hooks" crash).
   const handleCenter = useCallback(
     (e?: React.MouseEvent) => {
       if (e) e.stopPropagation();
@@ -105,7 +136,62 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     [selectedNode, deleteElements]
   );
 
+  const handleFormatAction = useCallback(
+    (format: TextFormatType, options?: { url?: string; color?: HighlightColor }) => {
+      if (!selectedNode) return;
+      const id = selectedNode.id;
+      let textarea = document.getElementById(`text-node-input-${id}`) as HTMLTextAreaElement | null;
+      if (
+        !textarea &&
+        typeof document !== "undefined" &&
+        document.activeElement instanceof HTMLTextAreaElement &&
+        document.activeElement.id.startsWith("text-node-input-")
+      ) {
+        textarea = document.activeElement;
+      }
+
+      if (textarea) {
+        const updated = applyFormattingToTextarea(textarea, format, options);
+        useFlowCanvasStore.getState().updateNodeData(id, { text: updated });
+        setNodes((nodes) =>
+          nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, text: updated } } : n))
+        );
+      } else {
+        const currentText = (selectedNode.data?.text as string) || "";
+        const updated = applyFormattingToString(currentText, format, options);
+        useFlowCanvasStore.getState().updateNodeData(id, { text: updated });
+        setNodes((nodes) =>
+          nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, text: updated } } : n))
+        );
+      }
+    },
+    [selectedNode, setNodes]
+  );
+
+  const handleFontSizeDelta = useCallback(
+    (delta: number) => {
+      if (!selectedNode) return;
+      const currentSize = (selectedNode.data?.fontSize as number) || 16;
+      const newSize = Math.min(72, Math.max(10, currentSize + delta));
+      useFlowCanvasStore.getState().updateNodeData(selectedNode.id, { fontSize: newSize });
+      setNodes((nodes) =>
+        nodes.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, fontSize: newSize } } : n))
+      );
+    },
+    [selectedNode, setNodes]
+  );
+
   if (!selectedNode) return null;
+
+  const isText = selectedNode.type === "text";
+  const isArrow = selectedNode.type === "arrow";
+  const isFillEligible = selectedNode.type === "box" || selectedNode.type === "circle";
+  const isBorderEligible =
+    selectedNode.type === "box" ||
+    selectedNode.type === "circle" ||
+    selectedNode.type === "focusTask" ||
+    selectedNode.type === "projectFrame" ||
+    selectedNode.type === "arrow";
 
   // Derive current color hex from node type
   const currentHex = (() => {
@@ -130,6 +216,8 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     return (selectedNode.data?.color as string) || "#71717a";
   })();
 
+  const currentFontSize = (selectedNode.data?.fontSize as number) || 16;
+
   const handleColorChange = (color: typeof COLOR_PRESETS[0]) => {
     setColorOpen(false);
     setNodes((nodes) =>
@@ -139,7 +227,18 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
           return { ...node, data: { ...node.data, strokeColor: color.hex, color: color.hex } };
         }
         if (node.type === "box" || node.type === "circle") {
-          return { ...node, data: { ...node.data, strokeColor: color.hex, color: color.bg } };
+          const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+          const isSolid = node.data?.fillStyle === "solid";
+          const solidColor = isDark ? color.solidDark : color.solidLight;
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              strokeColor: color.hex,
+              color: isSolid ? solidColor : color.bg,
+              solidColor: isSolid ? solidColor : undefined,
+            },
+          };
         }
         if (node.type === "projectFrame") {
           return { ...node, data: { ...node.data, accent: color.accent as ProjectAccent } };
@@ -163,7 +262,6 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     );
   };
 
-  const isArrow = selectedNode.type === "arrow";
   const currentSpear = ((selectedNode.data?.spear as string) || "end") as "end" | "start" | "both" | "none";
 
   const handleSpearChange = (spear: "end" | "start" | "both" | "none") => {
@@ -175,24 +273,59 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     );
   };
 
-  const isFillEligible = selectedNode.type === "box" || selectedNode.type === "circle";
-  const currentFillStyle = (selectedNode.data?.fillStyle as "hachure" | "solid" | "none") || "hachure";
+  const currentFillStyle = (selectedNode.data?.fillStyle as "hachure" | "tint" | "solid" | "none") || "hachure";
 
-  const handleFillStyleChange = (fillStyle: "hachure" | "solid" | "none") => {
+  const handleFillStyleChange = (fillStyle: "hachure" | "tint" | "solid" | "none") => {
     setNodes((nodes) =>
       nodes.map((node) => {
         if (node.id !== selectedNode.id) return node;
-        return { ...node, data: { ...node.data, fillStyle } };
+        const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+        const preset = COLOR_PRESETS.find((c) => c.hex === currentHex) || COLOR_PRESETS[0];
+        const solidColor = isDark ? preset.solidDark : preset.solidLight;
+
+        if (fillStyle === "solid") {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              fillStyle: "solid",
+              solidColor,
+              color: solidColor,
+            },
+          };
+        } else if (fillStyle === "tint") {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              fillStyle: "tint",
+              solidColor: undefined,
+              color: preset.bg,
+            },
+          };
+        } else if (fillStyle === "hachure") {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              fillStyle: "hachure",
+              solidColor: undefined,
+              color: preset.bg,
+            },
+          };
+        } else {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              fillStyle: "none",
+              solidColor: undefined,
+            },
+          };
+        }
       })
     );
   };
-
-  const isBorderEligible =
-    selectedNode.type === "box" ||
-    selectedNode.type === "circle" ||
-    selectedNode.type === "focusTask" ||
-    selectedNode.type === "projectFrame" ||
-    selectedNode.type === "arrow";
 
   const currentBorderStyle: "solid" | "dashed" | "dotted" =
     (selectedNode.data?.borderStyle as "solid" | "dashed" | "dotted") ||
@@ -214,7 +347,6 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
   const nodeAbsY = nodeInternal?.internals?.positionAbsolute?.y ?? selectedNode.position.y;
   const toolbarPosition = nodeAbsY < 70 ? Position.Bottom : Position.Top;
 
-
   return (
     <NodeToolbar nodeId={selectedNode.id} isVisible={true} position={toolbarPosition} offset={10} align="center">
       <div
@@ -222,12 +354,263 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* TEXT SPECIFIC CONTROLS */}
+        {isText && (
+          <>
+            {/* Font Size (+-) controls */}
+            <div className="flex items-center gap-1 bg-black/5 dark:bg-white/5 rounded-full px-1.5 py-0.5">
+              <button
+                type="button"
+                title="Decrease font size"
+                onPointerDown={(e) => e.preventDefault()}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleFontSizeDelta(-2);
+                }}
+                className="size-5 rounded-full flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
+              >
+                <Minus className="size-3" />
+              </button>
+
+              <span className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 min-w-[28px] text-center font-mono">
+                {currentFontSize}px
+              </span>
+
+              <button
+                type="button"
+                title="Increase font size"
+                onPointerDown={(e) => e.preventDefault()}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleFontSizeDelta(2);
+                }}
+                className="size-5 rounded-full flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
+              >
+                <Plus className="size-3" />
+              </button>
+            </div>
+
+            <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
+
+            {/* Bold */}
+            <button
+              type="button"
+              title="Bold (**text**)"
+              onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleFormatAction("bold");
+              }}
+              className="size-6 rounded flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
+            >
+              <Bold className="size-3.5" />
+            </button>
+
+            {/* Italic */}
+            <button
+              type="button"
+              title="Italic (*text*)"
+              onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleFormatAction("italic");
+              }}
+              className="size-6 rounded flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
+            >
+              <Italic className="size-3.5" />
+            </button>
+
+            {/* Underline */}
+            <button
+              type="button"
+              title="Underline (<u>text</u>)"
+              onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleFormatAction("underline");
+              }}
+              className="size-6 rounded flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
+            >
+              <Underline className="size-3.5" />
+            </button>
+
+            {/* Strikethrough */}
+            <button
+              type="button"
+              title="Strikethrough (~~text~~)"
+              onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleFormatAction("strike");
+              }}
+              className="size-6 rounded flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
+            >
+              <Strikethrough className="size-3.5" />
+            </button>
+
+            {/* Add Link */}
+            <div className="relative" ref={linkRef}>
+              <button
+                type="button"
+                title="Add Link ([text](url))"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setLinkOpen((v) => !v);
+                  setHighlightOpen(false);
+                  setColorOpen(false);
+                }}
+                className={`size-6 rounded flex items-center justify-center transition-colors cursor-pointer ${
+                  linkOpen
+                    ? "bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400"
+                    : "text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white"
+                }`}
+              >
+                <Link2 className="size-3.5" />
+              </button>
+
+              {linkOpen && (
+                <div
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 p-2 rounded-2xl glass-panel shadow-2xl border border-white/60 dark:border-zinc-800 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-100 z-50 bg-white/95 dark:bg-zinc-900/95 flex items-center gap-1.5"
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="url"
+                    value={linkInput}
+                    autoFocus
+                    onChange={(e) => setLinkInput(e.target.value)}
+                    placeholder="https://example.com"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleFormatAction("link", { url: linkInput });
+                        setLinkOpen(false);
+                      } else if (e.key === "Escape") {
+                        setLinkOpen(false);
+                      }
+                    }}
+                    className="w-48 px-2.5 py-1 text-xs rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleFormatAction("link", { url: linkInput });
+                      setLinkOpen(false);
+                    }}
+                    className="px-2 py-1 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors cursor-pointer"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Highlight with Color Popover */}
+            <div className="relative" ref={highlightRef}>
+              <button
+                type="button"
+                title="Highlight text"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setHighlightOpen((v) => !v);
+                  setLinkOpen(false);
+                  setColorOpen(false);
+                }}
+                className={`size-6 rounded flex items-center justify-center transition-colors cursor-pointer ${
+                  highlightOpen
+                    ? "bg-amber-100 dark:bg-amber-900/60 text-amber-600 dark:text-amber-400"
+                    : "text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white"
+                }`}
+              >
+                <Highlighter className="size-3.5" />
+              </button>
+
+              {highlightOpen && (
+                <div
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 p-1.5 rounded-2xl glass-panel shadow-2xl border border-white/60 dark:border-zinc-800 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-100 z-50 bg-white/95 dark:bg-zinc-900/95 flex flex-col gap-1.5"
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-1.5 px-1 pt-0.5">
+                    {HIGHLIGHT_COLORS.map((c) => (
+                      <button
+                        key={c.name}
+                        type="button"
+                        title={`Highlight ${c.name}`}
+                        onPointerDown={(e) => e.preventDefault()}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleFormatAction("highlight", { color: c });
+                          setHighlightOpen(false);
+                        }}
+                        className="size-5 rounded-full border border-black/10 dark:border-white/20 transition-transform hover:scale-125 cursor-pointer shadow-2xs"
+                        style={{ backgroundColor: c.bg }}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleFormatAction("clear");
+                      setHighlightOpen(false);
+                    }}
+                    className="w-full text-center text-[10px] text-zinc-500 hover:text-rose-600 dark:hover:text-rose-400 py-0.5 hover:bg-black/5 dark:hover:bg-white/5 rounded cursor-pointer transition-colors"
+                  >
+                    Remove Highlight
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Clear Formatting */}
+            <button
+              type="button"
+              title="Clear formatting"
+              onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleFormatAction("clear");
+              }}
+              className="size-6 rounded flex items-center justify-center text-zinc-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <RemoveFormatting className="size-3.5" />
+            </button>
+
+            <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
+          </>
+        )}
+
         {/* Color swatch button → opens popover */}
         <div className="relative" ref={colorRef}>
           <button
             type="button"
             title="Change color"
-            onClick={() => { setColorOpen((v) => !v); setBorderOpen(false); }}
+            onClick={() => {
+              setColorOpen((v) => !v);
+              setBorderOpen(false);
+              setHighlightOpen(false);
+              setLinkOpen(false);
+            }}
             className="size-5 rounded-full border-2 border-white/90 dark:border-zinc-600 shadow-xs transition-transform hover:scale-110 cursor-pointer ring-1 ring-black/10 dark:ring-white/10"
             style={{ backgroundColor: currentHex }}
           />
@@ -251,9 +634,33 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
                 ))}
               </div>
 
-              {/* Fill style selector for Box / Circle */}
+              {/* Fill style selector for Box / Circle (Solid, Tint, Sketch, Outline) */}
               {isFillEligible && (
                 <div className="flex items-center gap-1 pt-1 border-t border-zinc-200/70 dark:border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => handleFillStyleChange("solid")}
+                    className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer text-center ${
+                      currentFillStyle === "solid"
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xs font-semibold"
+                        : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    }`}
+                    title="Solid opaque background (no transparent)"
+                  >
+                    Solid
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleFillStyleChange("tint")}
+                    className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer text-center ${
+                      currentFillStyle === "tint"
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xs font-semibold"
+                        : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    }`}
+                    title="Soft translucent tint fill"
+                  >
+                    Tint
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleFillStyleChange("hachure")}
@@ -265,18 +672,6 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
                     title="Sketchy cross-hatch fill"
                   >
                     Sketch
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleFillStyleChange("solid")}
-                    className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer text-center ${
-                      currentFillStyle === "solid"
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xs font-semibold"
-                        : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                    }`}
-                    title="Soft translucent tint fill"
-                  >
-                    Tint
                   </button>
                   <button
                     type="button"
@@ -304,7 +699,12 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
               <button
                 type="button"
                 title={`Border: ${currentBorderStyle}`}
-                onClick={() => { setBorderOpen((v) => !v); setColorOpen(false); }}
+                onClick={() => {
+                  setBorderOpen((v) => !v);
+                  setColorOpen(false);
+                  setHighlightOpen(false);
+                  setLinkOpen(false);
+                }}
                 className="size-5 rounded flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
               >
                 {currentBorderIcon}
@@ -385,10 +785,9 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
 
         <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
 
-
         <button
           type="button"
-          title="Chat with Element (C)"
+          title="Chat with Element"
           onPointerDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -404,6 +803,34 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
           className="size-5 rounded-full flex items-center justify-center hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-colors cursor-pointer"
         >
           <MessageSquare className="size-3" />
+        </button>
+
+        <button
+          type="button"
+          title="Annotate Element"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            const node = selectedNode;
+            const title = (node.data as any)?.title || (node.data as any)?.label || (node.data as any)?.text || node.type;
+            const liveStore = useFlowCanvasStore.getState();
+            // Drop annotation at top-right
+            liveStore.addAnnotation({
+              anchor: {
+                nodeId: node.id,
+                rel: { x: 0.85, y: 0.15 },
+              },
+              body: `Annotation on ${title}`,
+              kind: "comment",
+            });
+          }}
+          className="px-1.5 h-5 rounded-full flex items-center gap-1 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-600 dark:text-amber-400 transition-colors cursor-pointer text-[10px] font-medium"
+        >
+          <MessageSquare className="size-2.5" />
+          <span>Annotate</span>
         </button>
 
         {selectedNode.type === "focusTask" && (

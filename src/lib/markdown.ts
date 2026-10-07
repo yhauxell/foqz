@@ -6,8 +6,25 @@ marked.setOptions({
   breaks: true,
 });
 
+const renderer = new marked.Renderer();
+renderer.link = ({ href, title, text }) => {
+  return `<a href="${href}"${title ? ` title="${title}"` : ""} target="_blank" rel="noopener noreferrer">${text}</a>`;
+};
+marked.use({ renderer });
+
 const inlineCache = new Map<string, string>();
 const blockCache = new Map<string, string>();
+
+const DOMPURIFY_CONFIG = {
+  ADD_TAGS: ["input", "mark", "u", "span", "ins"],
+  ADD_ATTR: ["data-task-checkbox", "checked", "type", "class", "style", "target", "rel", "href"],
+};
+
+function preprocessMarkdown(text: string): string {
+  if (!text) return "";
+  // Convert standard markdown ==highlight== to <mark>highlight</mark>
+  return text.replace(/==([^=\n]+)==/g, "<mark>$1</mark>");
+}
 
 /**
  * Render inline markdown (for task titles, badges, and one-line summaries).
@@ -18,8 +35,9 @@ export function renderMarkdownInline(text: string): string {
   const cached = inlineCache.get(text);
   if (cached !== undefined) return cached;
   try {
-    const raw = marked.parseInline(text);
-    const sanitized = DOMPurify.sanitize(typeof raw === "string" ? raw : "");
+    const processed = preprocessMarkdown(text);
+    const raw = marked.parseInline(processed);
+    const sanitized = DOMPurify.sanitize(typeof raw === "string" ? raw : "", DOMPURIFY_CONFIG);
     if (inlineCache.size > 500) inlineCache.clear();
     inlineCache.set(text, sanitized);
     return sanitized;
@@ -38,7 +56,8 @@ export function renderMarkdownBlock(text: string): string {
   const cached = blockCache.get(text);
   if (cached !== undefined) return cached;
   try {
-    const raw = marked.parse(text);
+    const processed = preprocessMarkdown(text);
+    const raw = marked.parse(processed);
     if (typeof raw !== "string") return "";
     let idx = 0;
     const withCheckboxes = raw.replace(
@@ -50,10 +69,7 @@ export function renderMarkdownBlock(text: string): string {
         return el;
       },
     );
-    const sanitized = DOMPurify.sanitize(withCheckboxes, {
-      ADD_TAGS: ["input"],
-      ADD_ATTR: ["data-task-checkbox", "checked", "type", "class"],
-    });
+    const sanitized = DOMPurify.sanitize(withCheckboxes, DOMPURIFY_CONFIG);
     if (blockCache.size > 300) blockCache.clear();
     blockCache.set(text, sanitized);
     return sanitized;

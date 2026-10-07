@@ -30,38 +30,16 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
   onZoomToFit,
   onZoomTo100,
 }: TopbarBoardMenuProps) {
-  interface BoardEntry {
-    id: string;
-    name: string;
-    createdAt: number;
-  }
+  const boards = useFlowCanvasStore((s) => s.boards);
+  const activeBoardId = useFlowCanvasStore((s) => s.activeBoardId);
+  const switchBoard = useFlowCanvasStore((s) => s.switchBoard);
+  const createBoard = useFlowCanvasStore((s) => s.createBoard);
+  const deleteBoard = useFlowCanvasStore((s) => s.deleteBoard);
+  const renameBoard = useFlowCanvasStore((s) => s.renameBoard);
 
-  const STORAGE_BOARDS_KEY = "foqz_multiboards_meta_v1";
-  const ACTIVE_BOARD_KEY = "foqz_active_board_id";
-
-  const [boards, setBoards] = useState<BoardEntry[]>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_BOARDS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-      const initialName = localStorage.getItem("foqz_board_name") || "Foqz Board 1";
-      return [{ id: "board-default", name: initialName, createdAt: Date.now() }];
-    } catch {
-      return [{ id: "board-default", name: "Foqz Board 1", createdAt: Date.now() }];
-    }
-  });
-
-  const [activeBoardId, setActiveBoardId] = useState<string>(() => {
-    try {
-      return localStorage.getItem(ACTIVE_BOARD_KEY) || "board-default";
-    } catch {
-      return "board-default";
-    }
-  });
-
-  const activeBoard = boards.find((b) => b.id === activeBoardId) || boards[0] || { id: "board-default", name: "Foqz Board 1" };
+  const activeBoard =
+    boards.find((b) => b.id === activeBoardId) ||
+    boards[0] || { id: "board-default", name: "Foqz Board 1" };
   const boardName = activeBoard.name;
 
   const [renamingBoardId, setRenamingBoardId] = useState<string | null>(null);
@@ -73,91 +51,29 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
   const pageMenuRef = useRef<HTMLDivElement>(null);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
 
-  // Synchronize boards list to local storage
-  const persistBoards = (updated: BoardEntry[]) => {
-    setBoards(updated);
-    try {
-      localStorage.setItem(STORAGE_BOARDS_KEY, JSON.stringify(updated));
-    } catch {}
-  };
-
   const handleSwitchBoard = (targetId: string) => {
-    if (targetId === activeBoardId) return;
-
-    // 1. Snapshot current board
-    const { nodes, edges } = useFlowCanvasStore.getState();
-    const currentKey = activeBoardId === "board-default" ? "foqz_reactflow_poc_board_v1" : `foqz_board_snapshot_${activeBoardId}`;
-    try {
-      localStorage.setItem(currentKey, JSON.stringify({ nodes, edges, version: 1 }));
-    } catch {}
-
-    // 2. Set new active board
-    setActiveBoardId(targetId);
-    try {
-      localStorage.setItem(ACTIVE_BOARD_KEY, targetId);
-      const targetBoard = boards.find((b) => b.id === targetId);
-      if (targetBoard) {
-        localStorage.setItem("foqz_board_name", targetBoard.name);
-      }
-    } catch {}
-
-    // 3. Load target board nodes and edges
-    const targetKey = targetId === "board-default" ? "foqz_reactflow_poc_board_v1" : `foqz_board_snapshot_${targetId}`;
-    try {
-      const raw = localStorage.getItem(targetKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        useFlowCanvasStore.getState().setNodes(Array.isArray(parsed.nodes) ? parsed.nodes : []);
-        useFlowCanvasStore.getState().setEdges(Array.isArray(parsed.edges) ? parsed.edges : []);
-      } else {
-        useFlowCanvasStore.getState().setNodes([]);
-        useFlowCanvasStore.getState().setEdges([]);
-      }
-      useFlowCanvasStore.getState().setSelectedNodeId(null);
-      useFlowCanvasStore.getState().setActiveFocusNodeId(null);
-    } catch {}
-
     setPageMenuOpen(false);
+    if (targetId === activeBoardId) return;
+    switchBoard(targetId);
   };
 
   const handleCreateNewBoard = () => {
-    const newId = `board-${Date.now()}`;
-    const newName = `Foqz Board ${boards.length + 1}`;
-    const updated = [...boards, { id: newId, name: newName, createdAt: Date.now() }];
-    persistBoards(updated);
-    handleSwitchBoard(newId);
+    setPageMenuOpen(false);
+    createBoard();
   };
 
   const handleDeleteBoard = (boardIdToDelete: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (boards.length <= 1) return; // Keep at least one board
-    const remaining = boards.filter((b) => b.id !== boardIdToDelete);
-    persistBoards(remaining);
-
-    // Clean up local storage
-    try {
-      const delKey = boardIdToDelete === "board-default" ? "foqz_reactflow_poc_board_v1" : `foqz_board_snapshot_${boardIdToDelete}`;
-      localStorage.removeItem(delKey);
-    } catch {}
-
-    if (activeBoardId === boardIdToDelete) {
-      handleSwitchBoard(remaining[0].id);
-    }
+    deleteBoard(boardIdToDelete);
   };
 
-  const handleSaveRename = useCallback((idToRename: string) => {
-    const trimmed = editingName.trim();
-    if (trimmed) {
-      const updated = boards.map((b) => (b.id === idToRename ? { ...b, name: trimmed } : b));
-      persistBoards(updated);
-      if (idToRename === activeBoardId) {
-        try {
-          localStorage.setItem("foqz_board_name", trimmed);
-        } catch {}
-      }
-    }
-    setRenamingBoardId(null);
-  }, [editingName, boards, activeBoardId]);
+  const handleSaveRename = useCallback(
+    (idToRename: string) => {
+      renameBoard(idToRename, editingName);
+      setRenamingBoardId(null);
+    },
+    [editingName, renameBoard]
+  );
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -191,8 +107,8 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
   }, []);
 
   const handleExportJson = useCallback(() => {
-    const { nodes, edges } = useFlowCanvasStore.getState();
-    const data = JSON.stringify({ nodes, edges, version: 1 }, null, 2);
+    const { nodes, edges, annotations } = useFlowCanvasStore.getState();
+    const data = JSON.stringify({ nodes, edges, annotations, version: 1 }, null, 2);
     const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

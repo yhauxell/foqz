@@ -19,11 +19,11 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
   },
   {
     id: "tool-box",
-    name: "Hand-Drawn Sketch Box",
-    keys: ["b", "2"],
-    keyDisplay: "B",
+    name: "Rectangle",
+    keys: ["r", "2"],
+    keyDisplay: "R",
     category: "Tools",
-    description: "Drag to size a rough sketch box container",
+    description: "Drag to size a rough sketch rectangle container",
   },
   {
     id: "tool-circle",
@@ -36,18 +36,18 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
   {
     id: "tool-text",
     name: "Text Note",
-    keys: ["t", "3"],
-    keyDisplay: "T",
+    keys: ["3"],
+    keyDisplay: "3",
     category: "Tools",
     description: "Click to place a text note on canvas",
   },
   {
     id: "tool-note",
-    name: "Paper Sticky Note",
-    keys: ["s"],
-    keyDisplay: "S",
+    name: "Sticky Note",
+    keys: ["n"],
+    keyDisplay: "N",
     category: "Tools",
-    description: "Click to place a tactile paper note on canvas",
+    description: "Click to place a tactile paper sticky note on canvas",
   },
   {
     id: "tool-arrow",
@@ -64,6 +64,14 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
     keyDisplay: "P",
     category: "Tools",
     description: "Draw calligraphic freehand pencil strokes",
+  },
+  {
+    id: "tool-comment",
+    name: "Annotation / Comment Pin",
+    keys: ["c"],
+    keyDisplay: "C",
+    category: "Tools",
+    description: "Drop interactive Figma/Miro-style annotation pins on elements or canvas",
   },
 
   // Actions & Create
@@ -94,10 +102,10 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
   {
     id: "create-task",
     name: "New Task Card",
-    keys: ["n"],
-    keyDisplay: "N",
+    keys: ["t"],
+    keyDisplay: "T",
     category: "Create",
-    description: "Spawn a new resizable sketchy task card",
+    description: "Spawn a new resizable task card",
   },
   {
     id: "create-project",

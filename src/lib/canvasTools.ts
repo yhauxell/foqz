@@ -9,6 +9,8 @@ import {
 } from './jev'
 import { createGitHubIssue } from './githubSync'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
+import { generateAiImage } from './aiImageProvider'
+import { getCachedAppSettings } from './appSettingsCache'
 
 /**
  * Built-in native tools exposed by the Foqz spatial canvas (React Flow).
@@ -167,6 +169,56 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
           description: 'Project frame / semantic group description or intent.',
         },
       },
+    },
+  },
+  {
+    serverName: 'foqz',
+    name: 'generate_image',
+    description: 'Generates an AI image (visual mockup, app logo, illustration, or design asset) and automatically places it on the canvas as an interactive image node.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'Detailed prompt describing the visual to generate.',
+        },
+        aspectRatio: {
+          type: 'string',
+          enum: ['1:1', '16:9', '9:16', '4:3', '3:2'],
+          default: '1:1',
+          description: 'Desired aspect ratio of the image (default: 1:1)',
+        },
+        title: {
+          type: 'string',
+          description: 'Optional label or alt title for the generated image.',
+        },
+      },
+      required: ['prompt'],
+    },
+  },
+  {
+    serverName: 'foqz',
+    name: 'generate_image',
+    description: 'Generates an AI image (visual mockup, app logo, illustration, or design asset) and automatically places it on the canvas as an interactive image node.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'Detailed prompt describing the visual to generate.',
+        },
+        aspectRatio: {
+          type: 'string',
+          enum: ['1:1', '16:9', '9:16', '4:3', '3:2'],
+          default: '1:1',
+          description: 'Desired aspect ratio of the image (default: 1:1)',
+        },
+        title: {
+          type: 'string',
+          description: 'Optional label or alt title for the generated image.',
+        },
+      },
+      required: ['prompt'],
     },
   },
   {
@@ -538,6 +590,61 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
           ],
         }
       }
+
+      case 'generate_image': {
+        const liveStore = useFlowCanvasStore.getState()
+        const prompt = String(args.prompt || '').trim()
+        if (!prompt) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'Please provide a prompt to generate an image.' }],
+          }
+        }
+
+        const appSettings = getCachedAppSettings()
+        const imageResult = await generateAiImage({
+          prompt,
+          aspectRatio: args.aspectRatio || '1:1',
+          provider: appSettings.imageProvider || 'auto',
+          model: appSettings.imageModel,
+          apiKey: appSettings.openaiApiKey,
+          baseUrl: appSettings.openaiBaseUrl,
+        })
+
+        const selectedNode = liveStore.nodes.find((n) => n.id === (defaultNodeId || liveStore.selectedNodeId))
+        const parentId = selectedNode?.type === 'projectFrame' ? selectedNode.id : selectedNode?.parentId
+
+        let spawnPos = selectedNode
+          ? {
+              x: Math.round(selectedNode.position.x + 360),
+              y: Math.round(selectedNode.position.y),
+            }
+          : undefined
+
+        const newImgId = liveStore.createImage({
+          src: imageResult.url,
+          alt: args.title || prompt,
+          width: imageResult.width,
+          height: imageResult.height,
+          parentId,
+          position: spawnPos,
+        })
+
+        window.dispatchEvent(
+          new CustomEvent('foqz:flow-center-on', { detail: { id: newImgId } })
+        )
+
+        return {
+          isError: false,
+          content: [
+            {
+              type: 'text',
+              text: `Generated visual for "${prompt}" using ${imageResult.providerUsed} (${imageResult.modelUsed}) and placed image node [${newImgId}] on the canvas.`,
+            },
+          ],
+        }
+      }
+
 
       case 'spawn_notes': {
         const liveStore = useFlowCanvasStore.getState()

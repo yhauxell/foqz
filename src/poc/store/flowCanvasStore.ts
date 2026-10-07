@@ -3,9 +3,88 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { temporal, type TemporalState } from "zundo";
 import type { Node, Edge } from "@xyflow/react";
 import { RUNWAY_TEMPLATES, type RunwayTemplateId } from "@/types/canvas";
+import type { Annotation, AnnotationKind, AnnotationAnchor, AnnotationAuthor } from "@/types/annotations";
 import { findNonOverlappingPosition, arrangeLayout } from "@/lib/canvasLayout";
 
 export const FLOW_STORAGE_KEY = "foqz_reactflow_poc_board_v1";
+export const STORAGE_BOARDS_KEY = "foqz_multiboards_meta_v1";
+export const ACTIVE_BOARD_KEY = "foqz_active_board_id";
+
+export interface BoardEntry {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+export function getBoardStorageKey(boardId: string): string {
+  return boardId === "board-default" ? FLOW_STORAGE_KEY : `foqz_board_snapshot_${boardId}`;
+}
+
+export function getInitialBoards(): BoardEntry[] {
+  try {
+    if (typeof localStorage === "undefined") {
+      return [{ id: "board-default", name: "Foqz Board 1", createdAt: Date.now() }];
+    }
+    const raw = localStorage.getItem(STORAGE_BOARDS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+    const initialName = localStorage.getItem("foqz_board_name") || "Foqz Board 1";
+    return [{ id: "board-default", name: initialName, createdAt: Date.now() }];
+  } catch {
+    return [{ id: "board-default", name: "Foqz Board 1", createdAt: Date.now() }];
+  }
+}
+
+export function getInitialActiveBoardId(boards: BoardEntry[]): string {
+  try {
+    if (typeof localStorage === "undefined") return "board-default";
+    const active = localStorage.getItem(ACTIVE_BOARD_KEY);
+    if (active && boards.some((b) => b.id === active)) {
+      return active;
+    }
+    return boards[0]?.id || "board-default";
+  } catch {
+    return boards[0]?.id || "board-default";
+  }
+}
+
+export function loadBoardSnapshotFromStorage(boardId: string): {
+  nodes: Node[];
+  edges: Edge[];
+  annotations: Record<string, Annotation>;
+} {
+  try {
+    if (typeof localStorage === "undefined") {
+      return {
+        nodes: boardId === "board-default" ? INITIAL_NODES : [],
+        edges: boardId === "board-default" ? INITIAL_EDGES : [],
+        annotations: {},
+      };
+    }
+    const key = getBoardStorageKey(boardId);
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
+        edges: Array.isArray(parsed.edges) ? parsed.edges : [],
+        annotations: parsed.annotations && typeof parsed.annotations === "object" ? parsed.annotations : {},
+      };
+    }
+    if (boardId === "board-default") {
+      return { nodes: INITIAL_NODES, edges: INITIAL_EDGES, annotations: {} };
+    }
+    return { nodes: [], edges: [], annotations: {} };
+  } catch {
+    return {
+      nodes: boardId === "board-default" ? INITIAL_NODES : [],
+      edges: boardId === "board-default" ? INITIAL_EDGES : [],
+      annotations: {},
+    };
+  }
+}
 
 export const INITIAL_NODES: Node[] = [
   {
@@ -322,16 +401,60 @@ export interface FlowCanvasState {
   arrangeLayout: () => void;
   groupSelectedNodes: (title?: string, description?: string) => string | null;
   ungroupSelectedNodes: () => boolean;
+
+  // Multiboard Slice
+  boards: BoardEntry[];
+  activeBoardId: string;
+  switchBoard: (targetId: string) => void;
+  createBoard: (name?: string) => string;
+  deleteBoard: (id: string) => void;
+  renameBoard: (id: string, newName: string) => void;
+
+  // Annotations Slice
+  annotations: Record<string, Annotation>;
+  activeAnnotationId: string | null;
+  setActiveAnnotationId: (id: string | null) => void;
+  addAnnotation: (params: {
+    anchor: AnnotationAnchor;
+    body: string;
+    kind?: AnnotationKind;
+    author?: AnnotationAuthor;
+    aiVisible?: boolean;
+  }) => string;
+  replyAnnotation: (params: {
+    annotationId: string;
+    body: string;
+    author?: AnnotationAuthor;
+  }) => boolean;
+  editAnnotationMessage: (params: {
+    annotationId: string;
+    messageId: string;
+    body: string;
+  }) => boolean;
+  setAnnotationStatus: (annotationId: string, status: "open" | "resolved") => void;
+  setAnnotationKind: (annotationId: string, kind: AnnotationKind) => void;
+  toggleAnnotationAiVisible: (annotationId: string) => void;
+  deleteAnnotation: (annotationId: string) => void;
+  moveAnnotationAnchor: (annotationId: string, anchor: AnnotationAnchor) => void;
 }
+
+const initialBoards = getInitialBoards();
+const initialActiveBoardId = getInitialActiveBoardId(initialBoards);
+const initialSnapshot = loadBoardSnapshotFromStorage(initialActiveBoardId);
 
 export const useFlowCanvasStore = create<FlowCanvasState>()(
   temporal(
     (set, get) => ({
-      nodes: INITIAL_NODES,
-      edges: INITIAL_EDGES,
+      boards: initialBoards,
+      activeBoardId: initialActiveBoardId,
+      nodes: initialSnapshot.nodes,
+      edges: initialSnapshot.edges,
+      annotations: initialSnapshot.annotations,
+      activeAnnotationId: null,
       selectedNodeId: null,
       cursorPosition: null,
       setCursorPosition: (pos) => set({ cursorPosition: pos }),
+      setActiveAnnotationId: (id) => set({ activeAnnotationId: id }),
       activeFocusNodeId: null,
       timerSecondsRemaining: 25 * 60,
       isTimerRunning: false,
@@ -1320,11 +1443,27 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           state.nodes.forEach((n) => {
             if (n.parentId === id) deletedIds.add(n.id);
           });
+
+          // Cascade deletion to any annotations anchored to the deleted nodes
+          const nextAnnotations = { ...state.annotations };
+          for (const [annId, ann] of Object.entries(nextAnnotations)) {
+            if (ann.anchor.nodeId && deletedIds.has(ann.anchor.nodeId)) {
+              delete nextAnnotations[annId];
+            }
+          }
+
+          const nextActiveAnnId =
+            state.activeAnnotationId && nextAnnotations[state.activeAnnotationId]
+              ? state.activeAnnotationId
+              : null;
+
           return {
             nodes: state.nodes.filter((n) => !deletedIds.has(n.id)),
             edges: state.edges.filter(
               (e) => !deletedIds.has(e.source) && !deletedIds.has(e.target)
             ),
+            annotations: nextAnnotations,
+            activeAnnotationId: nextActiveAnnId,
             selectedNodeId: deletedIds.has(state.selectedNodeId || "") ? null : state.selectedNodeId,
           };
         }),
@@ -1381,11 +1520,125 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           };
         }),
 
-      resetBoard: () => {
+      switchBoard: (targetId: string) => {
+        const state = get();
+        if (targetId === state.activeBoardId) return;
+
+        // 1. Immediately snapshot current board
+        const currentKey = getBoardStorageKey(state.activeBoardId);
         try {
-          localStorage.removeItem(FLOW_STORAGE_KEY);
+          localStorage.setItem(
+            currentKey,
+            JSON.stringify({
+              nodes: state.nodes,
+              edges: state.edges,
+              annotations: state.annotations,
+              updatedAt: Date.now(),
+            })
+          );
+        } catch (err) {
+          console.warn("Failed to save snapshot before switch:", err);
+        }
+
+        // 2. Load target board nodes, edges, annotations
+        const targetSnapshot = loadBoardSnapshotFromStorage(targetId);
+
+        // 3. Update localStorage pointers
+        try {
+          localStorage.setItem(ACTIVE_BOARD_KEY, targetId);
+          const targetBoard = state.boards.find((b) => b.id === targetId);
+          if (targetBoard) {
+            localStorage.setItem("foqz_board_name", targetBoard.name);
+          }
         } catch {}
-        if (typeof window !== "undefined" && window.focusStore?.clearBoardFile) {
+
+        // 4. Update store state
+        set({
+          activeBoardId: targetId,
+          nodes: targetSnapshot.nodes,
+          edges: targetSnapshot.edges,
+          annotations: targetSnapshot.annotations,
+          selectedNodeId: null,
+          activeFocusNodeId: null,
+          activeAnnotationId: null,
+          isTimerRunning: false,
+        });
+
+        // 5. Clear undo/redo history for the clean switch
+        try {
+          useFlowCanvasStore.temporal.getState().clear();
+        } catch {}
+
+        // 6. Center canvas on new board
+        if (typeof window !== "undefined") {
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("foqz:flow-zoom-fit"));
+          }, 50);
+        }
+      },
+
+      createBoard: (name?: string) => {
+        const state = get();
+        const newId = `board-${Date.now()}`;
+        const newName = name?.trim() || `Foqz Board ${state.boards.length + 1}`;
+        const newEntry: BoardEntry = {
+          id: newId,
+          name: newName,
+          createdAt: Date.now(),
+        };
+        const updatedBoards = [...state.boards, newEntry];
+
+        try {
+          localStorage.setItem(STORAGE_BOARDS_KEY, JSON.stringify(updatedBoards));
+        } catch {}
+
+        set({ boards: updatedBoards });
+        get().switchBoard(newId);
+        return newId;
+      },
+
+      deleteBoard: (boardIdToDelete: string) => {
+        const state = get();
+        if (state.boards.length <= 1) return;
+
+        const remaining = state.boards.filter((b) => b.id !== boardIdToDelete);
+        try {
+          localStorage.setItem(STORAGE_BOARDS_KEY, JSON.stringify(remaining));
+          localStorage.removeItem(getBoardStorageKey(boardIdToDelete));
+        } catch {}
+
+        set({ boards: remaining });
+
+        if (state.activeBoardId === boardIdToDelete) {
+          get().switchBoard(remaining[0].id);
+        }
+      },
+
+      renameBoard: (idToRename: string, newName: string) => {
+        const trimmed = newName.trim();
+        if (!trimmed) return;
+        const state = get();
+        const updatedBoards = state.boards.map((b) =>
+          b.id === idToRename ? { ...b, name: trimmed } : b
+        );
+
+        try {
+          localStorage.setItem(STORAGE_BOARDS_KEY, JSON.stringify(updatedBoards));
+          if (idToRename === state.activeBoardId) {
+            localStorage.setItem("foqz_board_name", trimmed);
+          }
+        } catch {}
+
+        set({ boards: updatedBoards });
+      },
+
+      resetBoard: () => {
+        const state = get();
+        const key = getBoardStorageKey(state.activeBoardId);
+        try {
+          localStorage.removeItem(key);
+        } catch {}
+        if (state.activeBoardId === "board-default" && typeof window !== "undefined" && window.focusStore?.clearBoardFile) {
           try {
             window.focusStore.clearBoardFile();
           } catch {}
@@ -1393,24 +1646,26 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         set({
           nodes: [],
           edges: [],
+          annotations: {},
+          activeAnnotationId: null,
           selectedNodeId: null,
           activeFocusNodeId: null,
           isTimerRunning: false,
         });
+        try {
+          useFlowCanvasStore.temporal.getState().clear();
+        } catch {}
       },
 
       loadSnapshot: () => {
         try {
-          const raw = localStorage.getItem(FLOW_STORAGE_KEY);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed.nodes)) {
-              set({ nodes: parsed.nodes });
-            }
-            if (Array.isArray(parsed.edges)) {
-              set({ edges: parsed.edges });
-            }
-          }
+          const state = get();
+          const snapshot = loadBoardSnapshotFromStorage(state.activeBoardId);
+          set({
+            nodes: snapshot.nodes,
+            edges: snapshot.edges,
+            annotations: snapshot.annotations,
+          });
         } catch (err) {
           console.warn("Failed to load Flow snapshot:", err);
         }
@@ -1481,21 +1736,190 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         });
         return true;
       },
+
+      addAnnotation: (params) => {
+        const id = `ann-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const now = Date.now();
+        const newAnnotation: Annotation = {
+          id,
+          anchor: params.anchor,
+          kind: params.kind || 'comment',
+          status: 'open',
+          aiVisible: params.aiVisible !== false,
+          createdAt: now,
+          updatedAt: now,
+          messages: [
+            {
+              id: messageId,
+              author: params.author || 'user',
+              body: params.body,
+              createdAt: now,
+            },
+          ],
+        };
+
+        set((state) => ({
+          annotations: {
+            ...state.annotations,
+            [id]: newAnnotation,
+          },
+          activeAnnotationId: id,
+        }));
+
+        return id;
+      },
+
+      replyAnnotation: (params) => {
+        const state = get();
+        const target = state.annotations[params.annotationId];
+        if (!target) return false;
+
+        const now = Date.now();
+        const newMsg = {
+          id: `msg-${now}-${Math.random().toString(36).slice(2, 6)}`,
+          author: params.author || 'user',
+          body: params.body,
+          createdAt: now,
+        };
+
+        set({
+          annotations: {
+            ...state.annotations,
+            [params.annotationId]: {
+              ...target,
+              updatedAt: now,
+              messages: [...target.messages, newMsg],
+            },
+          },
+        });
+        return true;
+      },
+
+      editAnnotationMessage: (params) => {
+        const state = get();
+        const target = state.annotations[params.annotationId];
+        if (!target) return false;
+
+        const updatedMessages = target.messages.map((m) => {
+          if (m.id !== params.messageId) return m;
+          return {
+            ...m,
+            body: params.body,
+            editedAt: Date.now(),
+          };
+        });
+
+        set({
+          annotations: {
+            ...state.annotations,
+            [params.annotationId]: {
+              ...target,
+              updatedAt: Date.now(),
+              messages: updatedMessages,
+            },
+          },
+        });
+        return true;
+      },
+
+      setAnnotationStatus: (annotationId, status) => {
+        set((state) => {
+          const target = state.annotations[annotationId];
+          if (!target) return {};
+          return {
+            annotations: {
+              ...state.annotations,
+              [annotationId]: {
+                ...target,
+                status,
+                updatedAt: Date.now(),
+              },
+            },
+          };
+        });
+      },
+
+      setAnnotationKind: (annotationId, kind) => {
+        set((state) => {
+          const target = state.annotations[annotationId];
+          if (!target) return {};
+          return {
+            annotations: {
+              ...state.annotations,
+              [annotationId]: {
+                ...target,
+                kind,
+                updatedAt: Date.now(),
+              },
+            },
+          };
+        });
+      },
+
+      toggleAnnotationAiVisible: (annotationId) => {
+        set((state) => {
+          const target = state.annotations[annotationId];
+          if (!target) return {};
+          return {
+            annotations: {
+              ...state.annotations,
+              [annotationId]: {
+                ...target,
+                aiVisible: !target.aiVisible,
+                updatedAt: Date.now(),
+              },
+            },
+          };
+        });
+      },
+
+      deleteAnnotation: (annotationId) => {
+        set((state) => {
+          const next = { ...state.annotations };
+          delete next[annotationId];
+          return {
+            annotations: next,
+            activeAnnotationId:
+              state.activeAnnotationId === annotationId ? null : state.activeAnnotationId,
+          };
+        });
+      },
+
+      moveAnnotationAnchor: (annotationId, anchor) => {
+        set((state) => {
+          const target = state.annotations[annotationId];
+          if (!target) return {};
+          return {
+            annotations: {
+              ...state.annotations,
+              [annotationId]: {
+                ...target,
+                anchor,
+                updatedAt: Date.now(),
+              },
+            },
+          };
+        });
+      },
     }),
     {
       partialize: (state) => ({
         nodes: state.nodes,
         edges: state.edges,
+        annotations: state.annotations,
       }),
       equality: (pastState, currentState) =>
-        pastState.nodes === currentState.nodes && pastState.edges === currentState.edges,
+        pastState.nodes === currentState.nodes &&
+        pastState.edges === currentState.edges &&
+        pastState.annotations === currentState.annotations,
       limit: 100,
     }
   )
 );
 
 export function useTemporalFlowStore<T>(
-  selector: (state: TemporalState<Pick<FlowCanvasState, "nodes" | "edges">>) => T,
+  selector: (state: TemporalState<Pick<FlowCanvasState, "nodes" | "edges" | "annotations">>) => T,
   equality?: (a: T, b: T) => boolean
 ): T {
   return useStoreWithEqualityFn(

@@ -15,6 +15,7 @@ import {
   Undo2,
   Target,
   Check,
+  MessageSquare,
 } from 'lucide-react'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
 import { extractChecklistStats } from '@/lib/markdown'
@@ -95,6 +96,9 @@ export function ActiveNodeControlStrip({
   const sendTaskToRunway = useFlowCanvasStore((s) => s.sendTaskToRunway)
   const createTask = useFlowCanvasStore((s) => s.createTask)
   const createProject = useFlowCanvasStore((s) => s.createProject)
+  const annotations = useFlowCanvasStore((s) => s.annotations)
+  const addAnnotation = useFlowCanvasStore((s) => s.addAnnotation)
+  const setActiveAnnotationId = useFlowCanvasStore((s) => s.setActiveAnnotationId)
 
   const isTask = node?.type === 'focusTask'
   const isRunway =
@@ -355,20 +359,38 @@ export function ActiveNodeControlStrip({
 
         {/* Right: Runway Stage / Return action & Focus sprint controller */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Paper Theme Picker */}
-          <div className="hidden sm:flex items-center gap-1 pr-1.5 border-r border-black/[0.08] dark:border-white/[0.08]">
-            {Object.entries(PAPER_COLORS).map(([pKey, pVal]) => (
+          {/* Annotate Button with Count Badge */}
+          {(() => {
+            const nodeAnnotations = Object.values(annotations || {}).filter(
+              (a) => a.anchor.nodeId === node.id && a.status === 'open'
+            )
+            return (
               <button
-                key={pKey}
                 type="button"
-                onClick={() => handleSetPaper(pKey)}
-                title={pVal.title}
-                className={`size-3.5 rounded-full border shadow-2xs transition-transform cursor-pointer ${
-                  pVal.dot
-                } ${paper === pKey ? 'ring-1.5 ring-blue-500 scale-110' : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
-              />
-            ))}
-          </div>
+                onClick={() => {
+                  const annId = addAnnotation({
+                    anchor: {
+                      nodeId: node.id,
+                      rel: { x: 0.85, y: 0.15 },
+                    },
+                    body: `Annotation on ${taskData.title || 'Task'}`,
+                    kind: 'comment',
+                  })
+                  setActiveAnnotationId(annId)
+                }}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border border-black/10 dark:border-white/10 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-700 dark:text-amber-400 transition-colors cursor-pointer"
+                title="Annotate this task card"
+              >
+                <MessageSquare className="size-2.5" />
+                <span>Annotate</span>
+                {nodeAnnotations.length > 0 && (
+                  <span className="px-1 py-0.2 rounded-full text-[9px] font-bold bg-amber-500 text-white leading-none">
+                    {nodeAnnotations.length}
+                  </span>
+                )}
+              </button>
+            )
+          })()}
 
           {isTaskInsideRunway ? (
             node.data?.originProjectId && (
@@ -601,21 +623,55 @@ export function ActiveNodeControlStrip({
           </div>
         </div>
 
-        {/* Right: Fast +Task in Frame button */}
-        <button
-          type="button"
-          onClick={() => {
-            createTask({
-              title: 'New Milestone Task',
-              parentId: node.id,
-              priority: 3,
-            })
-          }}
-          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-white transition-colors shadow-2xs cursor-pointer"
-        >
-          <Plus className="size-2.5" />
-          <span>Add Task</span>
-        </button>
+        {/* Right: Annotate & Fast +Task in Frame button */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {(() => {
+            const projectAnnotations = Object.values(annotations || {}).filter(
+              (a) => a.anchor.nodeId === node.id && a.status === 'open'
+            )
+            return (
+              <button
+                type="button"
+                onClick={() => {
+                  const annId = addAnnotation({
+                    anchor: {
+                      nodeId: node.id,
+                      rel: { x: 0.9, y: 0.1 },
+                    },
+                    body: `Annotation on ${title || 'Project'}`,
+                    kind: 'comment',
+                  })
+                  setActiveAnnotationId(annId)
+                }}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border border-black/10 dark:border-white/10 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-700 dark:text-amber-400 transition-colors cursor-pointer"
+                title="Annotate this project milestone"
+              >
+                <MessageSquare className="size-2.5" />
+                <span>Annotate</span>
+                {projectAnnotations.length > 0 && (
+                  <span className="px-1 py-0.2 rounded-full text-[9px] font-bold bg-amber-500 text-white leading-none">
+                    {projectAnnotations.length}
+                  </span>
+                )}
+              </button>
+            )
+          })()}
+
+          <button
+            type="button"
+            onClick={() => {
+              createTask({
+                title: 'New Milestone Task',
+                parentId: node.id,
+                priority: 3,
+              })
+            }}
+            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-white transition-colors shadow-2xs cursor-pointer"
+          >
+            <Plus className="size-2.5" />
+            <span>Add Task</span>
+          </button>
+        </div>
       </div>
     )
   }
