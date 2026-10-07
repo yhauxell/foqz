@@ -439,6 +439,56 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     // 10. Capture screenshot of rendered multi-line markdown
     await page.screenshot({ path: 'test-results/text-multiline-markdown-rendered.png' });
   });
+
+  test('verifies markdown is parsed after clicking outside on canvas for text and rectangle nodes', async ({ page }) => {
+    const canvas = page.locator('.react-flow__pane');
+
+    // 1. Create text node using Text Tool
+    const textToolBtn = page.locator("button[title*='Text Note Tool']");
+    await expect(textToolBtn).toBeVisible();
+    await textToolBtn.click();
+    await canvas.click({ position: { x: 750, y: 300 } });
+
+    // 2. Locate active textarea and type raw markdown with bold, italic, and highlight
+    const textTextarea = page.getByPlaceholder('Type something in markdown...');
+    await expect(textTextarea).toBeVisible();
+    await textTextarea.fill('**Bold Text** and *Italic Note* and ==highlighted item==');
+
+    // 3. Click outside on the empty canvas pane
+    await canvas.click({ position: { x: 100, y: 100 } });
+
+    // 4. Verify text node exited editing mode and parsed markdown elements are rendered
+    await expect(textTextarea).not.toBeVisible();
+    const textNode = page.locator('.react-flow__node-text').filter({ hasText: 'Bold Text' });
+    await expect(textNode.locator('.task-markdown-body strong')).toHaveText('Bold Text');
+    await expect(textNode.locator('.task-markdown-body em')).toHaveText('Italic Note');
+    await expect(textNode.locator('.task-markdown-body mark')).toHaveText('highlighted item');
+
+    // 5. Select Box (Rectangle) tool via 'r' shortcut and place on canvas
+    await page.keyboard.press('r');
+    await canvas.click({ position: { x: 650, y: 450 } });
+
+    const boxNode = page.locator('.react-flow__node-box').last();
+    await expect(boxNode).toBeVisible();
+
+    // 6. Double click rectangle to edit text and enter markdown
+    await boxNode.dblclick({ position: { x: 40, y: 30 } });
+    const boxTextarea = boxNode.locator('textarea');
+    await expect(boxTextarea).toBeVisible();
+    await boxTextarea.fill('**Core Service** [Docs](https://foqz.io)');
+
+    // 7. Click outside on canvas pane
+    await canvas.click({ position: { x: 100, y: 100 } });
+
+    // 8. Verify box node exited editing and parsed markdown
+    await expect(boxTextarea).not.toBeVisible();
+    await expect(boxNode.locator('.task-markdown-body strong')).toHaveText('Core Service');
+    await expect(boxNode.locator('.task-markdown-body a')).toHaveText('Docs');
+
+    // 9. Visual screenshot verification
+    await page.screenshot({ path: 'test-results/markdown-outside-click-parsed.png' });
+  });
 });
+
 
 

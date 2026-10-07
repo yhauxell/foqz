@@ -1,4 +1,4 @@
-import React, { memo, useState, useRef, useEffect } from "react";
+import React, { memo, useState, useRef, useEffect, useCallback } from "react";
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from "@xyflow/react";
 import {
   Note,
@@ -44,6 +44,17 @@ export const NoteNode = memo(function NoteNode({
   const [titleDraft, setTitleDraft] = useState(data.title || "Note");
   const [textDraft, setTextDraft] = useState(data.text || "");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const titleRef = useRef(titleDraft);
+  const textRef = useRef(textDraft);
+
+  useEffect(() => {
+    titleRef.current = titleDraft;
+  }, [titleDraft]);
+
+  useEffect(() => {
+    textRef.current = textDraft;
+  }, [textDraft]);
 
   useEffect(() => {
     setTitleDraft(data.title ?? "Note");
@@ -64,22 +75,56 @@ export const NoteNode = memo(function NoteNode({
     }
   }, [isEditing]);
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     setIsEditing(false);
-    if (!textDraft.trim() && !titleDraft.trim() && data.isNew) {
+    const curText = textRef.current;
+    const curTitle = titleRef.current;
+    if (!curText.trim() && !curTitle.trim() && data.isNew) {
       useFlowCanvasStore.getState().deleteNode(id);
       return;
     }
     useFlowCanvasStore.getState().updateNodeData(id, {
-      title: titleDraft.trim() || "Note",
-      text: textDraft,
+      title: curTitle.trim() || "Note",
+      text: curText,
       isNew: false,
       autoEdit: false,
     });
-  };
+  }, [id, data.isNew]);
+
+  // Automatically save and parse when node is deselected while editing
+  useEffect(() => {
+    if (!selected && isEditing) {
+      handleSave();
+    }
+  }, [selected, isEditing, handleSave]);
+
+  // Capture global outside pointerdown to commit editing
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const handleOutsidePointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (containerRef.current?.contains(target)) return;
+      if (
+        target.closest?.(".glass-panel") ||
+        target.closest?.("[data-node-toolbar]") ||
+        target.closest?.(".react-flow__node-toolbar")
+      ) {
+        return;
+      }
+      handleSave();
+    };
+
+    window.addEventListener("pointerdown", handleOutsidePointerDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", handleOutsidePointerDown, true);
+    };
+  }, [isEditing, handleSave]);
 
   return (
     <div
+      ref={containerRef}
       className={`relative w-full h-full select-none ${
         selected ? "ring-2 ring-blue-500/80 rounded-xl" : ""
       }`}

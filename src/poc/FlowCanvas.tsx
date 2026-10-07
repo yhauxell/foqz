@@ -1555,6 +1555,9 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   // Canvas Click Handler (Click-to-place for Task, Text, and Note)
   const handlePaneClick = useCallback(
     (event: React.MouseEvent) => {
+      if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
 
       if (activeTool === "task") {
