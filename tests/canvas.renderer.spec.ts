@@ -209,6 +209,20 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
 
     // 6. Capture visual screenshot of curved arrow with controls
     await page.screenshot({ path: 'test-results/canvas-arrow-component.png' });
+
+    // 7. Verify arrow can be deselected by clicking pane
+    await canvas.click({ position: { x: 100, y: 100 } });
+    await expect(spearEndBtn).not.toBeVisible();
+
+    // 8. Verify arrow can be selected again by clicking anywhere on the arrow component
+    await arrowNode.click({ position: { x: 30, y: 30 } });
+    await expect(spearEndBtn).toBeVisible();
+
+    // 9. Verify arrow component can be deleted via trash button in floating menu
+    const deleteBtn = page.locator("button[title='Delete (Del/Backspace)']");
+    await expect(deleteBtn).toBeVisible();
+    await deleteBtn.click();
+    await expect(arrowNode).not.toBeVisible();
   });
 
   test('verifies local AI engine auto-discovery HUD in Settings', async ({ page }) => {
@@ -229,7 +243,14 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await expect(dialog.getByText('LM Studio', { exact: true })).toBeVisible();
     await expect(dialog.getByText('llama.cpp', { exact: true })).toBeVisible();
 
-    // 4. Capture screenshot of local AI engine auto-discovery
+    // 4. Verify GitHub Integration PAT card
+    const githubHeading = dialog.getByText('GitHub Integration', { exact: true });
+    await expect(githubHeading).toBeVisible();
+    await githubHeading.scrollIntoViewIfNeeded();
+    await expect(dialog.getByPlaceholder(/ghp_... or github_pat_.../)).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Test GitHub Token' })).toBeVisible();
+
+    // 5. Capture screenshot of local AI engine auto-discovery & GitHub PAT setting
     await page.screenshot({ path: 'test-results/local-ai-discovery-settings.png' });
   });
 });

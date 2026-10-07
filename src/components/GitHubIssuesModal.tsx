@@ -15,6 +15,7 @@ import {
 import {
   listRepositoryIssues,
   mapLabelsToPriority,
+  getGithubToken,
   type GitHubIssue,
 } from '../lib/githubSync'
 import { normalizeGithubRepoInput } from '../lib/githubAgentSync'
@@ -42,6 +43,9 @@ export function GitHubIssuesModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [selectedIssueNumbers, setSelectedIssueNumbers] = useState<Set<number>>(new Set())
   const [importedStatus, setImportedStatus] = useState<Record<number, boolean>>({})
+  const [showTokenPrompt, setShowTokenPrompt] = useState(false)
+  const [quickToken, setQuickToken] = useState('')
+  const [tokenSaved, setTokenSaved] = useState(false)
 
   const nodes = useFlowCanvasStore((s) => s.nodes)
   const projectNode = useMemo(
@@ -312,11 +316,60 @@ export function GitHubIssuesModal({
           </div>
         </div>
 
-        {/* Error Alert */}
+        {/* Error Alert with Quick PAT Configuration */}
         {errorMsg && (
-          <div className="mx-6 mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
-            <AlertCircle className="size-4 shrink-0" />
-            <span>{errorMsg}</span>
+          <div className="mx-6 mt-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex flex-col gap-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="size-4 shrink-0" />
+                <span className="font-medium">{errorMsg}</span>
+              </div>
+              {!showTokenPrompt && (
+                <button
+                  type="button"
+                  onClick={() => setShowTokenPrompt(true)}
+                  className="text-[11px] underline font-semibold text-purple-600 dark:text-purple-400 hover:opacity-80 shrink-0 cursor-pointer"
+                >
+                  Configure PAT →
+                </button>
+              )}
+            </div>
+
+            {showTokenPrompt && (
+              <div className="pt-2 border-t border-rose-500/20 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <input
+                  type="password"
+                  placeholder="Paste GitHub Personal Access Token (ghp_...)"
+                  value={quickToken}
+                  onChange={(e) => setQuickToken(e.target.value)}
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-rose-300 dark:border-rose-900 bg-white dark:bg-zinc-900 text-xs font-mono text-zinc-900 dark:text-zinc-100 outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const token = quickToken.trim()
+                    if (token) {
+                      localStorage.setItem('foqz_github_token', token)
+                      setTokenSaved(true)
+                      setErrorMsg(null)
+                      setShowTokenPrompt(false)
+                      fetchIssues()
+                    }
+                  }}
+                  disabled={!quickToken.trim()}
+                  className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-medium cursor-pointer shrink-0 transition-colors"
+                >
+                  Save & Retry
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tokenSaved && !errorMsg && (
+          <div className="mx-6 mt-3 p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2">
+            <Check className="size-3.5" />
+            <span>GitHub Personal Access Token saved!</span>
           </div>
         )}
 

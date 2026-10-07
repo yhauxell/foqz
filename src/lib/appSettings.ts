@@ -49,6 +49,7 @@ export type AppSettings = {
   geminiEnabled?: boolean;
   geminiApiKey?: string;
   geminiDefaultModel?: string;
+  githubToken?: string;
   activeAiProvider?: "ollama" | "openai" | "gemini";
   agentProfiles?: AgentProfile[];
   customSkills?: CustomSkill[];
@@ -83,6 +84,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   geminiEnabled: false,
   geminiApiKey: "",
   geminiDefaultModel: "gemini-1.5-flash",
+  githubToken: "",
   agentProfiles: BUILTIN_AGENT_PROFILES,
   customSkills: BUILTIN_CUSTOM_SKILLS,
   activeAgentProfileId: "default-copilot",
@@ -252,6 +254,10 @@ export function mergeAppSettings(
       typeof parsed.geminiDefaultModel === "string"
         ? parsed.geminiDefaultModel.trim()
         : base.geminiDefaultModel,
+    githubToken:
+      typeof parsed.githubToken === "string"
+        ? parsed.githubToken.trim()
+        : base.githubToken,
     activeAiProvider:
       parsed.activeAiProvider === "openai" ||
       parsed.activeAiProvider === "gemini" ||

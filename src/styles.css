@@ -1734,14 +1734,20 @@ html.dark .canvas {
 .react-flow__node-box,
 .react-flow__node-circle,
 .react-flow__node-text,
-.react-flow__node-pencil {
+.react-flow__node-pencil,
+.react-flow__node-note,
+.react-flow__node-linkCard,
+.react-flow__node-arrow {
   z-index: 10;
 }
 .react-flow__node-focusTask.selected,
 .react-flow__node-box.selected,
 .react-flow__node-circle.selected,
 .react-flow__node-text.selected,
-.react-flow__node-pencil.selected {
+.react-flow__node-pencil.selected,
+.react-flow__node-note.selected,
+.react-flow__node-linkCard.selected,
+.react-flow__node-arrow.selected {
   z-index: 20;
 }
 

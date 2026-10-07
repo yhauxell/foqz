@@ -1,5 +1,5 @@
 import React, { memo, useState, useRef, useEffect, useCallback } from "react";
-import { type NodeProps, type Node } from "@xyflow/react";
+import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
@@ -181,9 +181,11 @@ export const ArrowNode = memo(function ArrowNode({
     [id]
   );
 
+  const pathD = `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`;
+
   return (
     <div
-      className={`relative w-full h-full select-none ${
+      className={`relative w-full h-full select-none cursor-pointer ${
         selected ? "ring-1 ring-indigo-500/50 rounded-lg" : ""
       }`}
       style={{
@@ -193,12 +195,45 @@ export const ArrowNode = memo(function ArrowNode({
         contain: "none",
       }}
     >
+      {/* React Flow Source & Target connection handles */}
+      <Handle
+        type="target"
+        id="start"
+        position={Position.Left}
+        style={{ left: startX, top: startY }}
+        className="!w-2.5 !h-2.5 !bg-indigo-400 !border !border-white opacity-0 hover:opacity-100 transition-opacity cursor-crosshair"
+      />
+      <Handle
+        type="source"
+        id="end"
+        position={Position.Right}
+        style={{ left: endX, top: endY }}
+        className="!w-2.5 !h-2.5 !bg-indigo-400 !border !border-white opacity-0 hover:opacity-100 transition-opacity cursor-crosshair"
+      />
+
+      {/* Rendered Rough.js sketch SVG */}
       <svg
         ref={svgRef}
         width={w}
         height={h}
         className="w-full h-full overflow-visible pointer-events-none"
       />
+
+      {/* Transparent thick stroke for easy hit-testing / clicking anywhere along the curved shaft */}
+      <svg
+        width={w}
+        height={h}
+        className="absolute inset-0 w-full h-full overflow-visible pointer-events-stroke"
+      >
+        <path
+          d={pathD}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={Math.max(24, strokeWidth * 6)}
+          strokeLinecap="round"
+          className="cursor-pointer"
+        />
+      </svg>
 
       {/* Anchor Handles for Interactivity when Node is Selected */}
       {selected && (
