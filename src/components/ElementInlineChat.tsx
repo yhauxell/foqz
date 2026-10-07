@@ -944,6 +944,21 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
         window.dispatchEvent(
           new CustomEvent('foqz:flow-center-on', { detail: { id: imgId } })
         )
+      } else if (action.type === 'image' && action.src) {
+        const imgId = store.createImage({
+          src: action.src,
+          alt: action.alt || action.title || 'AI Image',
+          parentId,
+          position: isParentActive && node
+            ? {
+                x: Math.round(node.position.x + 320),
+                y: Math.round(node.position.y),
+              }
+            : undefined,
+        })
+        window.dispatchEvent(
+          new CustomEvent('foqz:flow-center-on', { detail: { id: imgId } })
+        )
       }
     },
     [isCanvasScope, containingProject, node]
@@ -1022,6 +1037,11 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
       text = 'Stop the active focus session and unlock canvas using stop_focus_session.'
     } else if (text === '/criteria' || text.startsWith('/criteria ')) {
       text = `Use update_node(nodeId: "${node?.id}", appendNotes: "...") to directly append 3 concrete acceptance criteria checkpoints ("- [ ] ...") to this task's notes.`
+    } else if (text === '/image' || text.startsWith('/image ')) {
+      const imgPrompt = text.replace(/^\/image\s*/, '').trim()
+      text = imgPrompt
+        ? `Generate an image and place it on the canvas using generate_image: ${imgPrompt}`
+        : 'Generate a creative image mockup or visual asset using generate_image.'
     } else if (text === '/image' || text.startsWith('/image ')) {
       const imgPrompt = text.replace(/^\/image\s*/, '').trim()
       text = imgPrompt
@@ -1312,6 +1332,14 @@ Do NOT just passively describe what could be done — when the user asks to modi
   const slashCommands = useMemo(() => {
     if (isCanvasScope) {
       return [
+        {
+          cmd: '/image',
+          label: '/image <prompt>',
+          desc: 'Generate an AI visual and place on canvas',
+          icon: <ImageIcon className="size-3 text-pink-500" />,
+          prompt: '/image ',
+          autoExecute: false,
+        },
         {
           cmd: '/image',
           label: '/image <prompt>',

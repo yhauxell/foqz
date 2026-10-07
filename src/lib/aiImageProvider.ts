@@ -94,7 +94,7 @@ export async function generateAiImage(options: GenerateImageOptions): Promise<Ge
     }
   }
 
-  // Pollinations AI (Zero config, free, highly resilient fallback)
+  // Pollinations AI (Zero config, free, offline-resilient fallback)
   const encodedPrompt = encodeURIComponent(prompt.trim());
   const seed = Math.floor(Math.random() * 1000000);
   const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${dims.width}&height=${dims.height}&seed=${seed}&nologo=true`;

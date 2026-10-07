@@ -198,6 +198,31 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
   },
   {
     serverName: 'foqz',
+    name: 'generate_image',
+    description: 'Generates an AI image (visual mockup, app logo, illustration, or design asset) and automatically places it on the canvas as an interactive image node.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'Detailed prompt describing the visual to generate.',
+        },
+        aspectRatio: {
+          type: 'string',
+          enum: ['1:1', '16:9', '9:16', '4:3', '3:2'],
+          default: '1:1',
+          description: 'Desired aspect ratio of the image (default: 1:1)',
+        },
+        title: {
+          type: 'string',
+          description: 'Optional label or alt title for the generated image.',
+        },
+      },
+      required: ['prompt'],
+    },
+  },
+  {
+    serverName: 'foqz',
     name: 'spawn_notes',
     description:
       'Spawn one or more tactile paper sticky notes directly on the spatial canvas board.',
@@ -619,6 +644,7 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
           ],
         }
       }
+
 
       case 'spawn_notes': {
         const liveStore = useFlowCanvasStore.getState()

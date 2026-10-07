@@ -69,7 +69,7 @@ export function isValidShape(item: any): item is SpawnableShape {
  */
 export function normalizeShapeItem(item: any): SpawnableShape | null {
   if (!item || typeof item !== 'object') return null
-  if (item.type === 'task' || item.type === 'note' || item.type === 'timer' || item.type === 'project') {
+  if (item.type === 'task' || item.type === 'note' || item.type === 'timer' || item.type === 'project' || item.type === 'image') {
     return item as SpawnableShape
   }
   // If item has title or text or task or name, infer type task
