@@ -1,8 +1,10 @@
 {
+  "include-component-in-tag": false,
   "packages": {
     ".": {
       "release-type": "node",
       "package-name": "foqz",
+      "include-component-in-tag": false,
       "include-v-in-tag": true
     }
   }
