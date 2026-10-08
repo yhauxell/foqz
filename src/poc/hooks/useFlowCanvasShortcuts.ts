@@ -68,7 +68,7 @@ export function useFlowCanvasShortcuts({
 
 
   // Creation & Context Actions
-  useHotkeys(["a", "A"], () => onCreateTask(), { preventDefault: true, enabled });
+  useHotkeys(["a", "A", "meta+n", "ctrl+n", "alt+n"], () => onCreateTask(), { preventDefault: true, enabled });
   useHotkeys(
     ["meta+shift+p", "ctrl+shift+p", "alt+p", "alt+meta+n", "alt+ctrl+n"],
     () => onCreateProject(),

@@ -321,12 +321,23 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     const textToolBtn = page.locator("button[title*='Text Note Tool (T)']");
     await expect(textToolBtn).toHaveClass(/bg-amber-600/);
 
-    // 4. Verify A creates a new Task Card
+    // 4. Verify A creates EXACTLY one new Task Card (no duplicate task creation)
     const initialTaskCount = await page.locator('.react-flow__node-focusTask').count();
     await page.keyboard.press('a');
     await page.waitForTimeout(300);
     const newTaskCount = await page.locator('.react-flow__node-focusTask').count();
-    expect(newTaskCount).toBeGreaterThan(initialTaskCount);
+    expect(newTaskCount).toBe(initialTaskCount + 1);
+
+    // Verify task has enough vertical space so action items section is visible on creation
+    const createdTask = page.locator('.react-flow__node-focusTask').last();
+    await expect(createdTask).toBeVisible();
+    const actionItemsHeader = createdTask.getByText(/WHAT THIS TASK IS ABOUT • DEFINITION OF DONE/i);
+    await expect(actionItemsHeader).toBeVisible();
+    const actionItemsPrompt = createdTask.getByText(/Define what done looks like/i);
+    await expect(actionItemsPrompt).toBeVisible();
+
+    const boundingBox = await createdTask.boundingBox();
+    expect(boundingBox?.height).toBeGreaterThanOrEqual(140);
 
     await page.screenshot({ path: 'test-results/shortcuts-verified.png' });
   });

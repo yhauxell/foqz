@@ -317,15 +317,6 @@ function FocusCanvasAppInner() {
         return;
       }
 
-      // Create New Task (Cmd+N / Ctrl+N, Cmd+T / Ctrl+T, Alt+T, Alt+N)
-      if (
-        (mod && !e.shiftKey && !e.altKey && (e.key.toLowerCase() === "n" || e.key.toLowerCase() === "t")) ||
-        (e.altKey && !mod && !e.shiftKey && (e.key.toLowerCase() === "n" || e.key.toLowerCase() === "t"))
-      ) {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent("foqz:new-task"));
-        return;
-      }
 
       // Open Space-Aware Assistant (Cmd+J or Cmd+/)
       if (
