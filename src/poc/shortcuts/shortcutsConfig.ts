@@ -36,8 +36,8 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
   {
     id: "tool-text",
     name: "Text Note",
-    keys: ["3"],
-    keyDisplay: "3",
+    keys: ["t", "T", "3"],
+    keyDisplay: "T",
     category: "Tools",
     description: "Click to place a text note on canvas",
   },
@@ -52,8 +52,8 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
   {
     id: "tool-arrow",
     name: "Semantic Arrow / Connector",
-    keys: ["a", "4"],
-    keyDisplay: "A",
+    keys: ["4"],
+    keyDisplay: "4",
     category: "Tools",
     description: "Drag to connect elements with semantic relationship (blocks / depends / relates)",
   },
@@ -102,8 +102,8 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
   {
     id: "create-task",
     name: "New Task Card",
-    keys: ["t"],
-    keyDisplay: "T",
+    keys: ["a", "A"],
+    keyDisplay: "A",
     category: "Create",
     description: "Spawn a new resizable task card",
   },

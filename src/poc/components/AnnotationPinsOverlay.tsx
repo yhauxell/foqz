@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { useReactFlow, type Node } from '@xyflow/react';
 import {
   MessageSquare,
@@ -49,10 +49,134 @@ export function AnnotationPinsOverlay({
   visible = true,
   onSelectAnnotation,
 }: AnnotationPinsOverlayProps) {
-  const { flowToScreenPosition } = useReactFlow();
+  const { flowToScreenPosition, screenToFlowPosition } = useReactFlow();
   const nodes = useFlowCanvasStore((s) => s.nodes);
   const annotations = useFlowCanvasStore((s) => s.annotations);
   const activeAnnotationId = useFlowCanvasStore((s) => s.activeAnnotationId);
+
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [, setRerender] = useState(0);
+
+  useEffect(() => {
+    // Ensure container rect is measured after mount and on window resize
+    setRerender((r) => r + 1);
+    const handleResize = () => setRerender((r) => r + 1);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const overlayRect = overlayRef.current?.getBoundingClientRect();
+
+  // Drag pin state
+  const [dragPinState, setDragPinState] = useState<{
+    id: string;
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+    isDragging: boolean;
+  } | null>(null);
+
+  const dragPinRef = useRef(dragPinState);
+  dragPinRef.current = dragPinState;
+
+  useEffect(() => {
+    if (!dragPinState) return;
+
+    const handlePointerMove = (e: PointerEvent) => {
+      const cur = dragPinRef.current;
+      if (!cur) return;
+      const dist = Math.hypot(e.clientX - cur.startX, e.clientY - cur.startY);
+      const isDragging = cur.isDragging || dist > 4;
+      setDragPinState((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentX: e.clientX,
+              currentY: e.clientY,
+              isDragging,
+            }
+          : null
+      );
+    };
+
+    const handlePointerUp = (e: PointerEvent) => {
+      const cur = dragPinRef.current;
+      if (!cur) return;
+
+      if (cur.isDragging) {
+        const flowPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+        const currentNodes = useFlowCanvasStore.getState().nodes;
+
+        // Resolve absolute position of candidate nodes, preferring inner cards over container frames
+        const candidateNodes = [...currentNodes].sort((a, b) => {
+          const isFrameA = a.type === 'projectFrame' || a.type === 'runwayFrame';
+          const isFrameB = b.type === 'projectFrame' || b.type === 'runwayFrame';
+          if (isFrameA && !isFrameB) return 1;
+          if (!isFrameA && isFrameB) return -1;
+          return 0;
+        });
+
+        let targetNode: Node | null = null;
+        let targetAbsX = 0;
+        let targetAbsY = 0;
+        let targetWidth = 0;
+        let targetHeight = 0;
+
+        for (const n of candidateNodes) {
+          let absX = n.position.x;
+          let absY = n.position.y;
+          if (n.parentId) {
+            const parent = currentNodes.find((p) => p.id === n.parentId);
+            if (parent) {
+              absX += parent.position.x;
+              absY += parent.position.y;
+            }
+          }
+          const width = Number(n.style?.width ?? n.width ?? 280);
+          const height = Number(n.style?.height ?? n.height ?? 82);
+
+          if (
+            flowPos.x >= absX &&
+            flowPos.x <= absX + width &&
+            flowPos.y >= absY &&
+            flowPos.y <= absY + height
+          ) {
+            targetNode = n;
+            targetAbsX = absX;
+            targetAbsY = absY;
+            targetWidth = width;
+            targetHeight = height;
+            break;
+          }
+        }
+
+        if (targetNode) {
+          const relX = Math.max(0, Math.min(1, (flowPos.x - targetAbsX) / (targetWidth || 1)));
+          const relY = Math.max(0, Math.min(1, (flowPos.y - targetAbsY) / (targetHeight || 1)));
+          useFlowCanvasStore.getState().moveAnnotationAnchor(cur.id, {
+            nodeId: targetNode.id,
+            rel: { x: relX, y: relY },
+          });
+        } else {
+          useFlowCanvasStore.getState().moveAnnotationAnchor(cur.id, {
+            canvas: flowPos,
+          });
+        }
+      } else {
+        onSelectAnnotation(cur.id);
+      }
+
+      setDragPinState(null);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [Boolean(dragPinState), screenToFlowPosition, onSelectAnnotation]);
 
   // Compute screen coordinates for each annotation pin
   const pins = useMemo(() => {
@@ -113,29 +237,52 @@ export function AnnotationPinsOverlay({
     return result;
   }, [visible, annotations, nodes, activeAnnotationId, flowToScreenPosition]);
 
-  if (!visible || pins.length === 0) return null;
+  if (!visible) return null;
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-35 overflow-hidden">
+    <div ref={overlayRef} className="absolute inset-0 pointer-events-none z-35 overflow-hidden">
       {pins.map(({ annotation, screenPos, isActive }) => {
         const colors = KIND_COLORS[annotation.kind] || KIND_COLORS.comment;
-        const rootMsg = annotation.messages[0];
-        const preview = rootMsg ? rootMsg.body.slice(0, 32) : 'Annotation';
         const hasAiReply = annotation.messages.some((m) => m.author === 'ai');
+        const isCurrentDrag = dragPinState?.id === annotation.id && dragPinState.isDragging;
+
+        const pinScreenX = isCurrentDrag ? dragPinState.currentX : screenPos.x;
+        const pinScreenY = isCurrentDrag ? dragPinState.currentY : screenPos.y;
+
+        const left = pinScreenX - (overlayRect?.left ?? 0);
+        const top = pinScreenY - (overlayRect?.top ?? 0);
 
         return (
           <div
             key={annotation.id}
             style={{
               position: 'absolute',
-              left: `${screenPos.x}px`,
-              top: `${screenPos.y}px`,
-              transform: 'translate(-50%, -100%)',
+              left: `${left}px`,
+              top: `${top}px`,
+              transform: isCurrentDrag
+                ? 'translate(-50%, -100%) scale(1.15)'
+                : 'translate(-50%, -100%)',
+              zIndex: isCurrentDrag ? 100 : undefined,
             }}
-            className="pointer-events-auto transition-transform hover:scale-110 duration-150 cursor-pointer"
+            className={`pointer-events-auto transition-transform ${
+              isCurrentDrag
+                ? 'cursor-grabbing select-none'
+                : 'cursor-grab active:cursor-grabbing hover:scale-110 duration-150'
+            }`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              if (e.button !== 0) return;
+              setDragPinState({
+                id: annotation.id,
+                startX: e.clientX,
+                startY: e.clientY,
+                currentX: e.clientX,
+                currentY: e.clientY,
+                isDragging: false,
+              });
+            }}
             onClick={(e) => {
               e.stopPropagation();
-              onSelectAnnotation(annotation.id);
             }}
           >
             {/* Figma-style Pin Badge */}

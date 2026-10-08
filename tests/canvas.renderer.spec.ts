@@ -226,7 +226,7 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await expect(connectionTool).toBeVisible();
 
     // 2. Verify Arrow pointer tool in dock toolbar
-    const arrowTool = page.locator("button[title*='Arrow Tool']");
+    const arrowTool = page.locator("button[title*='Arrow']");
     await expect(arrowTool).toBeVisible();
     await arrowTool.click();
 
@@ -302,7 +302,7 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await expect(dialog).not.toBeVisible();
   });
 
-  test('verifies updated shortcuts: R (rectangle), N (sticky note), T (task)', async ({ page }) => {
+  test('verifies updated shortcuts: R (rectangle), N (sticky note), A (task), T (text)', async ({ page }) => {
     const canvas = page.locator('.react-flow__pane');
     await canvas.click({ position: { x: 50, y: 50 } });
 
@@ -316,9 +316,14 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     const noteToolBtn = page.locator("button[title*='Paper Sticky Note Tool (N)']");
     await expect(noteToolBtn).toHaveClass(/bg-amber-500/);
 
-    // 3. Verify T creates a new Task Card
-    const initialTaskCount = await page.locator('.react-flow__node-focusTask').count();
+    // 3. Verify T activates Text tool
     await page.keyboard.press('t');
+    const textToolBtn = page.locator("button[title*='Text Note Tool (T)']");
+    await expect(textToolBtn).toHaveClass(/bg-amber-600/);
+
+    // 4. Verify A creates a new Task Card
+    const initialTaskCount = await page.locator('.react-flow__node-focusTask').count();
+    await page.keyboard.press('a');
     await page.waitForTimeout(300);
     const newTaskCount = await page.locator('.react-flow__node-focusTask').count();
     expect(newTaskCount).toBeGreaterThan(initialTaskCount);
