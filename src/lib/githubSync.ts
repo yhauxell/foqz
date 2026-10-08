@@ -27,10 +27,42 @@ export interface GitHubIssue {
   closed_at?: string | null
 }
 
+import { useFlowCanvasStore } from '../poc/store/flowCanvasStore'
+
 /**
-  Retrieve configured GitHub personal access token from window appSettings or MCP config if available.
+  Retrieve configured GitHub personal access token:
+  1. If an explicit token argument is provided, return it.
+  2. If a repoInput is provided, check if any projectFrame node in the canvas is configured for that repo and has a project-level token.
+  3. Fall back to global appSettings / localStorage / process.env.
  */
-export function getGithubToken(): string {
+export function getGithubToken(repoInputOrToken?: string): string {
+  // If caller explicitly passed a token (e.g. starting with ghp_ or github_pat_ or non-repo string without slash)
+  if (repoInputOrToken && !repoInputOrToken.includes('/') && !repoInputOrToken.startsWith('http')) {
+    return repoInputOrToken.trim()
+  }
+
+  // If repoInput was supplied (e.g. "owner/repo"), check project frames in canvas store for project-level token
+  if (repoInputOrToken && typeof window !== 'undefined') {
+    try {
+      const normalizedTarget = normalizeGithubRepoInput(repoInputOrToken)
+      if (normalizedTarget) {
+        const nodes = useFlowCanvasStore.getState().nodes
+        for (const node of nodes) {
+          if (node.type === 'projectFrame') {
+            const connectors = (node.data as any)?.connectors
+            if (connectors?.githubRepo) {
+              const nodeRepo = normalizeGithubRepoInput(connectors.githubRepo)
+              if (nodeRepo === normalizedTarget && connectors?.githubToken?.trim()) {
+                return connectors.githubToken.trim()
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // Global settings fallback:
   if (typeof window !== 'undefined') {
     // 1. AppSettings
     const settings = (window as any).focusSettingsCache || (window as any).focusAppSettings
@@ -77,8 +109,8 @@ export function mapLabelsToPriority(labels: (GitHubLabel | string)[]): 1 | 2 | 3
 /**
  * Returns helper API headers for fetch requests.
  */
-function getGithubHeaders(): HeadersInit {
-  const token = getGithubToken()
+function getGithubHeaders(repoInputOrToken?: string): HeadersInit {
+  const token = getGithubToken(repoInputOrToken)
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github.v3+json',
     'User-Agent': 'Foqz-Desktop-App',
@@ -150,14 +182,14 @@ export async function listRepositoryIssues(
   }
 
   const url = `https://api.github.com/repos/${repo}/issues?${params.toString()}`
-  const resp = await fetch(url, { headers: getGithubHeaders() })
+  const resp = await fetch(url, { headers: getGithubHeaders(repo) })
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => '')
     throw new Error(
       `GitHub API error (${resp.status}): ${
         resp.status === 404
-          ? 'Repository not found or private. Provide a GitHub PAT in Settings.'
+          ? 'Repository not found or private. Provide a GitHub PAT in Project Connectors or Settings.'
           : errText || resp.statusText
       }`
     )
@@ -202,7 +234,7 @@ export async function listRepositoryIssues(
 export async function getIssue(repoInput: string, issueNumber: number): Promise<GitHubIssue> {
   const repo = normalizeGithubRepoInput(repoInput)
   const resp = await fetch(`https://api.github.com/repos/${repo}/issues/${issueNumber}`, {
-    headers: getGithubHeaders(),
+    headers: getGithubHeaders(repo),
   })
   if (!resp.ok) {
     throw new Error(`Failed to fetch issue #${issueNumber} from ${repo}`)
@@ -272,17 +304,17 @@ export async function createGitHubIssue(
   }
 
   // 2. Direct REST API Call
-  const token = getGithubToken()
+  const token = getGithubToken(repo)
   if (!token) {
     throw new Error(
-      'GitHub Personal Access Token is required to create issues. Please set your token in Focus Settings or MCP configuration.'
+      'GitHub Personal Access Token is required to create issues. Please set your token in Project Connectors, Focus Settings, or MCP configuration.'
     )
   }
 
   const resp = await fetch(`https://api.github.com/repos/${repo}/issues`, {
     method: 'POST',
     headers: {
-      ...getGithubHeaders(),
+      ...getGithubHeaders(repo),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -335,10 +367,10 @@ export async function updateGitHubIssue(
     throw new Error('Please specify a valid GitHub repository.')
   }
 
-  const token = getGithubToken()
+  const token = getGithubToken(repo)
   if (!token) {
     console.warn('[githubSync] No GitHub token configured. Skipping remote update.')
-    throw new Error('GitHub token missing. Configure GitHub Personal Access Token in Settings.')
+    throw new Error('GitHub token missing. Configure GitHub Personal Access Token in Project Connectors or Settings.')
   }
 
   const payload: Record<string, any> = {}
@@ -351,7 +383,7 @@ export async function updateGitHubIssue(
   const resp = await fetch(`https://api.github.com/repos/${repo}/issues/${issueNumber}`, {
     method: 'PATCH',
     headers: {
-      ...getGithubHeaders(),
+      ...getGithubHeaders(repo),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
@@ -409,7 +441,7 @@ export async function getIssuePullRequests(
   try {
     const resp = await fetch(`https://api.github.com/repos/${repo}/issues/${issueNumber}/timeline`, {
       headers: {
-        ...getGithubHeaders(),
+        ...getGithubHeaders(repo),
         Accept: 'application/vnd.github.mockingbird-preview+json, application/vnd.github.v3+json',
       },
     })

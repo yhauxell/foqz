@@ -19,6 +19,9 @@ import {
   ChevronDown,
   ChevronUp,
   Plus,
+  Key,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   ALL_PROJECT_ACCENTS,
@@ -28,6 +31,7 @@ import {
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 import { discoverRepoAgentFiles, type RepoDiscoveryResult } from "@/lib/githubAgentSync";
 import { parseAgentMarkdown } from "@/lib/agentProfiles";
+import { getGithubToken } from "@/lib/githubSync";
 
 interface ProjectConnectorsModalProps {
   editor?: any;
@@ -196,8 +200,16 @@ async function fetchRepoReadme(repoInput: string): Promise<string> {
 
   // 3. Try GitHub REST API
   try {
+    const token = getGithubToken(normalized);
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github.raw+json",
+      "User-Agent": "Foqz-Desktop-App",
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
     const apiResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, {
-      headers: { Accept: "application/vnd.github.raw+json" },
+      headers,
     });
     if (apiResp.ok) {
       const text = await apiResp.text();
@@ -243,6 +255,8 @@ export function ProjectConnectorsModal({
   const [activeTab, setActiveTab] = useState<"connectors" | "context" | "agent">(initialTab);
   const [accentDraft, setAccentDraft] = useState<ProjectAccent>("blue");
   const [githubRepoDraft, setGithubRepoDraft] = useState("");
+  const [githubTokenDraft, setGithubTokenDraft] = useState("");
+  const [showGithubToken, setShowGithubToken] = useState(false);
   const [sentryDraft, setSentryDraft] = useState("");
   const [notionDraft, setNotionDraft] = useState("");
   const [selectedMcpServers, setSelectedMcpServers] = useState<string[]>([]);
@@ -269,6 +283,7 @@ export function ProjectConnectorsModal({
     const conn = shape.props.connectors || {};
     setAccentDraft((shape.props.accent as ProjectAccent) || "blue");
     setGithubRepoDraft(conn.githubRepo || "");
+    setGithubTokenDraft(conn.githubToken || "");
     setSentryDraft(conn.sentryProject || "");
     setNotionDraft(conn.notionWorkspace || "");
     setSelectedMcpServers(conn.mcpServers || []);
@@ -370,6 +385,7 @@ export function ProjectConnectorsModal({
     const normalizedRepo = normalizeGithubRepo(githubRepoDraft);
     const connectorsData = {
       githubRepo: normalizedRepo || undefined,
+      githubToken: githubTokenDraft.trim() || undefined,
       sentryProject: sentryDraft.trim() || undefined,
       notionWorkspace: notionDraft.trim() || undefined,
       mcpServers: selectedMcpServers.length > 0 ? selectedMcpServers : undefined,
@@ -389,11 +405,13 @@ export function ProjectConnectorsModal({
 
   const handleDisconnectRepo = () => {
     setGithubRepoDraft("");
+    setGithubTokenDraft("");
     if (!shapeId) return;
     useFlowCanvasStore.getState().updateNodeData(shapeId, {
       connectors: {
         ...(shape.props.connectors || {}),
         githubRepo: undefined,
+        githubToken: undefined,
       },
     });
   };
@@ -636,6 +654,42 @@ export function ProjectConnectorsModal({
                           Clear
                         </button>
                       )}
+                    </div>
+
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                          <Key className="size-3 text-purple-600 dark:text-purple-400" />
+                          <span>Project GitHub Token</span>
+                        </label>
+                        <span className="text-[10px] text-zinc-400">
+                          {githubTokenDraft.trim() ? "Project override" : "Using global token from Settings"}
+                        </span>
+                      </div>
+                      <div className="relative flex items-center">
+                        <input
+                          type={showGithubToken ? "text" : "password"}
+                          placeholder="ghp_... or github_pat_... (optional)"
+                          value={githubTokenDraft}
+                          onChange={(e) => setGithubTokenDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSave();
+                          }}
+                          className="w-full pl-3 pr-8 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-xs font-mono text-zinc-900 dark:text-zinc-100 placeholder:font-sans placeholder:text-zinc-400 dark:placeholder:text-zinc-600 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all shadow-2xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowGithubToken((prev) => !prev)}
+                          className="absolute right-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-1 rounded cursor-pointer"
+                          tabIndex={-1}
+                          title={showGithubToken ? "Hide token" : "Show token"}
+                        >
+                          {showGithubToken ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                        Overrides the global Settings token specifically for operations on this repository (fetching/creating issues, syncing README).
+                      </p>
                     </div>
 
                     <div className="flex items-center justify-between text-[11px] text-zinc-500">

@@ -13,6 +13,7 @@ export type ProjectAccent = (typeof ALL_PROJECT_ACCENTS)[number];
 
 export type ProjectConnectors = {
   githubRepo?: string;
+  githubToken?: string;
   notionWorkspace?: string;
   sentryProject?: string;
   mcpServers?: string[];
