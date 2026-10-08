@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.12.0](https://github.com/yhauxell/foqz/compare/v0.11.0...v0.12.0) (2026-10-08)
+
+
+### Features
+
+* **canvas:** show in-flight runway tasks in project frame ([6f8b41c](https://github.com/yhauxell/foqz/commit/6f8b41c82d0467ecd39ada149679180eee1b30c9))
+* **connectors:** add project-level github token with global settings fallback ([a7545d1](https://github.com/yhauxell/foqz/commit/a7545d16a1e4dabf3f5ff7aa4c0bd6aacb86a205))
+
+
+### Bug Fixes
+
+* **shortcuts:** prevent duplicate task creation and expand initial height for action items ([#59](https://github.com/yhauxell/foqz/issues/59)) ([172bb23](https://github.com/yhauxell/foqz/commit/172bb233bab789d6ff1d96f097de7b2872ef8ac6))
+
 ## [0.11.0](https://github.com/yhauxell/foqz/compare/foqz-v0.10.0...foqz-v0.11.0) (2026-10-08)
 
 
