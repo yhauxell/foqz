@@ -379,8 +379,8 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   useEffect(() => {
     if (data.notes && data.notes.trim().length > 0) {
       const lines = (data.notes.match(/\n/g) || []).length + 1;
-      const neededH = Math.max(130, Math.min(380, 84 + lines * 24));
-      const curH = Number(height || 82);
+      const neededH = Math.max(160, Math.min(380, 84 + lines * 24));
+      const curH = Number(height || 160);
       if (curH < neededH) {
         useFlowCanvasStore.getState().setNodes((prev) =>
           prev.map((n) => (n.id === id ? { ...n, style: { ...n.style, height: neededH } } : n))
@@ -1466,7 +1466,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                   <span>Add step</span>
                 </button>
               </div>
-            ) : isFocusTarget || selected ? (
+            ) : (
               <button
                 type="button"
                 onClick={(e) => {
@@ -1479,7 +1479,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                 <Plus className="size-3" />
                 <span>Define what done looks like (click to add checklist steps)...</span>
               </button>
-            ) : null}
+            )}
 
             {/* Related GitHub PR footer links */}
             {relatedPrs.length > 0 && (

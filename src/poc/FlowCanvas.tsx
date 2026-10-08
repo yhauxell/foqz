@@ -983,7 +983,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         );
         const taskStyle = isFrameRunway
           ? { width: frameW - 48, height: 50, zIndex: nextZ }
-          : { width: 280, height: 82, zIndex: nextZ };
+          : { width: 280, height: 160, zIndex: nextZ };
 
         const newNode: Node = {
           id,
@@ -1016,8 +1016,8 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         const newNode: Node = {
           id,
           type: "focusTask",
-          position: { x: pos.x - 130, y: pos.y - 41 },
-          style: { width: 280, height: 82, zIndex: nextZ },
+          position: { x: pos.x - 130, y: pos.y - 80 },
+          style: { width: 280, height: 160, zIndex: nextZ },
           data: {
             title: "New Task Card",
             status: "open",
