@@ -887,7 +887,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
 
         const parentW = Number(parentFrame?.style?.width ?? parentFrame?.width ?? 680);
         const taskW = isParentRunway ? parentW - 48 : 280;
-        const taskH = isParentRunway ? 50 : 82;
+        const taskH = isParentRunway ? 50 : 160;
 
         if (!isParentRunway) {
           pos = findNonOverlappingPosition(pos, { w: taskW, h: taskH }, state.nodes, parentId);
@@ -978,7 +978,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
             n.style?.width ?? (n.width ?? (n.type === "focusTask" ? 280 : n.type === "box" ? 220 : n.type === "circle" ? 160 : 180))
           );
           const nh = Number(
-            n.style?.height ?? (n.height ?? (n.type === "focusTask" ? 82 : n.type === "box" ? 140 : n.type === "circle" ? 160 : 60))
+            n.style?.height ?? (n.height ?? (n.type === "focusTask" ? 160 : n.type === "box" ? 140 : n.type === "circle" ? 160 : 60))
           );
           const nx = n.position.x;
           const ny = n.position.y;
