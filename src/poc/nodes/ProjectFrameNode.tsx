@@ -16,6 +16,7 @@ export interface ProjectFrameNodeData {
   borderStyle?: "solid" | "dashed" | "dotted";
   connectors?: {
     githubRepo?: string;
+    githubToken?: string;
     notionWorkspace?: string;
     sentryProject?: string;
   };

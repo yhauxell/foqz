@@ -349,6 +349,19 @@ export function GitHubIssuesModal({
                   onClick={() => {
                     const token = quickToken.trim()
                     if (token) {
+                      if (projectId) {
+                        const store = useFlowCanvasStore.getState()
+                        const node = store.nodes.find((n) => n.id === projectId)
+                        if (node) {
+                          const existingConn = (node.data as any)?.connectors || {}
+                          store.updateNodeData(projectId, {
+                            connectors: {
+                              ...existingConn,
+                              githubToken: token,
+                            },
+                          })
+                        }
+                      }
                       localStorage.setItem('foqz_github_token', token)
                       setTokenSaved(true)
                       setErrorMsg(null)
