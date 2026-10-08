@@ -240,3 +240,7 @@ export interface RunwayFrameNodeData {
   borderStyle?: "solid" | "dashed" | "dotted";
   [key: string]: unknown;
 }
+
+export type { FocusTaskNodeData, ResolvedDependencyStub } from "../poc/nodes/FocusTaskNode";
+export type { LogbookDay, LogbookEntry } from "./logbook";
+

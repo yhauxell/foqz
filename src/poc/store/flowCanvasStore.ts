@@ -1420,9 +1420,22 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         const currentTask = state.nodes.find((n) => n.id === id);
         const wasDone = (currentTask?.data as any)?.status === "done";
         const isBecomingDone = patch.status === "done" && !wasDone;
+        const isReopeningFromDone = wasDone && patch.status !== undefined && patch.status !== "done";
+
+        // Auto-stamp completedAt on transition to done, and clear completedAt if reopened
+        const enrichedPatch: Record<string, any> = { ...patch };
+        if (isBecomingDone && enrichedPatch.completedAt === undefined) {
+          enrichedPatch.completedAt = Date.now();
+          if (!enrichedPatch.completedVia) {
+            enrichedPatch.completedVia = "manual";
+          }
+        } else if (isReopeningFromDone && enrichedPatch.completedAt === undefined) {
+          enrichedPatch.completedAt = undefined;
+          enrichedPatch.completedVia = undefined;
+        }
 
         let updatedNodes = state.nodes.map((n) =>
-          n.id === id ? { ...n, data: { ...n.data, ...patch } } : n
+          n.id === id ? { ...n, data: { ...n.data, ...enrichedPatch } } : n
         );
 
         if (patch.isExpanded !== undefined || patch.notes !== undefined || patch.status !== undefined) {

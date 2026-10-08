@@ -265,6 +265,18 @@ function FocusCanvasAppInner() {
         }
         return prev - 1;
       });
+
+      // Accumulate focus time telemetry on active task card
+      const state = useFlowCanvasStore.getState();
+      const activeNode = state.nodes.find((n) => n.id === storeActiveFocusNodeId);
+      if (activeNode && activeNode.type === "focusTask") {
+        const currentSeconds = Number((activeNode.data as any)?.focusSecondsSpent) || 0;
+        const currentTrackedMs = Number((activeNode.data as any)?.trackedMs) || 0;
+        state.updateNodeData(storeActiveFocusNodeId, {
+          focusSecondsSpent: currentSeconds + 1,
+          trackedMs: currentTrackedMs + 1000,
+        }, { skipAutoAdvance: true });
+      }
     }, 1000);
     return () => clearInterval(interval);
   }, [storeActiveFocusNodeId, isTimerRunning]);
