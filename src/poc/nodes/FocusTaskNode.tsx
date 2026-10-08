@@ -41,6 +41,12 @@ import {
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { useFocusAppSettingsOptional } from "@/context/FocusAppSettingsContext";
 
+export interface ResolvedDependencyStub {
+  id: string;
+  title: string;
+  completedAt?: number;
+}
+
 export interface FocusTaskNodeData {
   title: string;
   status: "open" | "doing" | "done";
@@ -48,6 +54,10 @@ export interface FocusTaskNodeData {
   notes?: string;
   paper?: TaskPaperTheme;
   trackedMs?: number;
+  completedAt?: number;
+  completedVia?: "manual" | "focus" | "runway" | "agent" | "github";
+  focusSecondsSpent?: number;
+  resolvedDependencies?: ResolvedDependencyStub[];
   borderStyle?: "solid" | "dashed" | "dotted";
   originProjectId?: string;
   originProjectTitle?: string;
