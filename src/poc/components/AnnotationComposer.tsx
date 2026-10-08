@@ -50,11 +50,17 @@ export function AnnotationComposer({
     <div
       style={{
         position: 'absolute',
-        left: `${position.x}px`,
-        top: `${position.y}px`,
+        left: `${Math.min(
+          position.x,
+          Math.max(10, (typeof window !== 'undefined' ? window.innerWidth : 1000) - 320)
+        )}px`,
+        top: `${Math.min(
+          position.y,
+          Math.max(10, (typeof window !== 'undefined' ? window.innerHeight : 800) - 240)
+        )}px`,
         zIndex: 90,
       }}
-      className="w-76 max-w-[calc(100vw-2rem)] rounded-2xl glass-panel shadow-2xl border border-white/60 dark:border-white/10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl text-zinc-900 dark:text-zinc-100 p-3 flex flex-col gap-2.5 text-xs animate-in zoom-in-95 duration-150 select-none"
+      className="w-76 max-w-[calc(100%-2rem)] rounded-2xl glass-panel shadow-2xl border border-white/60 dark:border-white/10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl text-zinc-900 dark:text-zinc-100 p-3 flex flex-col gap-2.5 text-xs animate-in zoom-in-95 duration-150 select-none"
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >

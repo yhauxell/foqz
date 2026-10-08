@@ -60,15 +60,15 @@ export function useFlowCanvasShortcuts({
   useHotkeys(["v", "1"], () => onSelectTool(), { preventDefault: true, enabled });
   useHotkeys(["r", "R", "2", "b", "B"], () => onBoxTool(), { preventDefault: true, enabled });
   useHotkeys(["o"], () => onCircleTool?.(), { preventDefault: true, enabled });
-  useHotkeys(["3"], () => onTextTool(), { preventDefault: true, enabled });
+  useHotkeys(["t", "T", "3"], () => onTextTool(), { preventDefault: true, enabled });
   useHotkeys(["n", "N", "s", "S"], () => onNoteTool?.(), { preventDefault: true, enabled });
-  useHotkeys(["a", "A"], () => onArrowTool(), { preventDefault: true, enabled });
-  useHotkeys(["4", "l"], () => onConnectionTool?.(), { preventDefault: true, enabled });
+  useHotkeys(["4"], () => onArrowTool(), { preventDefault: true, enabled });
+  useHotkeys(["l", "L"], () => onConnectionTool?.(), { preventDefault: true, enabled });
   useHotkeys(["p", "5", "d"], () => onPencilTool(), { preventDefault: true, enabled });
 
 
   // Creation & Context Actions
-  useHotkeys(["t", "T", "meta+t", "ctrl+t", "alt+t"], () => onCreateTask(), { preventDefault: true, enabled });
+  useHotkeys(["a", "A"], () => onCreateTask(), { preventDefault: true, enabled });
   useHotkeys(
     ["meta+shift+p", "ctrl+shift+p", "alt+p", "alt+meta+n", "alt+ctrl+n"],
     () => onCreateProject(),

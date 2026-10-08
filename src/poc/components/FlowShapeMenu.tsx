@@ -814,18 +814,11 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
           }}
           onClick={(e) => {
             e.stopPropagation();
-            const node = selectedNode;
-            const title = (node.data as any)?.title || (node.data as any)?.label || (node.data as any)?.text || node.type;
-            const liveStore = useFlowCanvasStore.getState();
-            // Drop annotation at top-right
-            liveStore.addAnnotation({
-              anchor: {
-                nodeId: node.id,
-                rel: { x: 0.85, y: 0.15 },
-              },
-              body: `Annotation on ${title}`,
-              kind: "comment",
-            });
+            window.dispatchEvent(
+              new CustomEvent('foqz:open-annotation-composer', {
+                detail: { nodeId: selectedNode.id },
+              })
+            );
           }}
           className="px-1.5 h-5 rounded-full flex items-center gap-1 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-600 dark:text-amber-400 transition-colors cursor-pointer text-[10px] font-medium"
         >

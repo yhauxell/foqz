@@ -58,4 +58,40 @@ test.describe('Foqz Annotations Flow (Figma/Miro-style AI Context)', () => {
     await closeBtn.click();
     await expect(drawer).not.toBeVisible();
   });
+
+  test('verifies node annotate action opens composer and annotation pin is draggable', async ({ page }) => {
+    // 1. Select first task card
+    const firstTask = page.locator('.react-flow__node-focusTask').first();
+    await firstTask.click();
+
+    // 2. Click Annotate button
+    const annotateBtn = page.getByRole('button', { name: /Annotate/ }).first();
+    await expect(annotateBtn).toBeVisible();
+    await annotateBtn.click();
+
+    // 3. Verify composer opens instead of immediately creating a dummy annotation
+    const composer = page.getByPlaceholder(/Type annotation feedback, decisions, or questions/);
+    await expect(composer).toBeVisible();
+
+    // 4. Fill and submit
+    await composer.fill('Refactor validation checks');
+    await page.getByRole('button', { name: 'Post' }).click();
+    await expect(composer).not.toBeVisible();
+
+    // 5. Verify pin has draggable cursor styling
+    const pin = page.locator('.z-35 [style*="position: absolute"]').first();
+    await expect(pin).toBeVisible();
+    await expect(pin).toHaveClass(/cursor-grab/);
+
+    // 6. Test dragging pin
+    const box = await pin.boundingBox();
+    if (box) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + 120, box.y + 80, { steps: 5 });
+      await page.mouse.up();
+    }
+
+    await page.screenshot({ path: 'test-results/dragged-annotation-pin.png' });
+  });
 });
