@@ -1,0 +1,9 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "foqz",
+      "include-v-in-tag": true
+    }
+  }
+}
