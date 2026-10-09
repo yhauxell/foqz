@@ -7,10 +7,8 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
-      - 'foqz-v*'
+  # Normal releases are published by release-please.yml (publish-artifacts job).
+  # This workflow is a manual fallback only, to avoid duplicate concurrent uploads.
   workflow_dispatch:
 
 concurrency:

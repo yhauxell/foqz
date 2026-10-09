@@ -18,6 +18,9 @@ files:
 # Override with explicit owner/repo if needed. For generic HTTPS only, replace with provider: generic + url.
 publish:
   provider: github
+  # Release-please creates a *published* release; the default (draft) makes
+  # electron-builder skip every upload with "existing type not compatible".
+  releaseType: release
 
 mac:
   category: public.app-category.productivity
