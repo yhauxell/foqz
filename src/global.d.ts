@@ -1,5 +1,5 @@
 import type { AppSettings } from "./lib/appSettings";
-import type { McpStoreApi } from "./lib/mcpTypes";
+import type { McpHostApi, McpStoreApi } from "./lib/mcpTypes";
 
 export {};
 
@@ -41,6 +41,8 @@ declare global {
       onMaximizedChange?: (callback: (isMaximized: boolean) => void) => () => void;
       /** MCP client manager & transport supervisor API */
       mcp?: McpStoreApi;
+      /** Embedded Foqz MCP server for external agents */
+      mcpHost?: McpHostApi;
       /** TypeSafe Jev System One IPC bridge */
       jev?: {
         evaluate: (

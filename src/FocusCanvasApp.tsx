@@ -15,6 +15,7 @@ import { AnnotationsPanel } from "@/components/AnnotationsPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { FlowCanvasAppWrapper } from "./poc/FlowCanvasAppWrapper";
 import { useFlowCanvasStore } from "./poc/store/flowCanvasStore";
+import { useMcpHostBridge } from "@/lib/mcpHostBridge";
 
 export function FocusCanvasApp() {
   return (
@@ -27,6 +28,7 @@ export function FocusCanvasApp() {
 }
 
 function FocusCanvasAppInner() {
+  useMcpHostBridge();
   const flowSelectedNodeId = useFlowCanvasStore((s) => s.selectedNodeId);
   const storeActiveFocusNodeId = useFlowCanvasStore((s) => s.activeFocusNodeId);
   const isTimerRunning = useFlowCanvasStore((s) => s.isTimerRunning);

@@ -250,6 +250,47 @@ You can also configure external AI providers (e.g. OpenAI-compatible APIs) from 
 
 ---
 
+## Connect Claude & Other Agents (MCP Server)
+
+Foqz can run a local [Model Context Protocol](https://modelcontextprotocol.io) server so external agents — Claude Code, Claude Desktop, Cursor, Cline, or your own scripts — can read your board and act on it with the same native tools the built-in copilot uses (`get_canvas_summary`, `spawn_tasks`, `update_node`, `spawn_notes`, `connect_nodes`, `start_focus_session`, …).
+
+1. Open **Settings (⚙️) → Agents & MCP → Connect External Agents to Foqz** and tick **Enable**.
+2. Copy the ready-made configuration for your client from the same panel. The server listens on `http://127.0.0.1:7337/mcp` by default (Streamable HTTP) and requires the bearer token shown there.
+
+**Claude Code**
+```bash
+claude mcp add --transport http foqz http://127.0.0.1:7337/mcp --header "Authorization: Bearer <token>"
+```
+
+**Claude Desktop** (`claude_desktop_config.json`, bridged to stdio with [`mcp-remote`](https://www.npmjs.com/package/mcp-remote))
+```json
+{
+  "mcpServers": {
+    "foqz": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://127.0.0.1:7337/mcp", "--header", "Authorization:${FOQZ_AUTH}"],
+      "env": { "FOQZ_AUTH": "Bearer <token>" }
+    }
+  }
+}
+```
+
+**Cursor** (`~/.cursor/mcp.json`)
+```json
+{
+  "mcpServers": {
+    "foqz": {
+      "url": "http://127.0.0.1:7337/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+Foqz must be running for agents to reach it. The server only binds to `127.0.0.1`, rejects browser-originated requests, and the token can be regenerated at any time from Settings. The aliases `foqz_get_board_summary`, `foqz_create_task`, `foqz_start_timer`, and `foqz_stop_timer` are also accepted.
+
+---
+
 ## Architecture & Project Structure
 
 ```
