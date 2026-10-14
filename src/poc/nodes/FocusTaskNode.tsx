@@ -19,11 +19,15 @@ import {
   PlaneTakeoff,
   Sparkles,
   GitPullRequest,
-  User,
   Tag,
   AlertTriangle,
 } from "lucide-react";
-import { updateGitHubIssue, getIssuePullRequests, type RelatedPullRequest } from "@/lib/githubSync";
+import { getIssuePullRequests, type RelatedPullRequest } from "@/lib/githubSync";
+import {
+  GitHubAssigneePicker,
+  GitHubConflictBanner,
+  GitHubSyncIndicator,
+} from "../components/GitHubTaskSyncControls";
 import type { SemanticRelation } from "../edges/SemanticEdge";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
@@ -488,20 +492,8 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   const toggleStatus = (e: React.MouseEvent) => {
     e.stopPropagation();
     const nextStatus = data.status === "done" ? "open" : "done";
+    // Linked GitHub issues are updated by the sync engine (githubTaskSync).
     useFlowCanvasStore.getState().updateNodeData(id, { status: nextStatus });
-
-    if (data.githubIssueNumber && data.githubRepo) {
-      updateGitHubIssue(String(data.githubRepo), Number(data.githubIssueNumber), {
-        state: nextStatus === "done" ? "closed" : "open",
-      })
-        .then(() => {
-          useFlowCanvasStore.getState().updateNodeData(id, { githubSyncStatus: "synced" });
-        })
-        .catch((err) => {
-          console.warn("[FocusTaskNode] GitHub status sync error:", err);
-          useFlowCanvasStore.getState().updateNodeData(id, { githubSyncStatus: "conflict" });
-        });
-    }
   };
 
   const handleSaveTitle = useCallback(() => {
@@ -1160,21 +1152,21 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                           rel="noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/20 shrink-0 transition-colors"
-                          title={`GitHub #${data.githubIssueNumber} in ${data.githubRepo || ''} (${(data.githubSyncStatus as string) || 'synced'})`}
+                          title={`GitHub #${data.githubIssueNumber} in ${data.githubRepo || ''}`}
                         >
                           <GitPullRequest className="size-2.5 text-purple-500" />
                           <span>#{data.githubIssueNumber}</span>
                         </a>
 
-                        {data.githubAssignee && (
-                          <span
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono text-zinc-600 dark:text-zinc-300 bg-black/5 dark:bg-white/10 border border-black/5 dark:border-white/10 shrink-0"
-                            title={`Assignee: @${data.githubAssignee}`}
-                          >
-                            <User className="size-2 text-zinc-500" />
-                            <span>@{String(data.githubAssignee)}</span>
-                          </span>
-                        )}
+                        <GitHubSyncIndicator nodeId={id} />
+
+                        {data.githubRepo ? (
+                          <GitHubAssigneePicker
+                            nodeId={id}
+                            repo={String(data.githubRepo)}
+                            assignee={data.githubAssignee ? String(data.githubAssignee) : null}
+                          />
+                        ) : null}
 
                         {Array.isArray(data.githubLabels) &&
                           (data.githubLabels as string[]).slice(0, 2).map((lbl) => (
@@ -1207,6 +1199,10 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                             <span>PR #{pr.number}</span>
                           </a>
                         ))}
+
+                        <div className="basis-full">
+                          <GitHubConflictBanner nodeId={id} />
+                        </div>
                       </div>
                     )}
                   </div>

@@ -12,7 +12,9 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
+import { syncRepoTasks } from "@/lib/githubTaskSync";
 import {
   ACCENT_STYLES,
   type ProjectAccent,
@@ -60,6 +62,7 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [isSyncingGithub, setIsSyncingGithub] = useState(false);
   const [titleVal, setTitleVal] = useState(data.title || "Project Frame");
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [goalVal, setGoalVal] = useState(data.goal || "");
@@ -287,6 +290,24 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
           >
             <GitPullRequest className="size-3 shrink-0 text-purple-500" />
             <span>Issues</span>
+          </button>
+        )}
+
+        {data.connectors?.githubRepo && (
+          <button
+            type="button"
+            disabled={isSyncingGithub}
+            onClick={(e) => {
+              e.stopPropagation();
+              const repo = data.connectors?.githubRepo;
+              if (!repo) return;
+              setIsSyncingGithub(true);
+              syncRepoTasks(repo).finally(() => setIsSyncingGithub(false));
+            }}
+            className="flex items-center justify-center size-6 rounded-full border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors cursor-pointer shadow-2xs ml-1.5 shrink-0 disabled:cursor-default"
+            title="Sync status, priority labels, and assignees of linked tasks with GitHub"
+          >
+            <RefreshCw className={`size-3 shrink-0 ${isSyncingGithub ? "animate-spin" : ""}`} />
           </button>
         )}
 

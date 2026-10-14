@@ -25,6 +25,7 @@ import {
   Zap,
 } from "lucide-react";
 import { McpSettingsTab } from "@/components/McpSettingsTab";
+import { getSyncIntervalMinutes, setSyncIntervalMinutes } from "@/lib/githubTaskSync";
 import { McpHostSettings } from "./McpHostSettings";
 import { AgentsSettingsTab } from "@/components/AgentsSettingsTab";
 import {
@@ -145,6 +146,33 @@ function Row({
         {children}
       </div>
     </div>
+  );
+}
+
+/** Background polling interval for two-way GitHub task sync (stored locally). */
+function GitHubSyncIntervalSelect() {
+  const [minutes, setMinutes] = useState(() => getSyncIntervalMinutes());
+  return (
+    <label className="flex items-center justify-between gap-3 pt-2 text-xs">
+      <span className="text-muted-foreground">
+        Check linked issues for changes on GitHub
+      </span>
+      <select
+        className="h-7 rounded-md border border-border bg-background px-2 text-xs"
+        value={minutes}
+        onChange={(e) => {
+          const next = Number(e.target.value);
+          setMinutes(next);
+          setSyncIntervalMinutes(next);
+        }}
+      >
+        <option value={0}>Manually only</option>
+        <option value={5}>Every 5 minutes</option>
+        <option value={10}>Every 10 minutes</option>
+        <option value={30}>Every 30 minutes</option>
+        <option value={60}>Every hour</option>
+      </select>
+    </label>
   );
 }
 
@@ -1923,6 +1951,8 @@ export function FocusSettings({
                             </span>
                           )}
                         </div>
+
+                        <GitHubSyncIntervalSelect />
                       </div>
                     </div>
                   </>

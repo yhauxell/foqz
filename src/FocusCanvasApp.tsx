@@ -15,6 +15,7 @@ import { AnnotationsPanel } from "@/components/AnnotationsPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { FlowCanvasAppWrapper } from "./poc/FlowCanvasAppWrapper";
 import { useFlowCanvasStore } from "./poc/store/flowCanvasStore";
+import { useGitHubSyncEngine } from "@/lib/githubTaskSync";
 import { useMcpHostBridge } from "@/lib/mcpHostBridge";
 
 export function FocusCanvasApp() {
@@ -28,6 +29,7 @@ export function FocusCanvasApp() {
 }
 
 function FocusCanvasAppInner() {
+  useGitHubSyncEngine();
   useMcpHostBridge();
   const flowSelectedNodeId = useFlowCanvasStore((s) => s.selectedNodeId);
   const storeActiveFocusNodeId = useFlowCanvasStore((s) => s.activeFocusNodeId);
