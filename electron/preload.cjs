@@ -28,6 +28,25 @@ contextBridge.exposeInMainWorld('focusStore', {
       ipcRenderer.invoke('mcp:callTool', { serverName, toolName, args }),
     restartServer: (serverName) => ipcRenderer.invoke('mcp:restartServer', serverName),
   },
+  mcpHost: {
+    getStatus: () => ipcRenderer.invoke('mcpHost:getStatus'),
+    updateConfig: (partial) => ipcRenderer.invoke('mcpHost:updateConfig', partial),
+    regenerateToken: () => ipcRenderer.invoke('mcpHost:regenerateToken'),
+    registerTools: (tools) => ipcRenderer.send('mcpHost:registerTools', tools),
+    onToolCall: (handler) => {
+      const listener = async (_event, { requestId, name, args }) => {
+        let result
+        try {
+          result = await handler(name, args)
+        } catch (e) {
+          result = { isError: true, content: [{ type: 'text', text: String((e && e.message) || e) }] }
+        }
+        ipcRenderer.send('mcpHost:result', { requestId, result })
+      }
+      ipcRenderer.on('mcpHost:call', listener)
+      return () => ipcRenderer.removeListener('mcpHost:call', listener)
+    },
+  },
   jev: {
     evaluate: (req, options) => ipcRenderer.invoke('jev:evaluate', { req, options }),
   },

@@ -17,6 +17,7 @@ const path = require('node:path')
 const childProcess = require('node:child_process')
 const { McpClientManager } = require('./mcp/McpClientManager.cjs')
 const { getMcpConfigPath, loadMcpConfig } = require('./mcp/mcpConfig.cjs')
+const { FoqzMcpHost } = require('./mcp/FoqzMcpHost.cjs')
 
 // Ensure production macOS app inherits full user shell PATH (npx, node, uvx, bun, etc.)
 function fixSystemPath() {
@@ -76,6 +77,7 @@ function fixSystemPath() {
 fixSystemPath()
 
 const mcpManager = new McpClientManager()
+const mcpHost = new FoqzMcpHost()
 
 app.setName('Foqz')
 app.name = 'Foqz'
@@ -972,6 +974,20 @@ ipcMain.handle('mcp:restartServer', async (_event, serverName) => {
   return mcpManager.restartServer(serverName)
 })
 
+// --- Foqz MCP host (external agents -> Foqz canvas) ---
+
+ipcMain.handle('mcpHost:getStatus', () => {
+  return mcpHost.getStatus()
+})
+
+ipcMain.handle('mcpHost:updateConfig', async (_event, partial) => {
+  return mcpHost.updateConfig(partial || {})
+})
+
+ipcMain.handle('mcpHost:regenerateToken', async () => {
+  return mcpHost.regenerateToken()
+})
+
 ipcMain.handle('jev:evaluate', async (_event, { req, options }) => {
   const apiKey = (
     options?.apiKey ||
@@ -1200,6 +1216,12 @@ app.whenReady().then(async () => {
     console.error('[mcpManager] initialization error:', err)
   })
 
+  mcpHost
+    .init({ userDataPath: app.getPath('userData'), ipcMain, getWindow: () => mainWindow })
+    .catch((err) => {
+      console.error('[mcpHost] initialization error:', err)
+    })
+
   setupAutoUpdater()
 
   app.on('activate', () => {
@@ -1210,6 +1232,7 @@ app.whenReady().then(async () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   mcpManager.disconnectAll().catch(() => {})
+  mcpHost.stop().catch(() => {})
 })
 
 app.on('window-all-closed', (event) => {

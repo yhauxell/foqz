@@ -130,7 +130,7 @@ export function getFlowCanvasContext(
   }
 
   let selectedSummary = selectedItems
-    .map((item, idx) => `${idx + 1}. ${item.fullText}`)
+    .map((item, idx) => `${idx + 1}. ${item.fullText} [id: ${item.id}]`)
     .join("\n");
 
   if (selectedRelations.length > 0) {
@@ -183,7 +183,7 @@ export function getFlowCanvasContext(
   }
 
   let boardSummary = boardItems
-    .map((item, idx) => `${idx + 1}. ${item.fullText}`)
+    .map((item, idx) => `${idx + 1}. ${item.fullText} [id: ${item.id}]`)
     .join("\n");
 
   if (relationships.length > 0) {

@@ -25,6 +25,7 @@ import {
   Zap,
 } from "lucide-react";
 import { McpSettingsTab } from "@/components/McpSettingsTab";
+import { McpHostSettings } from "./McpHostSettings";
 import { AgentsSettingsTab } from "@/components/AgentsSettingsTab";
 import {
   OPENAI_DEFAULT_MODELS,
@@ -1937,6 +1938,10 @@ export function FocusSettings({
                 <div className="h-px w-full bg-border/60" />
                 <Section title="Model Context Protocol (MCP) Tool Servers">
                   <McpSettingsTab />
+                </Section>
+                <div className="h-px w-full bg-border/60" />
+                <Section title="Connect External Agents to Foqz (MCP Server)">
+                  <McpHostSettings />
                 </Section>
               </div>
             ) : null}
