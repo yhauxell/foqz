@@ -30,9 +30,9 @@ import {
  * Two-way sync between canvas Focus Tasks and their linked GitHub issues (status, priority labels,
  * primary assignee).
  *
- * Last-synced snapshots live in localStorage, outside the undoable canvas store, so undoing a task
- * change makes it differ from the snapshot again and the undo is pushed to GitHub instead of being
- * reverted by the next pull.
+ * Last-synced snapshots (one per card) live in localStorage, outside the undoable canvas store, so
+ * undoing a task change makes it differ from the snapshot again and the undo is pushed to GitHub
+ * instead of being reverted by the next pull.
  */
 
 const SNAPSHOTS_KEY = 'foqz_github_sync_snapshots'
@@ -119,7 +119,10 @@ function toLinkedTask(node: Node): LinkedTask | null {
     nodeId: node.id,
     repo,
     issueNumber,
-    key: `${repo.toLowerCase()}#${issueNumber}`,
+    // Per card, not per issue: duplicated cards share an issue, and a shared snapshot would make
+    // them push opposite values back and forth. Per card, one card's push is a remote change the
+    // other simply pulls.
+    key: `${useFlowCanvasStore.getState().activeBoardId}:${node.id}`,
     local: {
       state: d.status === 'done' ? 'closed' : 'open',
       priority: ([1, 2, 3, 4].includes(d.priority) ? d.priority : 3) as LocalTaskFields['priority'],
