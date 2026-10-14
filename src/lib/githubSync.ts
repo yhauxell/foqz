@@ -1,4 +1,7 @@
 import { normalizeGithubRepoInput } from './githubAgentSync'
+import { mapLabelsToPriority } from './githubLabels'
+
+export { mapLabelsToPriority }
 
 export interface GitHubUser {
   login: string
@@ -84,26 +87,6 @@ export function getGithubToken(repoInputOrToken?: string): string {
   }
 
   return ''
-}
-
-/**
- * Normalizes priority (1=Urgent, 2=High, 3=Normal, 4=Low) based on GitHub label strings.
- */
-export function mapLabelsToPriority(labels: (GitHubLabel | string)[]): 1 | 2 | 3 | 4 {
-  const names = labels
-    .map((l) => (typeof l === 'string' ? l : l.name).toLowerCase())
-    .filter(Boolean)
-
-  if (names.some((n) => n.includes('p0') || n.includes('critical') || n.includes('urgent'))) {
-    return 1
-  }
-  if (names.some((n) => n.includes('p1') || n.includes('high') || n.includes('bug') || n.includes('priority: high'))) {
-    return 2
-  }
-  if (names.some((n) => n.includes('p3') || n.includes('low') || n.includes('deprioritized'))) {
-    return 4
-  }
-  return 3
 }
 
 /**
@@ -237,24 +220,9 @@ export async function getIssue(repoInput: string, issueNumber: number): Promise<
     headers: getGithubHeaders(repo),
   })
   if (!resp.ok) {
-    throw new Error(`Failed to fetch issue #${issueNumber} from ${repo}`)
+    throw new Error(`Failed to fetch issue #${issueNumber} from ${repo} (${resp.status})`)
   }
-  const item = await resp.json()
-  return {
-    number: item.number,
-    title: item.title,
-    body: item.body || '',
-    state: item.state === 'closed' ? 'closed' : 'open',
-    html_url: item.html_url,
-    labels: (item.labels || []).map((l: any) => ({
-      id: l.id,
-      name: l.name,
-      color: l.color,
-    })),
-    assignee: item.assignee ? { login: item.assignee.login, avatar_url: item.assignee.avatar_url } : null,
-    created_at: item.created_at,
-    updated_at: item.updated_at,
-  }
+  return mapGitHubIssue(await resp.json())
 }
 
 /**
@@ -478,3 +446,120 @@ export async function getIssuePullRequests(
   }
 }
 
+
+/* ------------------------------------------------------------------------------------------------
+ * Fine-grained issue mutations used by two-way task sync. These touch only the labels / assignees
+ * passed in, so concurrent edits by other people on the same issue are preserved.
+ * --------------------------------------------------------------------------------------------- */
+
+function requireRepoAndToken(repoInput: string): { repo: string; headers: HeadersInit } {
+  const repo = normalizeGithubRepoInput(repoInput)
+  if (!repo || !repo.includes('/')) {
+    throw new Error('Please specify a valid GitHub repository.')
+  }
+  if (!getGithubToken(repo)) {
+    throw new Error('GitHub token missing. Configure GitHub Personal Access Token in Project Connectors or Settings.')
+  }
+  return { repo, headers: { ...getGithubHeaders(repo), 'Content-Type': 'application/json' } }
+}
+
+async function githubError(resp: Response, action: string): Promise<Error> {
+  const errText = await resp.text().catch(() => '')
+  let message = errText
+  try {
+    message = JSON.parse(errText).message || errText
+  } catch {}
+  return new Error(`Failed to ${action} (${resp.status}): ${message || resp.statusText}`)
+}
+
+export function mapGitHubIssue(item: any): GitHubIssue {
+  return {
+    number: item.number,
+    title: item.title,
+    body: item.body || '',
+    state: item.state === 'closed' ? 'closed' : 'open',
+    html_url: item.html_url,
+    labels: (item.labels || []).map((l: any) =>
+      typeof l === 'string' ? { name: l } : { id: l.id, name: l.name, color: l.color },
+    ),
+    assignee: item.assignee ? { login: item.assignee.login, avatar_url: item.assignee.avatar_url } : null,
+    assignees: (item.assignees || []).map((a: any) => ({ login: a.login, avatar_url: a.avatar_url })),
+    created_at: item.created_at,
+    updated_at: item.updated_at,
+    closed_at: item.closed_at,
+  }
+}
+
+/**
+ * List issues (open and closed) updated since `sinceIso`, or all of them when omitted.
+ * One paginated request per repository; pull requests are filtered out.
+ */
+export async function listIssuesUpdatedSince(repoInput: string, sinceIso?: string | null): Promise<GitHubIssue[]> {
+  const repo = normalizeGithubRepoInput(repoInput)
+  const issues: GitHubIssue[] = []
+  for (let page = 1; page <= 10; page++) {
+    const params = new URLSearchParams({ state: 'all', per_page: '100', page: String(page) })
+    if (sinceIso) params.set('since', sinceIso)
+    const resp = await fetch(`https://api.github.com/repos/${repo}/issues?${params}`, {
+      headers: getGithubHeaders(repo),
+    })
+    if (!resp.ok) throw await githubError(resp, `list issues for ${repo}`)
+    const data = await resp.json()
+    for (const item of data || []) {
+      if (!item.pull_request) issues.push(mapGitHubIssue(item))
+    }
+    if (!Array.isArray(data) || data.length < 100) break
+  }
+  return issues
+}
+
+/** Add labels to an issue (GitHub creates missing labels). Returns the issue's resulting label names. */
+export async function addIssueLabels(repoInput: string, issueNumber: number, labels: string[]): Promise<string[]> {
+  const { repo, headers } = requireRepoAndToken(repoInput)
+  const resp = await fetch(`https://api.github.com/repos/${repo}/issues/${issueNumber}/labels`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ labels }),
+  })
+  if (!resp.ok) throw await githubError(resp, `add labels to #${issueNumber}`)
+  return ((await resp.json()) || []).map((l: any) => l.name)
+}
+
+/** Remove one label from an issue. Returns the remaining label names, or null if it wasn't applied. */
+export async function removeIssueLabel(repoInput: string, issueNumber: number, label: string): Promise<string[] | null> {
+  const { repo, headers } = requireRepoAndToken(repoInput)
+  const resp = await fetch(
+    `https://api.github.com/repos/${repo}/issues/${issueNumber}/labels/${encodeURIComponent(label)}`,
+    { method: 'DELETE', headers },
+  )
+  if (resp.status === 404) return null
+  if (!resp.ok) throw await githubError(resp, `remove label "${label}" from #${issueNumber}`)
+  return ((await resp.json()) || []).map((l: any) => l.name)
+}
+
+/** Add or remove assignees without touching the issue's other assignees. */
+export async function changeIssueAssignees(
+  repoInput: string,
+  issueNumber: number,
+  method: 'POST' | 'DELETE',
+  logins: string[],
+): Promise<GitHubIssue> {
+  const { repo, headers } = requireRepoAndToken(repoInput)
+  const resp = await fetch(`https://api.github.com/repos/${repo}/issues/${issueNumber}/assignees`, {
+    method,
+    headers,
+    body: JSON.stringify({ assignees: logins }),
+  })
+  if (!resp.ok) throw await githubError(resp, `${method === 'POST' ? 'assign' : 'unassign'} #${issueNumber}`)
+  return mapGitHubIssue(await resp.json())
+}
+
+/** Users who can be assigned to issues in the repository. */
+export async function listAssignableUsers(repoInput: string): Promise<GitHubUser[]> {
+  const repo = normalizeGithubRepoInput(repoInput)
+  const resp = await fetch(`https://api.github.com/repos/${repo}/assignees?per_page=100`, {
+    headers: getGithubHeaders(repo),
+  })
+  if (!resp.ok) throw await githubError(resp, `list assignees for ${repo}`)
+  return ((await resp.json()) || []).map((u: any) => ({ login: u.login, avatar_url: u.avatar_url }))
+}
