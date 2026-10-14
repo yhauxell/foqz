@@ -485,6 +485,16 @@ export const NATIVE_FOQZ_TOOLS: McpTool[] = [
 ]
 
 /**
+ * Alternate tool names accepted by the executor (e.g. `foqz_create_task` from external MCP clients).
+ */
+const TOOL_ALIASES: Record<string, string> = {
+  get_board_summary: 'get_canvas_summary',
+  create_task: 'spawn_tasks',
+  start_timer: 'start_focus_session',
+  stop_timer: 'stop_focus_session',
+}
+
+/**
  * Creates a tool executor bound to the React Flow store.
  */
 export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
@@ -495,7 +505,8 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
   ): Promise<McpToolCallResult> => {
     const store = useFlowCanvasStore.getState()
     const { nodes, edges, selectedNodeId, createTask } = store
-    const normalizedName = toolName.replace(/^(foqz[_:]+)/, '')
+    const strippedName = toolName.replace(/^(foqz[_:]+)/, '')
+    const normalizedName = TOOL_ALIASES[strippedName] ?? strippedName
 
     switch (normalizedName) {
       case 'spawn_tasks': {

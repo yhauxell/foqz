@@ -41,6 +41,27 @@ export interface McpToolCallResult {
   }>
 }
 
+export interface McpHostStatus {
+  enabled: boolean
+  port: number
+  token: string
+  url: string
+  status: 'stopped' | 'starting' | 'running' | 'error'
+  error: string | null
+  toolCount: number
+}
+
+/** Embedded Foqz MCP server that external agents (Claude, Cursor, ...) connect to. */
+export interface McpHostApi {
+  getStatus: () => Promise<McpHostStatus>
+  updateConfig: (partial: { enabled?: boolean; port?: number }) => Promise<McpHostStatus>
+  regenerateToken: () => Promise<McpHostStatus>
+  registerTools: (tools: Array<Pick<McpTool, 'name' | 'description' | 'inputSchema'>>) => void
+  onToolCall: (
+    handler: (name: string, args: Record<string, any>) => Promise<McpToolCallResult>,
+  ) => () => void
+}
+
 export interface McpStoreApi {
   getConfig: () => Promise<McpConfigFile>
   saveConfig: (config: McpConfigFile) => Promise<{ ok: boolean; error?: string }>
