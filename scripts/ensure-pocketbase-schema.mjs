@@ -119,32 +119,78 @@ async function main() {
   const items = Array.isArray(listed.items) ? listed.items : [];
   const byName = new Map(items.map((item) => [item.name, item]));
 
-  if (byName.has("workspaces") && byName.has("boards")) {
-    console.log("workspaces and boards already exist. Nothing to create.");
-    return;
-  }
+  const workspaceDesired = workspaceCollection(USERS_COLLECTION_ID);
+  const workspaceExisting = byName.get("workspaces");
+  const workspaceId = workspaceExisting?.id;
+  const boardDesired = workspaceId
+    ? boardCollection(USERS_COLLECTION_ID, workspaceId)
+    : null;
+  const boardExisting = byName.get("boards");
+
+  const plan = [];
+  if (!workspaceExisting) plan.push("create workspaces");
+  else if (rulesDrift(workspaceExisting, workspaceDesired)) plan.push("update workspaces rules");
+  if (!boardExisting) plan.push("create boards");
+  else if (boardDesired && rulesDrift(boardExisting, boardDesired)) plan.push("update boards rules");
 
   if (!APPLY) {
-    console.log("Missing collections would be created only with --apply.");
-    if (!byName.has("workspaces")) console.log("  create workspaces");
-    if (!byName.has("boards")) console.log("  create boards");
+    if (plan.length === 0) console.log("workspaces and boards already match.");
+    else console.log(`Pending with --apply:\n  ${plan.join("\n  ")}`);
     return;
   }
 
-  let workspaceId = byName.get("workspaces")?.id;
-  if (!workspaceId) {
-    const created = await createCollection(url, headers, workspaceCollection(USERS_COLLECTION_ID));
-    workspaceId = created.id;
-    console.log(`Created workspaces (${workspaceId}).`);
+  let ensuredWorkspaceId = workspaceId;
+  if (!workspaceExisting) {
+    const created = await createCollection(url, headers, workspaceDesired);
+    ensuredWorkspaceId = created.id;
+    console.log(`Created workspaces (${ensuredWorkspaceId}).`);
+  } else if (rulesDrift(workspaceExisting, workspaceDesired)) {
+    await patchCollection(url, headers, workspaceExisting.id, rulePatch(workspaceDesired));
+    console.log(`Updated workspaces rules (${workspaceExisting.id}).`);
   }
-  if (!byName.has("boards")) {
-    const created = await createCollection(
-      url,
-      headers,
-      boardCollection(USERS_COLLECTION_ID, workspaceId)
-    );
+
+  const ensuredBoardDesired = boardCollection(USERS_COLLECTION_ID, ensuredWorkspaceId);
+  if (!boardExisting) {
+    const created = await createCollection(url, headers, ensuredBoardDesired);
     console.log(`Created boards (${created.id}).`);
+  } else if (rulesDrift(boardExisting, ensuredBoardDesired)) {
+    await patchCollection(url, headers, boardExisting.id, rulePatch(ensuredBoardDesired));
+    console.log(`Updated boards rules (${boardExisting.id}).`);
   }
+  if (plan.length === 0) console.log("workspaces and boards already match.");
+}
+
+function rulePatch(body) {
+  return {
+    listRule: body.listRule,
+    viewRule: body.viewRule,
+    createRule: body.createRule,
+    updateRule: body.updateRule,
+    deleteRule: body.deleteRule,
+    indexes: body.indexes,
+  };
+}
+
+function rulesDrift(existing, desired) {
+  const patch = rulePatch(desired);
+  const rulesDiffer = ["listRule", "viewRule", "createRule", "updateRule", "deleteRule"].some(
+    (key) => (existing[key] ?? "") !== (patch[key] ?? "")
+  );
+  const indexesDiffer = JSON.stringify(existing.indexes ?? []) !== JSON.stringify(patch.indexes);
+  return rulesDiffer || indexesDiffer;
+}
+
+async function patchCollection(baseUrl, headers, id, body) {
+  const res = await fetch(`${baseUrl}/api/collections/${id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(body),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`Update ${id} failed (${res.status}): ${JSON.stringify(payload)}`);
+  }
+  return payload;
 }
 
 async function createCollection(baseUrl, headers, body) {
