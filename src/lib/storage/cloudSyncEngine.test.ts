@@ -1,16 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { createCloudSyncEngine, type CloudPhase } from "@/lib/storage/cloudSyncEngine";
+import { boardFingerprint } from "@/lib/storage/fingerprint";
 import type { RemoteBoardEvent } from "@/lib/storage/PocketBaseStorageAdapter";
 import { createEmptySnapshot } from "@/lib/storage/snapshot";
 import type { BoardMeta, BoardSnapshot } from "@/types/storage";
 
 function harness(options?: { online?: boolean; authenticated?: boolean }) {
   const saves: BoardSnapshot[] = [];
+  const kept: BoardSnapshot[] = [];
+  const written: BoardSnapshot[] = [];
   const statuses: CloudPhase[] = [];
+  const conflicts: boolean[] = [];
   const applied: BoardSnapshot[] = [];
   let remoteHandler: ((event: RemoteBoardEvent) => void) | null = null;
   let queued: (() => void) | null = null;
   const local = new Map<string, BoardSnapshot>();
+  const remote = new Map<string, BoardSnapshot>();
   const metas: BoardMeta[] = [{ id: "board-default", name: "Main", createdAt: 1 }];
   let online = options?.online ?? true;
   let authenticated = options?.authenticated ?? true;
@@ -23,12 +28,20 @@ function harness(options?: { online?: boolean; authenticated?: boolean }) {
     async saveBoard(_boardId, snapshot) {
       saves.push(snapshot);
     },
+    async keepLocal(boardId, snapshot) {
+      const remoteSnap = remote.get(boardId);
+      const base = Math.max(snapshot.revision, remoteSnap?.revision ?? 0);
+      const next = { ...snapshot, revision: base + 1 };
+      kept.push(next);
+      return next;
+    },
     async deleteBoard() {},
     async saveCatalog() {},
     async listRemote() {
       return metas;
     },
     async loadRemote(boardId) {
+      if (remote.has(boardId)) return remote.get(boardId) ?? null;
       return local.get(boardId) ?? null;
     },
     acknowledge() {},
@@ -46,10 +59,15 @@ function harness(options?: { online?: boolean; authenticated?: boolean }) {
       applied.push(snapshot);
       local.set("board-default", snapshot);
     },
+    writeLocalSnapshot(boardId, snapshot) {
+      written.push(snapshot);
+      local.set(boardId, snapshot);
+    },
     replaceLocalCatalog() {},
     removeLocalBoard() {},
-    onStatus(phase) {
+    onStatus(phase, _detail, conflict) {
       statuses.push(phase);
+      conflicts.push(Boolean(conflict));
     },
     schedule(fn) {
       queued = fn;
@@ -64,9 +82,13 @@ function harness(options?: { online?: boolean; authenticated?: boolean }) {
   return {
     engine,
     saves,
+    kept,
+    written,
     statuses,
+    conflicts,
     applied,
     local,
+    remote,
     setOnline(value: boolean) {
       online = value;
     },
@@ -173,6 +195,53 @@ describe("createCloudSyncEngine", () => {
     });
     await Promise.resolve();
     expect(sync.statuses[sync.statuses.length - 1]).toBe("error");
+    sync.engine.stop();
+  });
+
+  it("keeps this device by writing one revision past a diverged cloud board", async () => {
+    const sync = harness();
+    const mine = createEmptySnapshot({
+      revision: 2,
+      nodes: [{ id: "mine", position: { x: 1, y: 1 }, data: {} }],
+    });
+    const theirs = createEmptySnapshot({
+      revision: 5,
+      nodes: [{ id: "theirs", position: { x: 2, y: 2 }, data: {} }],
+    });
+    sync.local.set("board-default", mine);
+    sync.remote.set("board-default", theirs);
+    sync.setMemory("dirty-fingerprint");
+
+    await sync.engine.reconcile();
+    expect(sync.conflicts[sync.conflicts.length - 1]).toBe(true);
+    expect(sync.applied).toHaveLength(0);
+
+    await sync.engine.reconcile({ preferLocal: true });
+    expect(sync.kept[0]?.revision).toBe(6);
+    expect(sync.kept[0]?.nodes[0]?.id).toBe("mine");
+    expect(sync.written[0]?.revision).toBe(6);
+    expect(sync.applied).toHaveLength(0);
+    expect(sync.statuses[sync.statuses.length - 1]).toBe("saved");
+    sync.engine.stop();
+  });
+
+  it("takes the cloud copy when the same revision diverged and this device is idle", async () => {
+    const sync = harness();
+    const mine = createEmptySnapshot({
+      revision: 3,
+      nodes: [{ id: "mine", position: { x: 0, y: 0 }, data: {} }],
+    });
+    const theirs = createEmptySnapshot({
+      revision: 3,
+      nodes: [{ id: "theirs", position: { x: 4, y: 4 }, data: {} }],
+    });
+    sync.local.set("board-default", mine);
+    sync.remote.set("board-default", theirs);
+    sync.setMemory(boardFingerprint(mine));
+
+    await sync.engine.reconcile();
+    expect(sync.applied[0]?.nodes[0]?.id).toBe("theirs");
+    expect(sync.conflicts[sync.conflicts.length - 1]).toBe(false);
     sync.engine.stop();
   });
 });

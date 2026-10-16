@@ -11,6 +11,8 @@ export interface CloudSyncDeps {
   isOnline: () => boolean;
   isAuthenticated: () => boolean;
   saveBoard: (boardId: string, snapshot: BoardSnapshot, name?: string) => Promise<void>;
+  /** User chose this device over a newer or diverged cloud board. */
+  keepLocal: (boardId: string, snapshot: BoardSnapshot, name?: string) => Promise<BoardSnapshot>;
   deleteBoard: (boardId: string) => Promise<void>;
   saveCatalog: (boards: BoardMeta[]) => Promise<void>;
   listRemote: () => Promise<BoardMeta[]>;
@@ -23,9 +25,11 @@ export interface CloudSyncDeps {
   /** Fingerprint of the open canvas, or null when `boardId` is not the active board. */
   memoryFingerprint: (boardId: string) => string | null;
   applyToCanvas: (boardId: string, snapshot: BoardSnapshot) => void;
+  /** Persist a snapshot without replacing the open canvas or re-queueing a save. */
+  writeLocalSnapshot: (boardId: string, snapshot: BoardSnapshot) => void;
   replaceLocalCatalog: (boards: BoardMeta[]) => void;
   removeLocalBoard: (boardId: string) => void;
-  onStatus: (phase: CloudPhase, detail: string | null) => void;
+  onStatus: (phase: CloudPhase, detail: string | null, conflict?: boolean) => void;
   schedule?: (fn: () => void | Promise<void>, ms: number) => { cancel: () => void };
 }
 
@@ -34,7 +38,7 @@ export interface CloudSyncEngine {
   stop(): void;
   noteMutation(event: StorageMutation): void;
   flush(): Promise<CloudPhase | "idle">;
-  reconcile(options?: { preferRemote?: boolean }): Promise<void>;
+  reconcile(options?: { preferRemote?: boolean; preferLocal?: boolean }): Promise<void>;
   handleOnline(): void;
   handleOffline(): void;
   handleAuthChanged(): void;
@@ -58,7 +62,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
 
   let stopped = false;
   let timer: { cancel: () => void } | null = null;
-  let flushing: Promise<{ phase: CloudPhase; detail: string | null }> | null = null;
+  let flushing: Promise<{ phase: CloudPhase; detail: string | null; conflict: boolean }> | null = null;
   let flushAgain = false;
   let holdForOnline = false;
   let reconciling: Promise<void> | null = null;
@@ -122,7 +126,8 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
     flushing = (async () => {
       let phase: CloudPhase = "saved";
       let detail: string | null = null;
-      const finish = () => ({ phase, detail });
+      let conflict = false;
+      const finish = () => ({ phase, detail, conflict });
       for (const boardId of deletes) {
         saves.delete(boardId);
         try {
@@ -166,28 +171,27 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
             return finish();
           }
           phase = "error";
-          if (!(err instanceof CloudConflictError)) {
-            pendingSaves.set(boardId, snapshot);
-          }
+          if (err instanceof CloudConflictError) conflict = true;
+          else pendingSaves.set(boardId, snapshot);
         }
       }
       return finish();
     })();
 
-    let outcome: { phase: CloudPhase; detail: string | null };
+    let outcome: { phase: CloudPhase; detail: string | null; conflict: boolean };
     try {
       outcome = await flushing;
     } finally {
       flushing = null;
     }
-    const { phase, detail } = outcome;
+    const { phase, detail, conflict: saveConflict } = outcome;
 
     if (phase === "offline") {
       deps.onStatus("offline", detail ?? OFFLINE_DETAIL);
       return "offline";
     }
     if (phase === "error") {
-      deps.onStatus("error", detail ?? "Cloud sync failed.");
+      deps.onStatus("error", detail ?? "Cloud sync failed.", saveConflict);
       return "error";
     }
     if (flushAgain || pendingSaves.size > 0 || pendingDeletes.size > 0 || pendingCatalog) {
@@ -247,7 +251,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
     deps.onStatus("saved", null);
   }
 
-  async function reconcile(options?: { preferRemote?: boolean }): Promise<void> {
+  async function reconcile(options?: { preferRemote?: boolean; preferLocal?: boolean }): Promise<void> {
     if (reconciling) {
       await reconciling;
       if (!options?.preferRemote) return;
@@ -291,14 +295,36 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
           continue;
         }
         if (!remote || !local) continue;
-        if (remote.revision > local.revision) {
-          if (!options?.preferRemote && isDirty(meta.id, local)) {
-            conflict = `Remote changes on “${meta.name}” are newer. Use the cloud copy or keep this device’s version.`;
-            continue;
+        const remoteFp = boardFingerprint(remote);
+        const localFp = boardFingerprint(local);
+        const diverged =
+          remote.revision > local.revision ||
+          (remote.revision === local.revision && remoteFp !== localFp);
+        if (diverged && options?.preferLocal) {
+          const written = await deps.keepLocal(meta.id, local, meta.name);
+          deps.acknowledge(meta.id, written.revision);
+          lastPushed.set(meta.id, boardFingerprint(written));
+          const pending = pendingSaves.get(meta.id);
+          if (pending && boardFingerprint(pending) !== boardFingerprint(written)) {
+            const revision = Math.max(pending.revision, written.revision + 1);
+            const next = revision === pending.revision ? pending : { ...pending, revision };
+            pendingSaves.set(meta.id, next);
+            deps.writeLocalSnapshot(meta.id, next);
+          } else {
+            pendingSaves.delete(meta.id);
+            deps.writeLocalSnapshot(meta.id, written);
           }
+          continue;
+        }
+        if (diverged && (options?.preferRemote || !isDirty(meta.id, local))) {
           deps.acknowledge(meta.id, remote.revision);
-          lastPushed.set(meta.id, boardFingerprint(remote));
+          lastPushed.set(meta.id, remoteFp);
+          pendingSaves.delete(meta.id);
           deps.applyToCanvas(meta.id, remote);
+          continue;
+        }
+        if (diverged) {
+          conflict = `Remote changes on “${meta.name}” differ from this device. Use the cloud copy or keep this device’s version.`;
           continue;
         }
         if (local.revision > remote.revision) {
@@ -307,12 +333,12 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
           continue;
         }
         deps.acknowledge(meta.id, remote.revision);
-        lastPushed.set(meta.id, boardFingerprint(local));
+        lastPushed.set(meta.id, localFp);
       }
 
       await ensureSubscription();
       const flushed = await flush();
-      if (conflict) deps.onStatus("error", conflict);
+      if (conflict) deps.onStatus("error", conflict, true);
       else if (flushed === "idle") deps.onStatus("saved", null);
     };
 

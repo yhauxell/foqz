@@ -82,6 +82,39 @@ describe.skipIf(!url)("PocketBaseStorageAdapter against a PocketBase server", ()
     expect(remote?.revision).toBe(8);
   });
 
+  it("keeps this device one revision past a newer remote row", async () => {
+    const owner = await registerUser();
+    const adapter = new PocketBaseStorageAdapter(() => toPocketBaseClient(owner));
+    const snapshot = createEmptySnapshot({ revision: 1, updatedAt: 1 });
+    await adapter.saveBoard("board-keep", snapshot, "Keep");
+    const row = await owner.collection("boards").getFirstListItem('local_id = "board-keep"');
+    await owner.collection("boards").update(row.id, {
+      revision: 4,
+      snapshot: {
+        ...snapshot,
+        revision: 4,
+        nodes: [{ id: "remote", position: { x: 1, y: 1 }, data: {} }],
+      },
+      last_modified_by: owner.authStore.record?.id,
+    });
+
+    const kept = await adapter.keepLocalBoard(
+      "board-keep",
+      createEmptySnapshot({
+        revision: 2,
+        updatedAt: 2,
+        nodes: [{ id: "local", position: { x: 0, y: 0 }, data: {} }],
+      }),
+      "Keep"
+    );
+
+    expect(kept.revision).toBe(5);
+    expect(kept.nodes[0]?.id).toBe("local");
+    const remote = await adapter.loadBoard("board-keep");
+    expect(remote?.revision).toBe(5);
+    expect(remote?.nodes[0]?.id).toBe("local");
+  });
+
   it("rejects a second Personal workspace for the same owner", async () => {
     const owner = await registerUser();
     const adapter = new PocketBaseStorageAdapter(() => toPocketBaseClient(owner));

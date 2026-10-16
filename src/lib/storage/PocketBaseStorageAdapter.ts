@@ -120,6 +120,59 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
     this.ackedRevision.set(boardId, snapshot.revision);
   }
 
+  /**
+   * Write this device's snapshot after the user chooses it over the cloud copy.
+   * The stored revision becomes one past the higher counter so the sequence
+   * stays monotonic. Ordinary saves never take this path.
+   */
+  async keepLocalBoard(
+    boardId: string,
+    snapshot: BoardSnapshot,
+    name?: string
+  ): Promise<BoardSnapshot> {
+    const bytes = snapshotByteLength(snapshot);
+    if (bytes > MAX_SNAPSHOT_BYTES) {
+      throw new SnapshotTooLargeError(bytes, MAX_SNAPSHOT_BYTES);
+    }
+    const workspaceId = await this.ensureWorkspace();
+    const existing = await this.findBoard(boardId);
+    if (!existing) {
+      const created = await this.createBoardRecord(
+        workspaceId,
+        boardId,
+        name?.trim() || boardId,
+        snapshot
+      );
+      const stored = snapshotFromRecord(created) ?? snapshot;
+      this.ackedRevision.set(boardId, stored.revision);
+      return stored;
+    }
+
+    const remoteRevision = revisionOf(existing);
+    const remoteSnapshot = snapshotFromRecord(existing);
+    if (remoteSnapshot && boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot)) {
+      const revision = Math.max(snapshot.revision, remoteRevision);
+      this.remember(boardId, existing);
+      this.ackedRevision.set(boardId, revision);
+      return revision === snapshot.revision ? snapshot : { ...snapshot, revision };
+    }
+
+    const written: BoardSnapshot = {
+      ...snapshot,
+      revision: Math.max(snapshot.revision, remoteRevision) + 1,
+      updatedAt: Date.now(),
+    };
+    const updated = await this.client.collection(BOARDS_COLLECTION).update(String(existing.id), {
+      snapshot: written,
+      revision: written.revision,
+      last_modified_by: this.requireUserId(),
+      ...(name ? { name } : {}),
+    });
+    this.remember(boardId, updated);
+    this.ackedRevision.set(boardId, written.revision);
+    return written;
+  }
+
   async deleteBoard(boardId: string): Promise<void> {
     const existing = await this.findBoard(boardId);
     this.recordIds.delete(boardId);
@@ -282,6 +335,22 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
     } catch (err) {
       const existing = await this.findBoard(boardId);
       if (!existing) throw err;
+      const remoteRevision = revisionOf(existing);
+      const remoteSnapshot = snapshotFromRecord(existing);
+      if (
+        remoteSnapshot &&
+        (remoteRevision > snapshot.revision ||
+          (remoteRevision === snapshot.revision &&
+            boardFingerprint(remoteSnapshot) !== boardFingerprint(snapshot)))
+      ) {
+        this.remember(boardId, existing);
+        throw new CloudConflictError(boardId, remoteRevision, snapshot.revision);
+      }
+      if (remoteSnapshot && boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot)) {
+        this.remember(boardId, existing);
+        this.ackedRevision.set(boardId, Math.max(snapshot.revision, remoteRevision));
+        return existing;
+      }
       const updated = await this.client.collection(BOARDS_COLLECTION).update(String(existing.id), {
         name,
         snapshot,

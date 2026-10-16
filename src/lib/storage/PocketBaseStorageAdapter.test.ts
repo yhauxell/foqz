@@ -20,6 +20,8 @@ function createFakeClient() {
   ]);
   const handlers = new Set<(event: PbSubscribeEvent) => void>();
   let seq = 1;
+  let failCreates = 0;
+  let missFinds = 0;
   const auth = {
     isValid: true,
     token: "token",
@@ -44,6 +46,12 @@ function createFakeClient() {
           return table.map((row) => ({ ...row }));
         },
         async getFirstListItem(filter: string) {
+          if (missFinds > 0 && filter.includes("local_id")) {
+            missFinds -= 1;
+            const error = new Error("not found") as Error & { status: number };
+            error.status = 404;
+            throw error;
+          }
           const found = table.find((row) => matches(filter, row));
           if (!found) {
             const error = new Error("not found") as Error & { status: number };
@@ -53,6 +61,12 @@ function createFakeClient() {
           return { ...found };
         },
         async create(data: Record<string, unknown>) {
+          if (failCreates > 0) {
+            failCreates -= 1;
+            const error = new Error("unique") as Error & { status: number };
+            error.status = 400;
+            throw error;
+          }
           const row: PbRecord = {
             id: `rec-${seq++}`,
             created: "2026-10-16 12:00:00.000Z",
@@ -89,6 +103,12 @@ function createFakeClient() {
   return {
     client,
     tables,
+    failNextCreate() {
+      failCreates += 1;
+    },
+    missNextFind() {
+      missFinds += 1;
+    },
     emit(event: PbSubscribeEvent) {
       for (const handler of handlers) handler(event);
     },
@@ -161,6 +181,59 @@ describe("PocketBaseStorageAdapter", () => {
         "Main"
       )
     ).rejects.toBeInstanceOf(CloudConflictError);
+    expect((row?.snapshot as { nodes?: { id: string }[] })?.nodes?.[0]?.id).toBe("remote");
+  });
+
+  it("keeps this device by advancing one revision past the cloud", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    await adapter.saveBoard(
+      "board-default",
+      createEmptySnapshot({
+        revision: 4,
+        nodes: [{ id: "remote", position: { x: 1, y: 1 }, data: {} }],
+      }),
+      "Main"
+    );
+    const kept = await adapter.keepLocalBoard(
+      "board-default",
+      createEmptySnapshot({
+        revision: 2,
+        nodes: [{ id: "local", position: { x: 0, y: 0 }, data: {} }],
+      }),
+      "Main"
+    );
+    expect(kept.revision).toBe(5);
+    expect(kept.nodes[0]?.id).toBe("local");
+    const row = fake.tables.get("boards")?.[0];
+    expect(row?.revision).toBe(5);
+  });
+
+  it("does not clobber a diverged board when create loses the insert race", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    await adapter.saveBoard(
+      "board-default",
+      createEmptySnapshot({
+        revision: 2,
+        nodes: [{ id: "remote", position: { x: 1, y: 1 }, data: {} }],
+      }),
+      "Main"
+    );
+    const racer = new PocketBaseStorageAdapter(() => fake.client);
+    fake.missNextFind();
+    fake.failNextCreate();
+    await expect(
+      racer.saveBoard(
+        "board-default",
+        createEmptySnapshot({
+          revision: 2,
+          nodes: [{ id: "local", position: { x: 0, y: 0 }, data: {} }],
+        }),
+        "Main"
+      )
+    ).rejects.toBeInstanceOf(CloudConflictError);
+    const row = fake.tables.get("boards")?.[0];
     expect((row?.snapshot as { nodes?: { id: string }[] })?.nodes?.[0]?.id).toBe("remote");
   });
 
