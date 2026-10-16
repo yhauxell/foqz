@@ -48,8 +48,8 @@ export function getPocketBase(): PocketBase {
   return client;
 }
 
-export function pocketBaseClient(): PbClientLike {
-  const pb = getPocketBase();
+/** Structural wrapper so the storage adapter can run against the SDK or a test double. */
+export function toPocketBaseClient(pb: PocketBase): PbClientLike {
   return {
     autoCancellation(enable: boolean) {
       pb.autoCancellation(enable);
@@ -101,6 +101,10 @@ export function pocketBaseClient(): PbClientLike {
       };
     },
   };
+}
+
+export function pocketBaseClient(): PbClientLike {
+  return toPocketBaseClient(getPocketBase());
 }
 
 function resetClient(): void {
