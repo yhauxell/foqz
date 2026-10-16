@@ -83,6 +83,16 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await capture.press('/');
     await expect(dialog.getByText('Project or runway', { exact: true })).toBeVisible();
     await page.screenshot({ path: 'test-results/quick-task-slash-autocomplete.png' });
+
+    // Selecting a destination renders it as a chip (not inline /text)
+    await capture.press('Enter');
+    await expect(dialog.getByLabel(/Destination /)).toBeVisible();
+    await expect(capture).toHaveValue('Polish landing ');
+
+    // Backspace at start of note removes the destination chip
+    await capture.press('Home');
+    await capture.press('Backspace');
+    await expect(dialog.getByLabel(/Destination /)).toHaveCount(0);
   });
 
   test('opens clear board confirmation modal and can cancel or clear', async ({ page }) => {

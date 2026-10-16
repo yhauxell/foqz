@@ -17,9 +17,7 @@ import {
 } from "lucide-react";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 import {
-  extractExplicitMentions,
   getMentionTrigger,
-  insertMentionToken,
   parseQuickTaskCapture,
   type QuickTaskCitationOption,
   type QuickTaskDestinationOption,
@@ -45,13 +43,11 @@ type AutocompleteItem =
       id: string;
       title: string;
       destKind: "project" | "runway";
-      token: string;
     }
   | {
       kind: "task";
       id: string;
       title: string;
-      token: string;
     };
 
 export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
@@ -66,12 +62,6 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
-  const [preview, setPreview] = useState<{
-    title: string;
-    destinationLabel: string;
-    cites: string[];
-    usedAi: boolean;
-  } | null>(null);
 
   const destinations = useMemo<QuickTaskDestinationOption[]>(() => {
     const list: QuickTaskDestinationOption[] = [];
@@ -102,16 +92,15 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
       }));
   }, [nodes]);
 
-  const destinationLabel = useMemo(() => {
+  const destination = useMemo(() => {
     if (!destinationId) return null;
-    const d = destinations.find((x) => x.id === destinationId);
-    return d ? d.title : null;
+    return destinations.find((x) => x.id === destinationId) || null;
   }, [destinationId, destinations]);
 
-  const citedLabels = useMemo(() => {
+  const citedTasks = useMemo(() => {
     return citedTaskIds
-      .map((id) => tasks.find((t) => t.id === id)?.title)
-      .filter(Boolean) as string[];
+      .map((id) => tasks.find((t) => t.id === id))
+      .filter(Boolean) as QuickTaskCitationOption[];
   }, [citedTaskIds, tasks]);
 
   const trigger = useMemo(
@@ -132,7 +121,6 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
           id: d.id,
           title: d.title,
           destKind: d.kind,
-          token: `/${d.title}`,
         }));
     }
 
@@ -143,7 +131,6 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
         kind: "task" as const,
         id: t.id,
         title: t.title,
-        token: `@${t.title}`,
       }));
   }, [trigger, destinations, tasks, menuDismissed]);
 
@@ -151,20 +138,6 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
     setSelectedIndex(0);
     setMenuDismissed(false);
   }, [trigger?.type, trigger?.start, trigger?.query]);
-
-  // Keep chips in sync with typed / and @ tokens (not only autocomplete picks)
-  useEffect(() => {
-    if (!open) return;
-    const fromText = extractExplicitMentions(text, destinations, tasks);
-    if (fromText.destinationId) {
-      setDestinationId(fromText.destinationId);
-    }
-    if (fromText.citedTaskIds.length > 0) {
-      setCitedTaskIds((prev) =>
-        Array.from(new Set([...prev, ...fromText.citedTaskIds]))
-      );
-    }
-  }, [text, destinations, tasks, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -174,10 +147,8 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
     setCitedTaskIds([]);
     setMenuDismissed(false);
     setErrorMsg(null);
-    setPreview(null);
     setIsParsing(false);
 
-    // Prefill destination from selection context
     const state = useFlowCanvasStore.getState();
     const selected = state.selectedNodeId
       ? state.nodes.find((n) => n.id === state.selectedNodeId)
@@ -202,12 +173,31 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
     return () => window.clearTimeout(t);
   }, [open]);
 
+  const clearDestination = useCallback(() => {
+    setDestinationId(undefined);
+  }, []);
+
+  const removeCitedTask = useCallback((id: string) => {
+    setCitedTaskIds((prev) => prev.filter((x) => x !== id));
+  }, []);
+
+  /** Strip the active `/query` or `@query` trigger from the note text. */
+  const stripActiveTrigger = useCallback(() => {
+    if (!trigger) return { text, cursor };
+    const before = text.slice(0, trigger.start);
+    const after = text.slice(cursor);
+    const nextText = `${before}${after}`;
+    const nextCursor = before.length;
+    return { text: nextText, cursor: nextCursor };
+  }, [trigger, text, cursor]);
+
   const applySuggestion = useCallback(
     (item: AutocompleteItem) => {
       if (!trigger) return;
-      const next = insertMentionToken(text, cursor, trigger.start, item.token);
+      const next = stripActiveTrigger();
       setText(next.text);
       setCursor(next.cursor);
+
       if (item.kind === "destination") {
         setDestinationId(item.id);
       } else {
@@ -215,6 +205,7 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
           prev.includes(item.id) ? prev : [...prev, item.id]
         );
       }
+
       requestAnimationFrame(() => {
         const el = textareaRef.current;
         if (!el) return;
@@ -222,13 +213,30 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
         el.setSelectionRange(next.cursor, next.cursor);
       });
     },
-    [trigger, text, cursor]
+    [trigger, stripActiveTrigger]
   );
+
+  const removeChipViaKeyboard = useCallback(() => {
+    if (destinationId) {
+      clearDestination();
+      return true;
+    }
+    if (citedTaskIds.length > 0) {
+      removeCitedTask(citedTaskIds[citedTaskIds.length - 1]);
+      return true;
+    }
+    return false;
+  }, [destinationId, citedTaskIds, clearDestination, removeCitedTask]);
 
   const submit = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed) {
+    if (!trimmed && !destinationId && citedTaskIds.length === 0) {
       setErrorMsg("Write what you need to capture.");
+      textareaRef.current?.focus();
+      return;
+    }
+    if (!trimmed) {
+      setErrorMsg("Add a short note for the task title.");
       textareaRef.current?.focus();
       return;
     }
@@ -236,25 +244,27 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
     setIsParsing(true);
     setErrorMsg(null);
     try {
+      // Rebuild a parseable note that includes chip context for the AI
+      const destMeta = destinationId
+        ? destinations.find((d) => d.id === destinationId)
+        : undefined;
+      const citeTitles = citedTaskIds
+        .map((id) => tasks.find((t) => t.id === id)?.title)
+        .filter(Boolean) as string[];
+      const enriched = [
+        trimmed,
+        destMeta ? `/${destMeta.title}` : "",
+        ...citeTitles.map((t) => `@${t}`),
+      ]
+        .filter(Boolean)
+        .join(" ");
+
       const parsed = await parseQuickTaskCapture({
-        text: trimmed,
+        text: enriched,
         destinations,
         tasks,
         explicitDestinationId: destinationId,
         explicitCitedTaskIds: citedTaskIds,
-      });
-
-      setPreview({
-        title: parsed.title,
-        destinationLabel:
-          parsed.parentId
-            ? destinations.find((d) => d.id === parsed.parentId)?.title ||
-              "Workspace"
-            : "Canvas",
-        cites: parsed.relatedTaskIds
-          .map((id) => tasks.find((t) => t.id === id)?.title || id)
-          .filter(Boolean),
-        usedAi: parsed.usedAi,
       });
 
       window.dispatchEvent(
@@ -303,6 +313,8 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
   }, [open, onClose, suggestions.length]);
 
   if (!open) return null;
+
+  const hasChips = Boolean(destination) || citedTasks.length > 0;
 
   return (
     <div
@@ -407,146 +419,184 @@ export function QuickTaskModal({ open, onClose }: QuickTaskModalProps) {
               </div>
             )}
 
-            <label htmlFor="quick-task-capture" className="sr-only">
-              Capture note
-            </label>
-            <textarea
-              ref={textareaRef}
-              id="quick-task-capture"
-              value={text}
-              rows={5}
-              placeholder={
-                "Ship onboarding polish tomorrow for /Acme, blocked by @Login rewrite…"
-              }
-              disabled={isParsing}
-              onChange={(e) => {
-                setText(e.target.value);
-                setCursor(e.target.selectionStart);
-                if (errorMsg) setErrorMsg(null);
-              }}
-              onClick={(e) =>
-                setCursor((e.target as HTMLTextAreaElement).selectionStart)
-              }
-              onKeyUp={(e) =>
-                setCursor((e.target as HTMLTextAreaElement).selectionStart)
-              }
-              onSelect={(e) =>
-                setCursor((e.target as HTMLTextAreaElement).selectionStart)
-              }
-              onKeyDown={(e) => {
-                if (suggestions.length > 0) {
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setSelectedIndex((i) => (i + 1) % suggestions.length);
-                    return;
-                  }
-                  if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setSelectedIndex(
-                      (i) => (i - 1 + suggestions.length) % suggestions.length
-                    );
-                    return;
-                  }
-                  if (e.key === "Tab" || (e.key === "Enter" && !e.metaKey && !e.ctrlKey)) {
-                    e.preventDefault();
-                    const target =
-                      suggestions[selectedIndex] || suggestions[0];
-                    if (target) applySuggestion(target);
-                    return;
-                  }
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    setMenuDismissed(true);
-                    return;
-                  }
-                }
+            <div
+              className={`rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60 focus-within:ring-2 focus-within:ring-emerald-500/35 focus-within:border-emerald-500/50 ${
+                isParsing ? "opacity-60" : ""
+              }`}
+            >
+              {hasChips && (
+                <div className="flex flex-wrap items-center gap-1.5 px-3 pt-2.5 pb-1">
+                  {destination && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Destination ${destination.title}. Press Delete to remove.`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Backspace" || e.key === "Delete") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          clearDestination();
+                          textareaRef.current?.focus();
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-lg text-[11px] font-medium bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/70 outline-none focus:ring-2 focus:ring-blue-400/40 cursor-default"
+                    >
+                      {destination.kind === "runway" ? (
+                        <PlaneTakeoff className="size-3 text-amber-500 shrink-0" />
+                      ) : (
+                        <Folder className="size-3 shrink-0" />
+                      )}
+                      <span className="truncate max-w-[180px]">
+                        {destination.title}
+                      </span>
+                      <button
+                        type="button"
+                        className="ml-0.5 p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          clearDestination();
+                          textareaRef.current?.focus();
+                        }}
+                        aria-label="Remove destination"
+                      >
+                        <X className="size-2.5" />
+                      </button>
+                    </span>
+                  )}
+                  {citedTasks.map((task) => (
+                    <span
+                      key={task.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Cited task ${task.title}. Press Delete to remove.`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Backspace" || e.key === "Delete") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          removeCitedTask(task.id);
+                          textareaRef.current?.focus();
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-lg text-[11px] font-medium bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 border border-violet-200/80 dark:border-violet-800/70 outline-none focus:ring-2 focus:ring-violet-400/40 cursor-default"
+                    >
+                      <AtSign className="size-3 shrink-0" />
+                      <span className="truncate max-w-[160px]">{task.title}</span>
+                      <button
+                        type="button"
+                        className="ml-0.5 p-0.5 rounded hover:bg-violet-100 dark:hover:bg-violet-900 cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeCitedTask(task.id);
+                          textareaRef.current?.focus();
+                        }}
+                        aria-label={`Remove citation ${task.title}`}
+                      >
+                        <X className="size-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
 
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                  e.preventDefault();
-                  void submit();
+              <label htmlFor="quick-task-capture" className="sr-only">
+                Capture note
+              </label>
+              <textarea
+                ref={textareaRef}
+                id="quick-task-capture"
+                value={text}
+                rows={hasChips ? 4 : 5}
+                placeholder={
+                  hasChips
+                    ? "What needs to happen?"
+                    : "Ship onboarding polish tomorrow… type / for project, @ to cite a task"
                 }
-              }}
-              className="w-full px-3.5 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60 text-sm leading-relaxed text-zinc-900 dark:text-zinc-100 outline-none focus:ring-2 focus:ring-emerald-500/35 focus:border-emerald-500/50 resize-none placeholder:text-zinc-400 disabled:opacity-60"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5 min-h-[28px]">
-            {destinationLabel ? (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/70 dark:border-blue-800/60">
-                <Folder className="size-3" />
-                <span className="truncate max-w-[160px]">{destinationLabel}</span>
-                <button
-                  type="button"
-                  className="ml-0.5 p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 cursor-pointer"
-                  onClick={() => {
-                    setDestinationId(undefined);
-                    if (destinationLabel) {
-                      setText((prev) =>
-                        prev
-                          .replace(
-                            new RegExp(
-                              `/${destinationLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`,
-                              "i"
-                            ),
-                            ""
-                          )
-                          .replace(/\s{2,}/g, " ")
-                      );
+                disabled={isParsing}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  setCursor(e.target.selectionStart);
+                  if (errorMsg) setErrorMsg(null);
+                }}
+                onClick={(e) =>
+                  setCursor((e.target as HTMLTextAreaElement).selectionStart)
+                }
+                onKeyUp={(e) =>
+                  setCursor((e.target as HTMLTextAreaElement).selectionStart)
+                }
+                onSelect={(e) =>
+                  setCursor((e.target as HTMLTextAreaElement).selectionStart)
+                }
+                onKeyDown={(e) => {
+                  if (suggestions.length > 0) {
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      setSelectedIndex((i) => (i + 1) % suggestions.length);
+                      return;
                     }
-                  }}
-                  aria-label="Clear destination"
-                >
-                  <X className="size-2.5" />
-                </button>
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-zinc-400 border border-dashed border-zinc-200 dark:border-zinc-700">
-                <span className="font-mono">/</span> to file under a project or
-                runway
-              </span>
-            )}
-            {citedLabels.map((label, idx) => (
-              <span
-                key={`${citedTaskIds[idx]}-${label}`}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-200/70 dark:border-violet-800/60"
-              >
-                <AtSign className="size-3" />
-                <span className="truncate max-w-[140px]">{label}</span>
-                <button
-                  type="button"
-                  className="ml-0.5 p-0.5 rounded hover:bg-violet-100 dark:hover:bg-violet-900 cursor-pointer"
-                  onClick={() => {
-                    const id = citedTaskIds[idx];
-                    setCitedTaskIds((prev) => prev.filter((x) => x !== id));
-                    setText((prev) =>
-                      prev
-                        .replace(
-                          new RegExp(
-                            `@${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`,
-                            "i"
-                          ),
-                          ""
-                        )
-                        .replace(/\s{2,}/g, " ")
-                    );
-                  }}
-                  aria-label={`Remove citation ${label}`}
-                >
-                  <X className="size-2.5" />
-                </button>
-              </span>
-            ))}
-            {citedLabels.length === 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-zinc-400 border border-dashed border-zinc-200 dark:border-zinc-700">
-                <span className="font-mono">@</span> to cite related tasks
-              </span>
-            )}
+                    if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setSelectedIndex(
+                        (i) =>
+                          (i - 1 + suggestions.length) % suggestions.length
+                      );
+                      return;
+                    }
+                    if (
+                      e.key === "Tab" ||
+                      (e.key === "Enter" && !e.metaKey && !e.ctrlKey)
+                    ) {
+                      e.preventDefault();
+                      const target =
+                        suggestions[selectedIndex] || suggestions[0];
+                      if (target) applySuggestion(target);
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setMenuDismissed(true);
+                      return;
+                    }
+                  }
+
+                  // Backspace / Delete at start of note removes the destination (then citation) chip
+                  if (
+                    (e.key === "Backspace" || e.key === "Delete") &&
+                    suggestions.length === 0
+                  ) {
+                    const el = e.target as HTMLTextAreaElement;
+                    const hasSelection =
+                      el.selectionStart !== el.selectionEnd;
+                    if (
+                      !hasSelection &&
+                      el.selectionStart === 0 &&
+                      (e.key === "Backspace" || text.length === 0)
+                    ) {
+                      if (removeChipViaKeyboard()) {
+                        e.preventDefault();
+                        return;
+                      }
+                    }
+                  }
+
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    void submit();
+                  }
+                }}
+                className="w-full px-3.5 py-3 bg-transparent text-sm leading-relaxed text-zinc-900 dark:text-zinc-100 outline-none resize-none placeholder:text-zinc-400 disabled:opacity-60"
+              />
+            </div>
           </div>
 
-          {preview && (
-            <div className="text-[11px] text-zinc-500 px-1">
-              Parsed as <strong>{preview.title}</strong> → {preview.destinationLabel}
-              {preview.usedAi ? " · AI" : " · local"}
+          {!hasChips && (
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-700">
+                <span className="font-mono">/</span> project or runway
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-700">
+                <span className="font-mono">@</span> cite a task
+              </span>
+              <span className="text-zinc-400/80">⌫ removes chip</span>
             </div>
           )}
 
