@@ -133,8 +133,7 @@ describe.skipIf(!url)("PocketBaseStorageAdapter against a PocketBase server", ()
     expect(listed.map((board) => board.id)).toEqual(["board-a"]);
   });
 
-  it.skipIf(typeof EventSource === "undefined")(
-    "receives a remote board update on one realtime subscription",
+  it("receives a remote board update on one realtime subscription",
     async () => {
       const owner = await registerUser();
       const listener = new PocketBase(url);

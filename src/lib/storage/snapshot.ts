@@ -1,5 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { Annotation } from "@/types/annotations";
+import { persistableEdges, persistableNodes } from "@/lib/storage/fingerprint";
 import {
   BOARD_SNAPSHOT_VERSION,
   type BoardSnapshot,
@@ -87,8 +88,8 @@ export function nextBoardSnapshot(params: {
   return {
     version: BOARD_SNAPSHOT_VERSION,
     revision: (previous?.revision ?? 0) + 1,
-    nodes: params.nodes,
-    edges: params.edges,
+    nodes: persistableNodes(params.nodes),
+    edges: persistableEdges(params.edges),
     annotations: params.annotations,
     viewport: params.viewport ?? previous?.viewport,
     updatedAt: Date.now(),

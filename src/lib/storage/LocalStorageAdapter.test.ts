@@ -9,6 +9,7 @@ import {
   STORAGE_BOARDS_KEY,
   getBoardStorageKey,
 } from "@/lib/storage/keys";
+import { boardFingerprint } from "@/lib/storage/fingerprint";
 import {
   createEmptySnapshot,
   nextBoardSnapshot,
@@ -77,6 +78,35 @@ describe("nextBoardSnapshot", () => {
     expect(next.version).toBe(BOARD_SNAPSHOT_VERSION);
     expect(next.nodes).toEqual([sampleNode]);
     expect(next.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+
+  it("stores canvas content without selection or measurement chrome", () => {
+    const previous = createEmptySnapshot({ revision: 1 });
+    const next = nextBoardSnapshot({
+      nodes: [{ ...sampleNode, selected: true, measured: { width: 10, height: 12 } } as Node],
+      edges: [{ id: "e1", source: "a", target: "b", selected: true }],
+      annotations: {},
+      previous,
+    });
+    expect(next.nodes[0]).toEqual(sampleNode);
+    expect(next.edges[0]).toEqual({ id: "e1", source: "a", target: "b" });
+    const selected = boardFingerprint({
+      nodes: [{ ...sampleNode, selected: true }],
+      edges: [],
+      annotations: {},
+    });
+    const plain = boardFingerprint({
+      nodes: [sampleNode],
+      edges: [],
+      annotations: {},
+    });
+    const moved = boardFingerprint({
+      nodes: [{ ...sampleNode, position: { x: 99, y: 20 } }],
+      edges: [],
+      annotations: {},
+    });
+    expect(selected).toBe(plain);
+    expect(moved).not.toBe(plain);
   });
 });
 

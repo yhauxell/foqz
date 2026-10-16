@@ -11,5 +11,11 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.{test,spec}.ts"],
     exclude: ["tests/**", "node_modules/**", "dist/**"],
+    // PocketBase realtime uses the global EventSource. Node 22 exposes it behind this flag.
+    poolOptions: {
+      forks: {
+        execArgv: ["--experimental-eventsource"],
+      },
+    },
   },
 });
