@@ -44,7 +44,9 @@ function workspaceCollection(usersId) {
         maxSelect: 1,
       },
     ],
-    indexes: ["CREATE INDEX `idx_workspaces_owner` ON `workspaces` (`owner`)"],
+    indexes: [
+      "CREATE UNIQUE INDEX `idx_workspaces_owner_name` ON `workspaces` (`owner`, `name`)",
+    ],
   };
 }
 

@@ -199,18 +199,39 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
 
   private async loadOrCreateWorkspace(): Promise<string> {
     const userId = this.requireUserId();
-    const filter = `owner = "${escapeFilter(userId)}"`;
+    const owned = `owner = "${escapeFilter(userId)}"`;
+    const personal = `${owned} && name = "Personal"`;
     try {
-      const existing = await this.client.collection(WORKSPACES_COLLECTION).getFirstListItem(filter);
+      const existing = await this.client
+        .collection(WORKSPACES_COLLECTION)
+        .getFirstListItem(personal);
       return String(existing.id);
     } catch (err) {
       if (!isNotFoundError(err)) throw err;
     }
-    const created = await this.client.collection(WORKSPACES_COLLECTION).create({
-      name: "Personal",
-      owner: userId,
-    });
-    return String(created.id);
+    try {
+      const anyOwned = await this.client.collection(WORKSPACES_COLLECTION).getFirstListItem(owned);
+      return String(anyOwned.id);
+    } catch (err) {
+      if (!isNotFoundError(err)) throw err;
+    }
+    try {
+      const created = await this.client.collection(WORKSPACES_COLLECTION).create({
+        name: "Personal",
+        owner: userId,
+      });
+      return String(created.id);
+    } catch (createErr) {
+      // Two devices can pass the empty check together. The unique (owner, name)
+      // index rejects the second insert; use the row that won.
+      try {
+        const existing = await this.client.collection(WORKSPACES_COLLECTION).getFirstListItem(owned);
+        return String(existing.id);
+      } catch (lookupErr) {
+        if (isNotFoundError(lookupErr)) throw createErr;
+        throw lookupErr;
+      }
+    }
   }
 
   private async listBoardRecords(): Promise<PbRecord[]> {

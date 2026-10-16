@@ -82,6 +82,24 @@ describe.skipIf(!url)("PocketBaseStorageAdapter against a PocketBase server", ()
     expect(remote?.revision).toBe(8);
   });
 
+  it("rejects a second Personal workspace for the same owner", async () => {
+    const owner = await registerUser();
+    const adapter = new PocketBaseStorageAdapter(() => toPocketBaseClient(owner));
+    await adapter.saveBoard(
+      "board-a",
+      createEmptySnapshot({ revision: 1, updatedAt: 1 }),
+      "A"
+    );
+    await expect(
+      owner.collection("workspaces").create({
+        name: "Personal",
+        owner: owner.authStore.record?.id,
+      })
+    ).rejects.toMatchObject({ status: 400 });
+    const listed = await adapter.listBoards();
+    expect(listed.map((board) => board.id)).toEqual(["board-a"]);
+  });
+
   it.skipIf(typeof EventSource === "undefined")(
     "receives a remote board update on one realtime subscription",
     async () => {

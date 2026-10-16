@@ -165,6 +165,66 @@ describe("PocketBaseStorageAdapter", () => {
     expect(seen).toEqual([4]);
   });
 
+  it("keeps the workspace created by a concurrent login", async () => {
+    let workspaceLookups = 0;
+    const client: PbClientLike = {
+      autoCancellation() {},
+      authStore: {
+        isValid: true,
+        token: "token",
+        record: { id: "user-1" },
+        clear() {},
+        onChange() {
+          return () => {};
+        },
+      },
+      collection(name: string) {
+        return {
+          async getFullList() {
+            return [];
+          },
+          async getFirstListItem(filter: string) {
+            if (name === "workspaces") {
+              workspaceLookups += 1;
+              if (workspaceLookups < 3) {
+                throw Object.assign(new Error("not found"), { status: 404 });
+              }
+              return { id: "ws-shared", name: "Personal", owner: "user-1" };
+            }
+            if (filter.includes("board-default")) {
+              throw Object.assign(new Error("not found"), { status: 404 });
+            }
+            throw Object.assign(new Error("not found"), { status: 404 });
+          },
+          async create(data: Record<string, unknown>) {
+            if (name === "workspaces") {
+              throw Object.assign(new Error("unique"), { status: 400 });
+            }
+            return { id: "rec-board", created: "2026-10-16 12:00:00.000Z", ...data };
+          },
+          async update() {
+            return { id: "rec-board" };
+          },
+          async delete() {
+            return true;
+          },
+          async subscribe() {
+            return () => {};
+          },
+        };
+      },
+    };
+    const adapter = new PocketBaseStorageAdapter(() => client);
+    await adapter.saveBoard(
+      "board-default",
+      createEmptySnapshot({ revision: 1, updatedAt: 1 }),
+      "Focus"
+    );
+    const listed = await adapter.listBoards();
+    expect(listed).toEqual([]);
+    expect(workspaceLookups).toBeGreaterThanOrEqual(3);
+  });
+
   it("closes a realtime socket that connects after the session was reset", async () => {
     let finish: (unsubscribe: () => void) => void = () => {};
     const closed = { count: 0 };
