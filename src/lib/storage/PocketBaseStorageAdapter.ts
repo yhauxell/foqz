@@ -297,8 +297,8 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
     const records = await this.client.collection(BOARDS_COLLECTION).getFullList({
       filter: `workspace = "${escapeFilter(workspaceId)}"`,
       batch: 200,
-      // Do not sort by `created` here. The list rule joins `workspace`, and
-      // PocketBase 0.39 rejects `sort=created` because that column is ambiguous.
+      // Sort locally. `created` is an autodate column added by the schema
+      // script; a server that does not have it yet still returns this list.
       fields: "id,local_id,name,created,revision,workspace",
     });
     records.sort((a, b) => String(a.created ?? "").localeCompare(String(b.created ?? "")));

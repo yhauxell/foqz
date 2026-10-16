@@ -22,6 +22,10 @@ const OWNER_RULE = "owner = @request.auth.id";
 const BOARD_READ = "workspace.owner = @request.auth.id";
 const BOARD_WRITE =
   "@request.auth.id != '' && workspace.owner = @request.auth.id && last_modified_by = @request.auth.id";
+const TIMESTAMP_FIELDS = [
+  { name: "created", type: "autodate", onCreate: true, onUpdate: false },
+  { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+];
 
 function workspaceCollection(usersId) {
   return {
@@ -43,6 +47,7 @@ function workspaceCollection(usersId) {
         minSelect: 1,
         maxSelect: 1,
       },
+      ...TIMESTAMP_FIELDS,
     ],
     indexes: [
       "CREATE UNIQUE INDEX `idx_workspaces_owner_name` ON `workspaces` (`owner`, `name`)",
@@ -82,6 +87,7 @@ function boardCollection(usersId, workspaceId) {
         minSelect: 1,
         maxSelect: 1,
       },
+      ...TIMESTAMP_FIELDS,
     ],
     indexes: [
       "CREATE UNIQUE INDEX `idx_boards_workspace_local_id` ON `boards` (`workspace`, `local_id`)",
@@ -130,8 +136,14 @@ async function main() {
   const plan = [];
   if (!workspaceExisting) plan.push("create workspaces");
   else if (rulesDrift(workspaceExisting, workspaceDesired)) plan.push("update workspaces rules");
+  if (workspaceExisting && missingTimestamps(workspaceExisting).length) {
+    plan.push("add workspaces created and updated");
+  }
   if (!boardExisting) plan.push("create boards");
   else if (boardDesired && rulesDrift(boardExisting, boardDesired)) plan.push("update boards rules");
+  if (boardExisting && missingTimestamps(boardExisting).length) {
+    plan.push("add boards created and updated");
+  }
 
   if (!APPLY) {
     if (plan.length === 0) console.log("workspaces and boards already match.");
@@ -148,6 +160,7 @@ async function main() {
     await patchCollection(url, headers, workspaceExisting.id, rulePatch(workspaceDesired));
     console.log(`Updated workspaces rules (${workspaceExisting.id}).`);
   }
+  if (workspaceExisting) await ensureTimestamps(url, headers, workspaceExisting);
 
   const ensuredBoardDesired = boardCollection(USERS_COLLECTION_ID, ensuredWorkspaceId);
   if (!boardExisting) {
@@ -157,6 +170,7 @@ async function main() {
     await patchCollection(url, headers, boardExisting.id, rulePatch(ensuredBoardDesired));
     console.log(`Updated boards rules (${boardExisting.id}).`);
   }
+  if (boardExisting) await ensureTimestamps(url, headers, boardExisting);
   if (plan.length === 0) console.log("workspaces and boards already match.");
 }
 
@@ -169,6 +183,21 @@ function rulePatch(body) {
     deleteRule: body.deleteRule,
     indexes: body.indexes,
   };
+}
+
+function missingTimestamps(existing) {
+  const names = new Set((existing.fields ?? []).map((field) => field.name));
+  return TIMESTAMP_FIELDS.filter((field) => !names.has(field.name));
+}
+
+async function ensureTimestamps(baseUrl, headers, existing) {
+  const missing = missingTimestamps(existing);
+  if (missing.length === 0) return existing;
+  await patchCollection(baseUrl, headers, existing.id, {
+    fields: [...(existing.fields ?? []), ...missing],
+  });
+  console.log(`Added created and updated on ${existing.name} (${existing.id}).`);
+  return existing;
 }
 
 function rulesDrift(existing, desired) {

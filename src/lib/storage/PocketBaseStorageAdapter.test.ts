@@ -139,6 +139,21 @@ describe("PocketBaseStorageAdapter", () => {
     ]);
   });
 
+  it("lists boards by the created timestamp", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    await adapter.saveBoard("board-b", createEmptySnapshot({ revision: 1 }), "Second");
+    await adapter.saveBoard("board-a", createEmptySnapshot({ revision: 1 }), "First");
+    const boards = fake.tables.get("boards") ?? [];
+    const second = boards.find((row) => row.local_id === "board-b");
+    const first = boards.find((row) => row.local_id === "board-a");
+    if (second) second.created = "2026-10-16 12:00:02.000Z";
+    if (first) first.created = "2026-10-16 12:00:01.000Z";
+
+    const listed = await adapter.listBoards();
+    expect(listed.map((board) => board.id)).toEqual(["board-a", "board-b"]);
+  });
+
   it("refuses to overwrite a newer remote revision", async () => {
     const fake = createFakeClient();
     const adapter = new PocketBaseStorageAdapter(() => fake.client);
