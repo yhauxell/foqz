@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.13.0](https://github.com/yhauxell/foqz/compare/v0.12.0...v0.13.0) (2026-10-16)
+
+
+### Features
+
+* **github:** two-way task ↔ issue sync for status, priority labels, and assignee ([#61](https://github.com/yhauxell/foqz/issues/61)) ([4c8b02d](https://github.com/yhauxell/foqz/commit/4c8b02d40ca9f5e7befc84d7ad695003e3802a6a))
+* **mcp:** local Foqz MCP server for external agents ([#60](https://github.com/yhauxell/foqz/issues/60)) ([86b0a4c](https://github.com/yhauxell/foqz/commit/86b0a4ce54372b0842d0df33fed1f51a4fa63baa)), closes [#11](https://github.com/yhauxell/foqz/issues/11)
+* **shortcuts:** global Quick Task capture keymap and creation flow ([#64](https://github.com/yhauxell/foqz/issues/64)) ([66f6f5d](https://github.com/yhauxell/foqz/commit/66f6f5d81f87e82c6a5f22ee3a8248fb76ae7514))
+* **storage:** add CanvasStorageAdapter and LocalStorageAdapter (phase 1) ([#63](https://github.com/yhauxell/foqz/issues/63)) ([6efd42e](https://github.com/yhauxell/foqz/commit/6efd42e226f00784e93c687a6e346236d26c647d))
+
 ## [0.12.0](https://github.com/yhauxell/foqz/compare/v0.11.0...v0.12.0) (2026-10-08)
 
 
