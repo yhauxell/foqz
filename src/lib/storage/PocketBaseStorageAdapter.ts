@@ -102,13 +102,13 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
       throw new CloudConflictError(boardId, remoteRevision, snapshot.revision);
     }
     const remoteSnapshot = snapshotFromRecord(existing);
-    if (
-      remoteSnapshot &&
-      remoteRevision === snapshot.revision &&
-      boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot)
-    ) {
-      this.ackedRevision.set(boardId, snapshot.revision);
-      return;
+    if (remoteSnapshot && remoteRevision === snapshot.revision) {
+      if (boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot)) {
+        this.ackedRevision.set(boardId, snapshot.revision);
+        return;
+      }
+      // Same counter, different canvas. Another device saved this revision first.
+      throw new CloudConflictError(boardId, remoteRevision, snapshot.revision);
     }
     const updated = await this.client.collection(BOARDS_COLLECTION).update(String(existing.id), {
       snapshot,

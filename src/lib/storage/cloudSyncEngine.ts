@@ -297,6 +297,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
           continue;
         }
         if (local.revision > remote.revision) {
+          deps.acknowledge(meta.id, remote.revision);
           pendingSaves.set(meta.id, cloneSnapshot(local));
           continue;
         }

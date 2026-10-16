@@ -132,6 +132,38 @@ describe("PocketBaseStorageAdapter", () => {
     ).rejects.toBeInstanceOf(CloudConflictError);
   });
 
+  it("refuses to overwrite a different canvas at the same revision", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    await adapter.saveBoard(
+      "board-default",
+      createEmptySnapshot({
+        revision: 2,
+        nodes: [{ id: "local", position: { x: 0, y: 0 }, data: {} }],
+      }),
+      "Main"
+    );
+    const row = fake.tables.get("boards")?.[0];
+    if (row) {
+      row.snapshot = createEmptySnapshot({
+        revision: 2,
+        nodes: [{ id: "remote", position: { x: 1, y: 1 }, data: {} }],
+      });
+    }
+
+    await expect(
+      adapter.saveBoard(
+        "board-default",
+        createEmptySnapshot({
+          revision: 2,
+          nodes: [{ id: "local", position: { x: 0, y: 0 }, data: {} }],
+        }),
+        "Main"
+      )
+    ).rejects.toBeInstanceOf(CloudConflictError);
+    expect((row?.snapshot as { nodes?: { id: string }[] })?.nodes?.[0]?.id).toBe("remote");
+  });
+
   it("rejects snapshots over the byte cap before writing", async () => {
     const fake = createFakeClient();
     const adapter = new PocketBaseStorageAdapter(() => fake.client);
