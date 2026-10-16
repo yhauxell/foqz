@@ -183,6 +183,34 @@ describe("createCloudSyncEngine", () => {
     sync.engine.stop();
   });
 
+  it("applies a remote pan when the board content is unchanged", async () => {
+    const sync = harness();
+    const local = createEmptySnapshot({
+      revision: 2,
+      nodes: [{ id: "a", position: { x: 0, y: 0 }, data: {} }],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+    sync.local.set("board-default", local);
+    sync.setMemory(boardFingerprint(local));
+    await sync.engine.reconcile();
+    sync.applied.length = 0;
+    const remote = {
+      ...local,
+      revision: 3,
+      viewport: { x: 40, y: 12, zoom: 1 },
+    };
+    sync.emit({
+      action: "update",
+      localId: "board-default",
+      revision: 3,
+      snapshot: remote,
+    });
+    await Promise.resolve();
+    expect(sync.applied.at(-1)?.viewport).toEqual({ x: 40, y: 12, zoom: 1 });
+    expect(sync.applied.at(-1)?.revision).toBe(3);
+    sync.engine.stop();
+  });
+
   it("applies a newer idle remote snapshot and reports a conflict when the canvas is dirty", async () => {
     const sync = harness();
     const local = createEmptySnapshot({ revision: 1 });

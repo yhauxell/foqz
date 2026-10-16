@@ -1,6 +1,6 @@
 import { cloudErrorMessage, CloudConflictError, isOfflineError } from "@/lib/pocketbase/errors";
 import { boardFingerprint } from "@/lib/storage/fingerprint";
-import { sameViewport } from "@/lib/storage/snapshot";
+import { normalizeBoardViewport, sameViewport } from "@/lib/storage/snapshot";
 import type { RemoteBoardEvent } from "@/lib/storage/PocketBaseStorageAdapter";
 import type { StorageMutation } from "@/lib/storage/LocalStorageAdapter";
 import type { BoardMeta, BoardSnapshot } from "@/types/storage";
@@ -46,6 +46,13 @@ export interface CloudSyncEngine {
 }
 
 const OFFLINE_DETAIL = "You are offline. Changes stay on this device until you reconnect.";
+
+/** Content plus view, so a pan on another device is not treated as our own echo. */
+function pushedIdentity(snapshot: BoardSnapshot): string {
+  const view = normalizeBoardViewport(snapshot.viewport);
+  const viewKey = view ? `${view.x},${view.y},${view.zoom}` : "";
+  return `${boardFingerprint(snapshot)}@${viewKey}`;
+}
 
 /**
  * Debounced bridge from local board writes to PocketBase.
@@ -164,7 +171,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
       for (const [boardId, snapshot] of saves) {
         try {
           await deps.saveBoard(boardId, snapshot, deps.boardName(boardId));
-          lastPushed.set(boardId, boardFingerprint(snapshot));
+          lastPushed.set(boardId, pushedIdentity(snapshot));
         } catch (err) {
           detail = cloudErrorMessage(err);
           if (isOfflineError(err)) {
@@ -226,8 +233,9 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
     }
     const snapshot = event.snapshot;
     if (!snapshot) return;
+    const identity = pushedIdentity(snapshot);
     const fp = boardFingerprint(snapshot);
-    if (lastPushed.get(event.localId) === fp) {
+    if (lastPushed.get(event.localId) === identity) {
       deps.acknowledge(event.localId, snapshot.revision);
       return;
     }
@@ -236,7 +244,8 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
     if (
       local &&
       snapshot.revision === local.revision &&
-      boardFingerprint(local) === fp
+      boardFingerprint(local) === fp &&
+      sameViewport(local.viewport, snapshot.viewport)
     ) {
       deps.acknowledge(event.localId, snapshot.revision);
       return;
@@ -249,7 +258,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
       return;
     }
     deps.acknowledge(event.localId, snapshot.revision);
-    lastPushed.set(event.localId, fp);
+    lastPushed.set(event.localId, identity);
     deps.applyToCanvas(event.localId, snapshot);
     deps.onStatus("saved", null);
   }
@@ -293,7 +302,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
         }
         if (remote && !local) {
           deps.acknowledge(meta.id, remote.revision);
-          lastPushed.set(meta.id, boardFingerprint(remote));
+          lastPushed.set(meta.id, pushedIdentity(remote));
           deps.applyToCanvas(meta.id, remote);
           continue;
         }
@@ -307,7 +316,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
         if (diverged && options?.preferLocal) {
           const written = await deps.keepLocal(meta.id, local, meta.name);
           deps.acknowledge(meta.id, written.revision);
-          lastPushed.set(meta.id, boardFingerprint(written));
+          lastPushed.set(meta.id, pushedIdentity(written));
           const pending = pendingSaves.get(meta.id);
           if (pending && boardFingerprint(pending) !== boardFingerprint(written)) {
             const revision = Math.max(pending.revision, written.revision + 1);
@@ -322,7 +331,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
         }
         if (diverged && (options?.preferRemote || !isDirty(meta.id, local))) {
           deps.acknowledge(meta.id, remote.revision);
-          lastPushed.set(meta.id, remoteFp);
+          lastPushed.set(meta.id, pushedIdentity(remote));
           pendingSaves.delete(meta.id);
           deps.applyToCanvas(meta.id, remote);
           continue;
@@ -337,7 +346,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
           continue;
         }
         deps.acknowledge(meta.id, remote.revision);
-        lastPushed.set(meta.id, localFp);
+        lastPushed.set(meta.id, pushedIdentity(local));
       }
 
       await ensureSubscription();
