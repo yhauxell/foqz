@@ -151,7 +151,11 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
 
     const remoteRevision = revisionOf(existing);
     const remoteSnapshot = snapshotFromRecord(existing);
-    if (remoteSnapshot && boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot)) {
+    if (
+      remoteSnapshot &&
+      boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot) &&
+      sameViewport(remoteSnapshot.viewport, snapshot.viewport)
+    ) {
       const revision = Math.max(snapshot.revision, remoteRevision);
       this.remember(boardId, existing);
       this.ackedRevision.set(boardId, revision);

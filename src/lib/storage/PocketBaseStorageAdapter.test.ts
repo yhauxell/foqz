@@ -228,6 +228,26 @@ describe("PocketBaseStorageAdapter", () => {
     expect(row?.revision).toBe(5);
   });
 
+  it("keeps a viewport-only local view by advancing one revision", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    const local = createEmptySnapshot({
+      revision: 3,
+      viewport: { x: 12, y: 4, zoom: 1 },
+    });
+    await adapter.saveBoard("board-default", local, "Main");
+    const row = fake.tables.get("boards")?.[0];
+    if (row) {
+      row.snapshot = { ...local, viewport: { x: 80, y: 4, zoom: 1 } };
+    }
+
+    const kept = await adapter.keepLocalBoard("board-default", local, "Main");
+    expect(kept.revision).toBe(4);
+    expect(kept.viewport).toEqual({ x: 12, y: 4, zoom: 1 });
+    expect(row?.revision).toBe(4);
+    expect((row?.snapshot as { viewport?: { x: number } })?.viewport?.x).toBe(12);
+  });
+
   it("does not clobber a diverged board when create loses the insert race", async () => {
     const fake = createFakeClient();
     const adapter = new PocketBaseStorageAdapter(() => fake.client);
