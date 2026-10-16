@@ -183,6 +183,17 @@ describe("LocalStorageAdapter", () => {
     expect(storage.getItem(getBoardStorageKey(boardId))).toBeNull();
   });
 
+  it("notifies listeners unless the write is silent", () => {
+    const events: string[] = [];
+    adapter.subscribeMutations((event) => events.push(event.type));
+    const snapshot = createEmptySnapshot();
+    adapter.saveBoardSync(DEFAULT_BOARD_ID, snapshot);
+    adapter.saveBoardSync(DEFAULT_BOARD_ID, snapshot, { notify: false });
+    adapter.deleteBoardSync("board-2", { notify: false });
+    adapter.deleteBoardSync("board-2");
+    expect(events).toEqual(["save", "delete"]);
+  });
+
   it("survives null storage (SSR / unavailable localStorage)", () => {
     const nullAdapter = new LocalStorageAdapter(null);
     expect(nullAdapter.listBoardsSync()[0].id).toBe(DEFAULT_BOARD_ID);

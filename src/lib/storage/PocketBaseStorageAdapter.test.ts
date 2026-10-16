@@ -1,0 +1,167 @@
+import { describe, expect, it } from "vitest";
+import { MAX_SNAPSHOT_BYTES } from "@/lib/pocketbase/constants";
+import { CloudConflictError, SnapshotTooLargeError } from "@/lib/pocketbase/errors";
+import type { PbClientLike, PbRecord, PbSubscribeEvent } from "@/lib/pocketbase/types";
+import { PocketBaseStorageAdapter } from "@/lib/storage/PocketBaseStorageAdapter";
+import { createEmptySnapshot } from "@/lib/storage/snapshot";
+
+function matches(filter: string, row: PbRecord): boolean {
+  return filter.split("&&").every((part) => {
+    const match = part.trim().match(/^([\w.]+) = "(.*)"$/);
+    if (!match) return false;
+    return String(row[match[1]] ?? "") === match[2];
+  });
+}
+
+function createFakeClient() {
+  const tables = new Map<string, PbRecord[]>([
+    ["workspaces", []],
+    ["boards", []],
+  ]);
+  const handlers = new Set<(event: PbSubscribeEvent) => void>();
+  let seq = 1;
+  const auth = {
+    isValid: true,
+    token: "token",
+    record: { id: "user-1", email: "a@example.com" },
+    clear() {
+      auth.isValid = false;
+      auth.record = { id: "", email: "" };
+    },
+    onChange() {
+      return () => {};
+    },
+  };
+
+  const client: PbClientLike = {
+    autoCancellation() {},
+    authStore: auth,
+    collection(name: string) {
+      const table = tables.get(name) ?? [];
+      tables.set(name, table);
+      return {
+        async getFullList() {
+          return table.map((row) => ({ ...row }));
+        },
+        async getFirstListItem(filter: string) {
+          const found = table.find((row) => matches(filter, row));
+          if (!found) {
+            const error = new Error("not found") as Error & { status: number };
+            error.status = 404;
+            throw error;
+          }
+          return { ...found };
+        },
+        async create(data: Record<string, unknown>) {
+          const row: PbRecord = {
+            id: `rec-${seq++}`,
+            created: "2026-10-16 12:00:00.000Z",
+            ...data,
+          };
+          table.push(row);
+          return { ...row };
+        },
+        async update(id: string, data: Record<string, unknown>) {
+          const row = table.find((item) => item.id === id);
+          if (!row) {
+            const error = new Error("not found") as Error & { status: number };
+            error.status = 404;
+            throw error;
+          }
+          Object.assign(row, data);
+          return { ...row };
+        },
+        async delete(id: string) {
+          const index = table.findIndex((item) => item.id === id);
+          if (index >= 0) table.splice(index, 1);
+          return true;
+        },
+        async subscribe(_topic: string, callback: (data: PbSubscribeEvent) => void) {
+          handlers.add(callback);
+          return () => {
+            handlers.delete(callback);
+          };
+        },
+      };
+    },
+  };
+
+  return {
+    client,
+    tables,
+    emit(event: PbSubscribeEvent) {
+      for (const handler of handlers) handler(event);
+    },
+  };
+}
+
+describe("PocketBaseStorageAdapter", () => {
+  it("creates one workspace and upserts a board snapshot", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    const snapshot = createEmptySnapshot({
+      revision: 2,
+      nodes: [{ id: "n1", position: { x: 0, y: 0 }, data: {} }],
+    });
+
+    await adapter.saveBoard("board-default", snapshot, "Main");
+    await adapter.saveBoard("board-default", { ...snapshot, revision: 3 }, "Main");
+
+    expect(fake.tables.get("workspaces")).toHaveLength(1);
+    const boards = fake.tables.get("boards") ?? [];
+    expect(boards).toHaveLength(1);
+    expect(boards[0].revision).toBe(3);
+    expect(boards[0].last_modified_by).toBe("user-1");
+    const loaded = await adapter.loadBoard("board-default");
+    expect(loaded?.revision).toBe(3);
+    expect(await adapter.listBoards()).toEqual([
+      expect.objectContaining({ id: "board-default", name: "Main" }),
+    ]);
+  });
+
+  it("refuses to overwrite a newer remote revision", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    const snapshot = createEmptySnapshot({ revision: 1 });
+    await adapter.saveBoard("board-default", snapshot, "Main");
+    const row = fake.tables.get("boards")?.[0];
+    if (row) row.revision = 8;
+
+    await expect(
+      adapter.saveBoard("board-default", createEmptySnapshot({ revision: 2 }), "Main")
+    ).rejects.toBeInstanceOf(CloudConflictError);
+  });
+
+  it("rejects snapshots over the byte cap before writing", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    const snapshot = createEmptySnapshot({
+      nodes: [{ id: "n1", position: { x: 0, y: 0 }, data: { blob: "x".repeat(MAX_SNAPSHOT_BYTES) } }],
+    });
+
+    await expect(adapter.saveBoard("board-default", snapshot)).rejects.toBeInstanceOf(
+      SnapshotTooLargeError
+    );
+    expect(fake.tables.get("boards")).toHaveLength(0);
+  });
+
+  it("fans one realtime subscription out to board listeners", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    const seen: number[] = [];
+    const stop = await adapter.subscribeChanges((event) => {
+      if (event.snapshot) seen.push(event.snapshot.revision);
+    });
+    fake.emit({
+      action: "update",
+      record: {
+        id: "rec-9",
+        local_id: "board-default",
+        revision: 4,
+        snapshot: createEmptySnapshot({ revision: 4 }),
+      },
+    });
+    stop();
+    expect(seen).toEqual([4]);
+  });
+});
