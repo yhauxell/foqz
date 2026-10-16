@@ -154,6 +154,13 @@ describe("PocketBaseStorageAdapter", () => {
     expect(listed.map((board) => board.id)).toEqual(["board-a", "board-b"]);
   });
 
+  it("does not publish an empty board when the catalog names one that is not in the cloud", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    await adapter.saveBoardCatalog([{ id: "board-local", name: "Local only", createdAt: 1 }]);
+    expect(fake.tables.get("boards") ?? []).toHaveLength(0);
+  });
+
   it("refuses to overwrite a newer remote revision", async () => {
     const fake = createFakeClient();
     const adapter = new PocketBaseStorageAdapter(() => fake.client);

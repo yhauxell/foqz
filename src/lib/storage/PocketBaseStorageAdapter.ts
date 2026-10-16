@@ -11,7 +11,7 @@ import {
 } from "@/lib/pocketbase/errors";
 import type { PbClientLike, PbRecord, PbSubscribeEvent } from "@/lib/pocketbase/types";
 import { boardFingerprint, snapshotByteLength } from "@/lib/storage/fingerprint";
-import { createEmptySnapshot, normalizeBoardSnapshot, sameViewport } from "@/lib/storage/snapshot";
+import { normalizeBoardSnapshot, sameViewport } from "@/lib/storage/snapshot";
 import type { BoardMeta, BoardSnapshot, CanvasStorageAdapter } from "@/types/storage";
 
 export interface RemoteBoardEvent {
@@ -47,15 +47,13 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
   }
 
   async saveBoardCatalog(boards: BoardMeta[]): Promise<void> {
-    const workspaceId = await this.ensureWorkspace();
     const existing = await this.listBoardRecords();
     const byLocal = new Map(existing.map((record) => [String(record.local_id), record]));
     for (const board of boards) {
       const row = byLocal.get(board.id);
-      if (!row) {
-        await this.createBoardRecord(workspaceId, board.id, board.name, createEmptySnapshot());
-        continue;
-      }
+      // A missing board is created by saveBoard with the real snapshot.
+      // Inserting an empty revision here would publish a blank canvas first.
+      if (!row) continue;
       this.remember(board.id, row);
       if (row.name !== board.name) {
         await this.client.collection(BOARDS_COLLECTION).update(String(row.id), {
