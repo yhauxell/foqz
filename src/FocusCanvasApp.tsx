@@ -7,8 +7,9 @@ import { GlobalSpotlight } from "@/components/GlobalSpotlight";
 import { ProjectConnectorsModal } from "@/components/ProjectConnectorsModal";
 import { GitHubIssuesModal } from "@/components/GitHubIssuesModal";
 import { CreateGitHubIssueModal } from "@/components/CreateGitHubIssueModal";
+import { QuickTaskModal } from "@/components/QuickTaskModal";
 import { useOllama } from "@/lib/ollama";
-import { Keyboard, Maximize2, Minimize2, Search, Settings, Sparkles, MessageSquare, X } from "lucide-react";
+import { Keyboard, Maximize2, Minimize2, Plus, Search, Settings, Sparkles, MessageSquare, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ShortcutsModal } from "@/poc/components/ShortcutsModal";
 import { AnnotationsPanel } from "@/components/AnnotationsPanel";
@@ -49,6 +50,7 @@ function FocusCanvasAppInner() {
 
   const [createIssueOpen, setCreateIssueOpen] = useState(false);
   const [createIssueTaskId, setCreateIssueTaskId] = useState<string | null>(null);
+  const [quickTaskOpen, setQuickTaskOpen] = useState(false);
   const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
   const annotations = useFlowCanvasStore((s) => s.annotations);
 
@@ -239,6 +241,10 @@ function FocusCanvasAppInner() {
       setCreateIssueOpen(true);
     };
 
+    const onOpenQuickTaskEvent = () => {
+      setQuickTaskOpen(true);
+    };
+
     window.addEventListener("foqz:open-copilot", onOpenCopilotEvent);
     window.addEventListener("foqz:set-focus-target", onFocusTargetEvent);
     window.addEventListener("foqz:open-spotlight", onOpenSpotlightEvent);
@@ -246,6 +252,7 @@ function FocusCanvasAppInner() {
     window.addEventListener("foqz:open-shortcuts", onOpenShortcutsEvent);
     window.addEventListener("foqz:open-github-issues", onOpenGithubIssuesEvent);
     window.addEventListener("foqz:open-create-github-issue", onOpenCreateGithubIssueEvent);
+    window.addEventListener("foqz:open-quick-task", onOpenQuickTaskEvent);
 
     return () => {
       window.removeEventListener("foqz:open-copilot", onOpenCopilotEvent);
@@ -255,6 +262,7 @@ function FocusCanvasAppInner() {
       window.removeEventListener("foqz:open-shortcuts", onOpenShortcutsEvent);
       window.removeEventListener("foqz:open-github-issues", onOpenGithubIssuesEvent);
       window.removeEventListener("foqz:open-create-github-issue", onOpenCreateGithubIssueEvent);
+      window.removeEventListener("foqz:open-quick-task", onOpenQuickTaskEvent);
     };
   }, []);
 
@@ -289,9 +297,21 @@ function FocusCanvasAppInner() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       // Spotlight: Cmd+K / Ctrl+K
-      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         setSpotlightOpen((prev) => !prev);
+        return;
+      }
+
+      // Quick Task capture: Cmd+Shift+N / Ctrl+Shift+N (works even while typing)
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        !e.altKey &&
+        (e.key === "n" || e.key === "N")
+      ) {
+        e.preventDefault();
+        setQuickTaskOpen(true);
         return;
       }
 
@@ -375,8 +395,8 @@ function FocusCanvasAppInner() {
           <TopbarBoardMenu />
         </div>
 
-        {/* Centered Omni-Spotlight Trigger (⌘K) */}
-        <div className="flex-1 flex justify-center px-2 sm:px-4 max-w-sm sm:max-w-md mx-auto">
+        {/* Centered Omni-Spotlight + Quick Task (⌘K / ⌘⇧N) */}
+        <div className="flex-1 flex justify-center items-center gap-1.5 px-2 sm:px-4 max-w-md sm:max-w-lg mx-auto">
           <button
             type="button"
             onClick={() => setSpotlightOpen(true)}
@@ -389,6 +409,19 @@ function FocusCanvasAppInner() {
             </div>
             <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-60 group-hover:opacity-90 px-1.5 py-0.2 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/60 transition-opacity shrink-0 ml-1.5">
               ⌘K
+            </kbd>
+          </button>
+          <button
+            type="button"
+            onClick={() => setQuickTaskOpen(true)}
+            className="h-7 shrink-0 inline-flex items-center gap-1 px-2.5 rounded-full border border-emerald-200/80 dark:border-emerald-900/60 bg-emerald-50/80 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 transition-all shadow-2xs cursor-pointer"
+            title="Quick Task Capture (⌘⇧N)"
+            aria-label="Quick Task Capture"
+          >
+            <Plus className="size-3.5" />
+            <span className="hidden md:inline text-[11px] font-medium">Task</span>
+            <kbd className="hidden lg:inline-flex items-center text-[10px] font-mono opacity-70 px-1 py-0.5 rounded bg-white/80 dark:bg-zinc-900/80 border border-emerald-200/70 dark:border-emerald-800/60">
+              ⌘⇧N
             </kbd>
           </button>
         </div>
@@ -586,6 +619,11 @@ function FocusCanvasAppInner() {
             open={createIssueOpen}
             onClose={() => setCreateIssueOpen(false)}
             taskId={createIssueTaskId}
+          />
+
+          <QuickTaskModal
+            open={quickTaskOpen}
+            onClose={() => setQuickTaskOpen(false)}
           />
 
           {/* Runway Auto-Advance & Clearance HUD Toast */}

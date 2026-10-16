@@ -184,6 +184,29 @@ type SpotlightEntry =
         },
       },
       {
+        id: 'action-quick-task',
+        title: 'Quick Task Capture',
+        shortcut: '⌘⇧N',
+        keywords: [
+          'quick',
+          'capture',
+          'task',
+          'idea',
+          'inbox',
+          'natural',
+          'language',
+          'mention',
+          'project',
+          'runway',
+          'cite',
+        ],
+        icon: <Plus className="size-3 text-emerald-500 shrink-0" />,
+        perform: () => {
+          window.dispatchEvent(new CustomEvent('foqz:open-quick-task'))
+          onClose()
+        },
+      },
+      {
         id: 'action-new-project',
         title: 'New Project Frame',
         shortcut: '⌘⇧P',

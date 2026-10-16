@@ -55,6 +55,46 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await page.screenshot({ path: 'test-results/spotlight-search.png' });
   });
 
+  test('opens quick task capture via global shortcut and creates a task', async ({ page }) => {
+    // Prefer the topbar affordance in Chromium — Ctrl+Shift+N opens Incognito there.
+    await page.getByRole('button', { name: 'Quick Task Capture' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Quick Task' });
+    await expect(dialog).toBeVisible();
+    const capture = page.getByLabel('Capture note');
+    await expect(capture).toBeVisible();
+
+    await capture.fill('Ship natural-language quick capture with slash filing');
+    await dialog.getByRole('button', { name: 'Capture', exact: true }).click();
+
+    await expect(dialog).not.toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Ship natural-language quick capture/i).first()).toBeVisible();
+    await page.screenshot({ path: 'test-results/quick-task-created.png' });
+  });
+
+  test('quick task slash autocomplete lists destinations', async ({ page }) => {
+    await page.getByRole('button', { name: 'Quick Task Capture' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Quick Task' });
+    await expect(dialog).toBeVisible();
+
+    const capture = page.getByLabel('Capture note');
+    await capture.click();
+    await capture.fill('Polish landing ');
+    await capture.press('/');
+    await expect(dialog.getByText('Project or runway', { exact: true })).toBeVisible();
+    await page.screenshot({ path: 'test-results/quick-task-slash-autocomplete.png' });
+
+    // Selecting a destination renders it as a chip (not inline /text)
+    await capture.press('Enter');
+    await expect(dialog.getByLabel(/Destination /)).toBeVisible();
+    await expect(capture).toHaveValue('Polish landing ');
+
+    // Backspace at start of note removes the destination chip
+    await capture.press('Home');
+    await capture.press('Backspace');
+    await expect(dialog.getByLabel(/Destination /)).toHaveCount(0);
+  });
+
   test('opens clear board confirmation modal and can cancel or clear', async ({ page }) => {
     // Open board actions menu
     const actionsMenuBtn = page.locator("button[title='Board actions & exports']");
