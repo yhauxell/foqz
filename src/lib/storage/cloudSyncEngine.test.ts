@@ -183,6 +183,57 @@ describe("createCloudSyncEngine", () => {
     sync.engine.stop();
   });
 
+  it("adopts a higher remote revision when the canvas already matches", async () => {
+    const sync = harness();
+    const local = createEmptySnapshot({
+      revision: 2,
+      nodes: [{ id: "a", position: { x: 0, y: 0 }, data: {} }],
+      viewport: { x: 1, y: 2, zoom: 1 },
+    });
+    sync.local.set("board-default", local);
+    sync.setMemory(boardFingerprint(local));
+    await sync.engine.reconcile();
+    sync.written.length = 0;
+    sync.applied.length = 0;
+    sync.emit({
+      action: "update",
+      localId: "board-default",
+      revision: 5,
+      snapshot: { ...local, revision: 5 },
+    });
+    await Promise.resolve();
+    expect(sync.applied).toHaveLength(0);
+    expect(sync.written[0]?.revision).toBe(5);
+    expect(sync.local.get("board-default")?.nodes[0]?.id).toBe("a");
+    sync.engine.stop();
+  });
+
+  it("does not rewind a newer local edit when an older echo matches", async () => {
+    const sync = harness();
+    const pushed = createEmptySnapshot({
+      revision: 2,
+      nodes: [{ id: "a", position: { x: 0, y: 0 }, data: {} }],
+    });
+    sync.local.set("board-default", pushed);
+    await sync.engine.reconcile();
+    const edited = createEmptySnapshot({
+      revision: 3,
+      nodes: [{ id: "b", position: { x: 4, y: 4 }, data: {} }],
+    });
+    sync.local.set("board-default", edited);
+    sync.written.length = 0;
+    sync.emit({
+      action: "update",
+      localId: "board-default",
+      revision: 6,
+      snapshot: { ...pushed, revision: 6 },
+    });
+    await Promise.resolve();
+    expect(sync.written).toHaveLength(0);
+    expect(sync.local.get("board-default")?.nodes[0]?.id).toBe("b");
+    sync.engine.stop();
+  });
+
   it("applies a remote pan when the board content is unchanged", async () => {
     const sync = harness();
     const local = createEmptySnapshot({

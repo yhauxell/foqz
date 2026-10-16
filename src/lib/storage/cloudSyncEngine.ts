@@ -237,6 +237,17 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
     const fp = boardFingerprint(snapshot);
     if (lastPushed.get(event.localId) === identity) {
       deps.acknowledge(event.localId, snapshot.revision);
+      const local = deps.readLocalSnapshot(event.localId);
+      // Same canvas at a higher counter. Keep the local revision in step so the
+      // next edit does not collide with a save this device already matches.
+      if (
+        local &&
+        snapshot.revision > local.revision &&
+        boardFingerprint(local) === fp &&
+        sameViewport(local.viewport, snapshot.viewport)
+      ) {
+        deps.writeLocalSnapshot(event.localId, snapshot);
+      }
       return;
     }
     const local = deps.readLocalSnapshot(event.localId);
