@@ -56,7 +56,13 @@ import {
   getMaxZIndex,
   findFrameAt,
 } from "./store/flowCanvasStore";
-import { boardFingerprint, getCanvasStorage, nextBoardSnapshot } from "@/lib/storage";
+import {
+  boardFingerprint,
+  getCanvasStorage,
+  nextBoardSnapshot,
+  normalizeBoardViewport,
+  sameViewport,
+} from "@/lib/storage";
 
 function getSvgPathFromStroke(stroke: number[][]) {
   if (!stroke.length) return "";
@@ -134,7 +140,11 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   const dragStartPosRef = useRef<{ id: string; position: { x: number; y: number } } | null>(null);
   const [reparentState, setReparentState] = useState<ReparentConfirmState | null>(null);
 
-  const { screenToFlowPosition, fitView, getInternalNode, flowToScreenPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView, getInternalNode, flowToScreenPosition, getViewport, setViewport } =
+    useReactFlow();
+  const viewportSerial = useFlowCanvasStore((s) => s.viewportSerial);
+  const [initialViewport] = useState(() => useFlowCanvasStore.getState().boardViewport);
+  const adoptedViewportSerial = useRef(0);
 
   // In-Canvas Chat state
   const [inlineChatNodeId, setInlineChatNodeId] = useState<string | null>(null);
@@ -537,29 +547,49 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     };
   }, [fitView, screenToFlowPosition, flowToScreenPosition, setNodes, setSelectedNodeId]);
 
-  // 3. Debounced Auto-save through the canvas storage adapter
+  const persistCanvas = useCallback(() => {
+    try {
+      const storage = getCanvasStorage();
+      const previous = storage.loadBoardSync(activeBoardId);
+      const store = useFlowCanvasStore.getState();
+      const restoring = store.viewportSerial !== adoptedViewportSerial.current;
+      const viewport = restoring
+        ? (store.boardViewport ?? undefined)
+        : normalizeBoardViewport(getViewport());
+      const fingerprint = boardFingerprint({ nodes, edges, annotations });
+      const contentSame = previous != null && boardFingerprint(previous) === fingerprint;
+      if (contentSame && sameViewport(previous?.viewport, viewport)) return;
+      if (viewport) store.setBoardViewport(viewport);
+      storage.saveBoardSync(
+        activeBoardId,
+        nextBoardSnapshot({
+          nodes,
+          edges,
+          annotations,
+          previous,
+          viewport,
+        })
+      );
+    } catch (err) {
+      console.warn("Failed to save React Flow snapshot:", err);
+    }
+  }, [activeBoardId, annotations, edges, getViewport, nodes]);
+
+  // Debounced content save. Pan and zoom persist once the gesture ends.
   useEffect(() => {
-    const timer = setTimeout(() => {
-      try {
-        const storage = getCanvasStorage();
-        const previous = storage.loadBoardSync(activeBoardId);
-        const fingerprint = boardFingerprint({ nodes, edges, annotations });
-        if (previous && boardFingerprint(previous) === fingerprint) return;
-        storage.saveBoardSync(
-          activeBoardId,
-          nextBoardSnapshot({
-            nodes,
-            edges,
-            annotations,
-            previous,
-          })
-        );
-      } catch (err) {
-        console.warn("Failed to save React Flow snapshot:", err);
-      }
-    }, 600);
+    const timer = setTimeout(persistCanvas, 600);
     return () => clearTimeout(timer);
-  }, [nodes, edges, annotations, activeBoardId]);
+  }, [persistCanvas]);
+
+  useEffect(() => {
+    const viewport = useFlowCanvasStore.getState().boardViewport;
+    if (viewportSerial === 0 || !viewport) {
+      adoptedViewportSerial.current = viewportSerial;
+      return;
+    }
+    setViewport(viewport);
+    adoptedViewportSerial.current = viewportSerial;
+  }, [viewportSerial, setViewport]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -2122,13 +2152,15 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         onConnect={onConnect}
         onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
+        onMoveEnd={persistCanvas}
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
         onEdgeClick={onEdgeClick}
         onDoubleClick={handlePaneDoubleClick}
         connectionMode={ConnectionMode.Loose}
         defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
-        fitView
+        fitView={!initialViewport}
+        defaultViewport={initialViewport ?? undefined}
         zoomOnDoubleClick={false}
         minZoom={0.2}
         maxZoom={2.5}

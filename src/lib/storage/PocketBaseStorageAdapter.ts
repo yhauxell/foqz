@@ -11,7 +11,7 @@ import {
 } from "@/lib/pocketbase/errors";
 import type { PbClientLike, PbRecord, PbSubscribeEvent } from "@/lib/pocketbase/types";
 import { boardFingerprint, snapshotByteLength } from "@/lib/storage/fingerprint";
-import { createEmptySnapshot, normalizeBoardSnapshot } from "@/lib/storage/snapshot";
+import { createEmptySnapshot, normalizeBoardSnapshot, sameViewport } from "@/lib/storage/snapshot";
 import type { BoardMeta, BoardSnapshot, CanvasStorageAdapter } from "@/types/storage";
 
 export interface RemoteBoardEvent {
@@ -103,11 +103,12 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
     }
     const remoteSnapshot = snapshotFromRecord(existing);
     if (remoteSnapshot && remoteRevision === snapshot.revision) {
-      if (boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot)) {
+      const sameCanvas = boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot);
+      if (sameCanvas && sameViewport(remoteSnapshot.viewport, snapshot.viewport)) {
         this.ackedRevision.set(boardId, snapshot.revision);
         return;
       }
-      // Same counter, different canvas. Another device saved this revision first.
+      // Same counter, different canvas or view. Another device saved this revision first.
       throw new CloudConflictError(boardId, remoteRevision, snapshot.revision);
     }
     const updated = await this.client.collection(BOARDS_COLLECTION).update(String(existing.id), {

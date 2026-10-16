@@ -16,6 +16,8 @@ export {
   createEmptySnapshot,
   nextBoardSnapshot,
   normalizeBoardSnapshot,
+  normalizeBoardViewport,
+  sameViewport,
 } from "@/lib/storage/snapshot";
 
 let canvasStorage: LocalStorageAdapter = new LocalStorageAdapter();

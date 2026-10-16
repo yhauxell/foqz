@@ -76,6 +76,23 @@ export function normalizeBoardSnapshot(raw: unknown): BoardSnapshot | null {
   };
 }
 
+/** Round pan and zoom so float noise does not become a new revision. */
+export function normalizeBoardViewport(
+  value: { x: number; y: number; zoom: number } | null | undefined
+): BoardViewport | undefined {
+  if (!value) return undefined;
+  const { x, y, zoom } = value;
+  if (![x, y, zoom].every((n) => typeof n === "number" && Number.isFinite(n))) return undefined;
+  const round = (n: number) => Math.round(n * 1000) / 1000;
+  return { x: round(x), y: round(y), zoom: round(zoom) };
+}
+
+export function sameViewport(a?: BoardViewport, b?: BoardViewport): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.x === b.x && a.y === b.y && a.zoom === b.zoom;
+}
+
 /** Build the next snapshot for a save, bumping revision from a prior value. */
 export function nextBoardSnapshot(params: {
   nodes: Node[];
@@ -91,7 +108,7 @@ export function nextBoardSnapshot(params: {
     nodes: persistableNodes(params.nodes),
     edges: persistableEdges(params.edges),
     annotations: params.annotations,
-    viewport: params.viewport ?? previous?.viewport,
+    viewport: normalizeBoardViewport(params.viewport ?? previous?.viewport),
     updatedAt: Date.now(),
   };
 }

@@ -14,6 +14,8 @@ import {
   createEmptySnapshot,
   nextBoardSnapshot,
   normalizeBoardSnapshot,
+  normalizeBoardViewport,
+  sameViewport,
 } from "@/lib/storage/snapshot";
 import { BOARD_SNAPSHOT_VERSION } from "@/types/storage";
 import type { Node } from "@xyflow/react";
@@ -107,6 +109,24 @@ describe("nextBoardSnapshot", () => {
     });
     expect(selected).toBe(plain);
     expect(moved).not.toBe(plain);
+  });
+
+  it("rounds viewport and treats a missing view as different", () => {
+    expect(normalizeBoardViewport({ x: 1.23456, y: -2, zoom: 1.2 })).toEqual({
+      x: 1.235,
+      y: -2,
+      zoom: 1.2,
+    });
+    expect(sameViewport(undefined, undefined)).toBe(true);
+    expect(sameViewport(undefined, { x: 0, y: 0, zoom: 1 })).toBe(false);
+    const next = nextBoardSnapshot({
+      nodes: [],
+      edges: [],
+      annotations: {},
+      previous: createEmptySnapshot({ revision: 1 }),
+      viewport: { x: 1.2344, y: 0, zoom: 1 },
+    });
+    expect(next.viewport).toEqual({ x: 1.234, y: 0, zoom: 1 });
   });
 });
 

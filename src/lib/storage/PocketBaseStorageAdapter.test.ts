@@ -184,6 +184,25 @@ describe("PocketBaseStorageAdapter", () => {
     expect((row?.snapshot as { nodes?: { id: string }[] })?.nodes?.[0]?.id).toBe("remote");
   });
 
+  it("refuses a same-revision write when only the viewport differs", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    const snapshot = createEmptySnapshot({
+      revision: 2,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+    await adapter.saveBoard("board-default", snapshot, "Main");
+    const row = fake.tables.get("boards")?.[0];
+    if (row) {
+      row.snapshot = { ...snapshot, viewport: { x: 40, y: 10, zoom: 1 } };
+    }
+
+    await expect(adapter.saveBoard("board-default", snapshot, "Main")).rejects.toBeInstanceOf(
+      CloudConflictError
+    );
+    expect((row?.snapshot as { viewport?: { x: number } })?.viewport?.x).toBe(40);
+  });
+
   it("keeps this device by advancing one revision past the cloud", async () => {
     const fake = createFakeClient();
     const adapter = new PocketBaseStorageAdapter(() => fake.client);

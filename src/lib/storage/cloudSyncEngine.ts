@@ -1,5 +1,6 @@
 import { cloudErrorMessage, CloudConflictError, isOfflineError } from "@/lib/pocketbase/errors";
 import { boardFingerprint } from "@/lib/storage/fingerprint";
+import { sameViewport } from "@/lib/storage/snapshot";
 import type { RemoteBoardEvent } from "@/lib/storage/PocketBaseStorageAdapter";
 import type { StorageMutation } from "@/lib/storage/LocalStorageAdapter";
 import type { BoardMeta, BoardSnapshot } from "@/types/storage";
@@ -299,7 +300,8 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
         const localFp = boardFingerprint(local);
         const diverged =
           remote.revision > local.revision ||
-          (remote.revision === local.revision && remoteFp !== localFp);
+          (remote.revision === local.revision &&
+            (remoteFp !== localFp || !sameViewport(remote.viewport, local.viewport)));
         if (diverged && options?.preferLocal) {
           const written = await deps.keepLocal(meta.id, local, meta.name);
           deps.acknowledge(meta.id, written.revision);
