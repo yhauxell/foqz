@@ -276,6 +276,28 @@ describe("PocketBaseStorageAdapter", () => {
     expect((row?.snapshot as { nodes?: { id: string }[] })?.nodes?.[0]?.id).toBe("remote");
   });
 
+  it("does not drop a local viewport when create loses the insert race", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    const remote = createEmptySnapshot({
+      revision: 2,
+      viewport: { x: 80, y: 0, zoom: 1 },
+    });
+    await adapter.saveBoard("board-default", remote, "Main");
+    const racer = new PocketBaseStorageAdapter(() => fake.client);
+    fake.missNextFind();
+    fake.failNextCreate();
+    const local = createEmptySnapshot({
+      revision: 2,
+      viewport: { x: 4, y: 9, zoom: 1 },
+    });
+    await expect(racer.saveBoard("board-default", local, "Main")).rejects.toBeInstanceOf(
+      CloudConflictError
+    );
+    const row = fake.tables.get("boards")?.[0];
+    expect((row?.snapshot as { viewport?: { x: number } })?.viewport?.x).toBe(80);
+  });
+
   it("rejects snapshots over the byte cap before writing", async () => {
     const fake = createFakeClient();
     const adapter = new PocketBaseStorageAdapter(() => fake.client);

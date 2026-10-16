@@ -342,16 +342,19 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
       if (!existing) throw err;
       const remoteRevision = revisionOf(existing);
       const remoteSnapshot = snapshotFromRecord(existing);
+      const sameCanvas =
+        remoteSnapshot !== null &&
+        boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot) &&
+        sameViewport(remoteSnapshot.viewport, snapshot.viewport);
       if (
         remoteSnapshot &&
         (remoteRevision > snapshot.revision ||
-          (remoteRevision === snapshot.revision &&
-            boardFingerprint(remoteSnapshot) !== boardFingerprint(snapshot)))
+          (remoteRevision === snapshot.revision && !sameCanvas))
       ) {
         this.remember(boardId, existing);
         throw new CloudConflictError(boardId, remoteRevision, snapshot.revision);
       }
-      if (remoteSnapshot && boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot)) {
+      if (sameCanvas && remoteSnapshot) {
         this.remember(boardId, existing);
         this.ackedRevision.set(boardId, Math.max(snapshot.revision, remoteRevision));
         return existing;
