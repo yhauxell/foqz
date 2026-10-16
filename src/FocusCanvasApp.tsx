@@ -1,6 +1,9 @@
 import { FocusSettings } from "@/components/FocusSettings";
 import { FocusAppSettingsProvider, useFocusAppSettings } from "@/context/FocusAppSettingsContext";
 import { TopbarBoardMenu } from "@/components/TopbarBoardMenu";
+import { CloudSyncStatus } from "@/components/CloudSyncStatus";
+import { CloudSettingsModal } from "@/components/CloudSettingsModal";
+import { useCloudSync } from "@/lib/storage/cloudSync";
 import { WaypointRail } from "@/components/WaypointRail";
 import { MonoFocusController } from "@/components/MonoFocusController";
 import { GlobalSpotlight } from "@/components/GlobalSpotlight";
@@ -32,6 +35,7 @@ export function FocusCanvasApp() {
 function FocusCanvasAppInner() {
   useGitHubSyncEngine();
   useMcpHostBridge();
+  useCloudSync();
   const flowSelectedNodeId = useFlowCanvasStore((s) => s.selectedNodeId);
   const storeActiveFocusNodeId = useFlowCanvasStore((s) => s.activeFocusNodeId);
   const isTimerRunning = useFlowCanvasStore((s) => s.isTimerRunning);
@@ -40,6 +44,7 @@ function FocusCanvasAppInner() {
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [cloudOpen, setCloudOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<
     "general" | "workingHours" | "ai" | "mcp" | "data"
   >("general");
@@ -393,6 +398,7 @@ function FocusCanvasAppInner() {
 
           {/* Board Name & History Menu */}
           <TopbarBoardMenu />
+          <CloudSyncStatus onOpen={() => setCloudOpen(true)} />
         </div>
 
         {/* Centered Omni-Spotlight + Quick Task (⌘K / ⌘⇧N) */}
@@ -590,6 +596,8 @@ function FocusCanvasAppInner() {
               );
             }}
           />
+
+          <CloudSettingsModal open={cloudOpen} onClose={() => setCloudOpen(false)} />
 
           <ProjectConnectorsModal
             shapeId={connectorsShapeId}

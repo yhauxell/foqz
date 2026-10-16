@@ -56,7 +56,7 @@ import {
   getMaxZIndex,
   findFrameAt,
 } from "./store/flowCanvasStore";
-import { getCanvasStorage, nextBoardSnapshot } from "@/lib/storage";
+import { boardFingerprint, getCanvasStorage, nextBoardSnapshot } from "@/lib/storage";
 
 function getSvgPathFromStroke(stroke: number[][]) {
   if (!stroke.length) return "";
@@ -543,6 +543,8 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       try {
         const storage = getCanvasStorage();
         const previous = storage.loadBoardSync(activeBoardId);
+        const fingerprint = boardFingerprint({ nodes, edges, annotations });
+        if (previous && boardFingerprint(previous) === fingerprint) return;
         storage.saveBoardSync(
           activeBoardId,
           nextBoardSnapshot({

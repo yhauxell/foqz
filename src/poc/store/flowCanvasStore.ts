@@ -4,7 +4,7 @@ import { temporal, type TemporalState } from "zundo";
 import type { Node, Edge } from "@xyflow/react";
 import { RUNWAY_TEMPLATES, type RunwayTemplateId } from "@/types/canvas";
 import type { Annotation, AnnotationKind, AnnotationAnchor, AnnotationAuthor } from "@/types/annotations";
-import type { BoardMeta } from "@/types/storage";
+import type { BoardMeta, BoardSnapshot } from "@/types/storage";
 import { findNonOverlappingPosition, arrangeLayout } from "@/lib/canvasLayout";
 import {
   ACTIVE_BOARD_KEY,
@@ -365,6 +365,8 @@ export interface FlowCanvasState {
   duplicateSelected: () => void;
   resetBoard: () => void;
   loadSnapshot: () => void;
+  /** Replace the open board from a cloud snapshot without scheduling another upload. */
+  applyRemoteBoard: (boardId: string, snapshot: BoardSnapshot) => void;
   arrangeLayout: () => void;
   groupSelectedNodes: (title?: string, description?: string) => string | null;
   ungroupSelectedNodes: () => boolean;
@@ -1638,6 +1640,22 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           });
         } catch (err) {
           console.warn("Failed to load Flow snapshot:", err);
+        }
+      },
+
+      applyRemoteBoard: (boardId, snapshot) => {
+        if (get().activeBoardId !== boardId) return;
+        set({
+          nodes: snapshot.nodes,
+          edges: snapshot.edges,
+          annotations: snapshot.annotations,
+          selectedNodeId: null,
+          activeAnnotationId: null,
+        });
+        try {
+          useFlowCanvasStore.temporal.getState().clear();
+        } catch {
+          // Temporal history is optional during remote hydration.
         }
       },
 

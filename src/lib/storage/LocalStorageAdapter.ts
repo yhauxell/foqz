@@ -13,6 +13,16 @@ import {
 } from "@/lib/storage/keys";
 import { normalizeBoardSnapshot } from "@/lib/storage/snapshot";
 
+export interface StorageWriteOptions {
+  /** When false, listeners such as cloud sync are not notified. */
+  notify?: boolean;
+}
+
+export type StorageMutation =
+  | { type: "save"; boardId: string; snapshot: BoardSnapshot }
+  | { type: "delete"; boardId: string }
+  | { type: "catalog"; boards: BoardMeta[] };
+
 function resolveStorage(storage?: Storage | null): Storage | null {
   if (storage !== undefined) return storage;
   try {
@@ -32,9 +42,28 @@ function resolveStorage(storage?: Storage | null): Storage | null {
  */
 export class LocalStorageAdapter implements CanvasStorageAdapter {
   private readonly storage: Storage | null;
+  private readonly mutationListeners = new Set<(event: StorageMutation) => void>();
 
   constructor(storage?: Storage | null) {
     this.storage = resolveStorage(storage);
+  }
+
+  subscribeMutations(listener: (event: StorageMutation) => void): () => void {
+    this.mutationListeners.add(listener);
+    return () => {
+      this.mutationListeners.delete(listener);
+    };
+  }
+
+  private emit(event: StorageMutation, options?: StorageWriteOptions): void {
+    if (options?.notify === false) return;
+    for (const listener of this.mutationListeners) {
+      try {
+        listener(event);
+      } catch (err) {
+        console.warn("Storage listener failed:", err);
+      }
+    }
   }
 
   // --- async CanvasStorageAdapter ---
@@ -43,8 +72,8 @@ export class LocalStorageAdapter implements CanvasStorageAdapter {
     return this.listBoardsSync();
   }
 
-  async saveBoardCatalog(boards: BoardMeta[]): Promise<void> {
-    this.saveBoardCatalogSync(boards);
+  async saveBoardCatalog(boards: BoardMeta[], options?: StorageWriteOptions): Promise<void> {
+    this.saveBoardCatalogSync(boards, options);
   }
 
   async getActiveBoardId(): Promise<string | null> {
@@ -59,12 +88,16 @@ export class LocalStorageAdapter implements CanvasStorageAdapter {
     return this.loadBoardSync(boardId);
   }
 
-  async saveBoard(boardId: string, snapshot: BoardSnapshot): Promise<void> {
-    this.saveBoardSync(boardId, snapshot);
+  async saveBoard(
+    boardId: string,
+    snapshot: BoardSnapshot,
+    options?: StorageWriteOptions
+  ): Promise<void> {
+    this.saveBoardSync(boardId, snapshot, options);
   }
 
-  async deleteBoard(boardId: string): Promise<void> {
-    this.deleteBoardSync(boardId);
+  async deleteBoard(boardId: string, options?: StorageWriteOptions): Promise<void> {
+    this.deleteBoardSync(boardId, options);
   }
 
   // --- sync helpers (Phase 1 store wiring) ---
@@ -98,10 +131,11 @@ export class LocalStorageAdapter implements CanvasStorageAdapter {
     }
   }
 
-  saveBoardCatalogSync(boards: BoardMeta[]): void {
+  saveBoardCatalogSync(boards: BoardMeta[], options?: StorageWriteOptions): void {
     if (!this.storage) return;
     try {
       this.storage.setItem(STORAGE_BOARDS_KEY, JSON.stringify(boards));
+      this.emit({ type: "catalog", boards }, options);
     } catch (err) {
       console.warn("Failed to save board catalog:", err);
     }
@@ -145,20 +179,22 @@ export class LocalStorageAdapter implements CanvasStorageAdapter {
     }
   }
 
-  saveBoardSync(boardId: string, snapshot: BoardSnapshot): void {
+  saveBoardSync(boardId: string, snapshot: BoardSnapshot, options?: StorageWriteOptions): void {
     if (!this.storage) return;
     try {
       const key = getBoardStorageKey(boardId);
       this.storage.setItem(key, JSON.stringify(snapshot));
+      this.emit({ type: "save", boardId, snapshot }, options);
     } catch (err) {
       console.warn("Failed to save board snapshot:", err);
     }
   }
 
-  deleteBoardSync(boardId: string): void {
+  deleteBoardSync(boardId: string, options?: StorageWriteOptions): void {
     if (!this.storage) return;
     try {
       this.storage.removeItem(getBoardStorageKey(boardId));
+      this.emit({ type: "delete", boardId }, options);
     } catch (err) {
       console.warn("Failed to delete board snapshot:", err);
     }

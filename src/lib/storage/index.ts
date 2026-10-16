@@ -11,6 +11,7 @@ export {
   getBoardStorageKey,
 } from "@/lib/storage/keys";
 export { LocalStorageAdapter } from "@/lib/storage/LocalStorageAdapter";
+export { boardFingerprint } from "@/lib/storage/fingerprint";
 export {
   createEmptySnapshot,
   nextBoardSnapshot,
