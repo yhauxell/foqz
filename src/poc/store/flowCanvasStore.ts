@@ -4,50 +4,34 @@ import { temporal, type TemporalState } from "zundo";
 import type { Node, Edge } from "@xyflow/react";
 import { RUNWAY_TEMPLATES, type RunwayTemplateId } from "@/types/canvas";
 import type { Annotation, AnnotationKind, AnnotationAnchor, AnnotationAuthor } from "@/types/annotations";
+import type { BoardMeta } from "@/types/storage";
 import { findNonOverlappingPosition, arrangeLayout } from "@/lib/canvasLayout";
+import {
+  ACTIVE_BOARD_KEY,
+  DEFAULT_BOARD_ID,
+  FLOW_STORAGE_KEY,
+  STORAGE_BOARDS_KEY,
+  getBoardStorageKey,
+  getCanvasStorage,
+  nextBoardSnapshot,
+} from "@/lib/storage";
 
-export const FLOW_STORAGE_KEY = "foqz_reactflow_poc_board_v1";
-export const STORAGE_BOARDS_KEY = "foqz_multiboards_meta_v1";
-export const ACTIVE_BOARD_KEY = "foqz_active_board_id";
+/** @deprecated Prefer BoardMeta from `@/types/storage`. */
+export type BoardEntry = BoardMeta;
 
-export interface BoardEntry {
-  id: string;
-  name: string;
-  createdAt: number;
+export {
+  ACTIVE_BOARD_KEY,
+  FLOW_STORAGE_KEY,
+  STORAGE_BOARDS_KEY,
+  getBoardStorageKey,
+};
+
+export function getInitialBoards(): BoardMeta[] {
+  return getCanvasStorage().listBoardsSync();
 }
 
-export function getBoardStorageKey(boardId: string): string {
-  return boardId === "board-default" ? FLOW_STORAGE_KEY : `foqz_board_snapshot_${boardId}`;
-}
-
-export function getInitialBoards(): BoardEntry[] {
-  try {
-    if (typeof localStorage === "undefined") {
-      return [{ id: "board-default", name: "Foqz Board 1", createdAt: Date.now() }];
-    }
-    const raw = localStorage.getItem(STORAGE_BOARDS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-    const initialName = localStorage.getItem("foqz_board_name") || "Foqz Board 1";
-    return [{ id: "board-default", name: initialName, createdAt: Date.now() }];
-  } catch {
-    return [{ id: "board-default", name: "Foqz Board 1", createdAt: Date.now() }];
-  }
-}
-
-export function getInitialActiveBoardId(boards: BoardEntry[]): string {
-  try {
-    if (typeof localStorage === "undefined") return "board-default";
-    const active = localStorage.getItem(ACTIVE_BOARD_KEY);
-    if (active && boards.some((b) => b.id === active)) {
-      return active;
-    }
-    return boards[0]?.id || "board-default";
-  } catch {
-    return boards[0]?.id || "board-default";
-  }
+export function getInitialActiveBoardId(boards: BoardMeta[]): string {
+  return getCanvasStorage().resolveActiveBoardIdSync(boards);
 }
 
 export function loadBoardSnapshotFromStorage(boardId: string): {
@@ -55,35 +39,18 @@ export function loadBoardSnapshotFromStorage(boardId: string): {
   edges: Edge[];
   annotations: Record<string, Annotation>;
 } {
-  try {
-    if (typeof localStorage === "undefined") {
-      return {
-        nodes: boardId === "board-default" ? INITIAL_NODES : [],
-        edges: boardId === "board-default" ? INITIAL_EDGES : [],
-        annotations: {},
-      };
-    }
-    const key = getBoardStorageKey(boardId);
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return {
-        nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
-        edges: Array.isArray(parsed.edges) ? parsed.edges : [],
-        annotations: parsed.annotations && typeof parsed.annotations === "object" ? parsed.annotations : {},
-      };
-    }
-    if (boardId === "board-default") {
-      return { nodes: INITIAL_NODES, edges: INITIAL_EDGES, annotations: {} };
-    }
-    return { nodes: [], edges: [], annotations: {} };
-  } catch {
+  const stored = getCanvasStorage().loadBoardSync(boardId);
+  if (stored) {
     return {
-      nodes: boardId === "board-default" ? INITIAL_NODES : [],
-      edges: boardId === "board-default" ? INITIAL_EDGES : [],
-      annotations: {},
+      nodes: stored.nodes,
+      edges: stored.edges,
+      annotations: stored.annotations,
     };
   }
+  if (boardId === DEFAULT_BOARD_ID) {
+    return { nodes: INITIAL_NODES, edges: INITIAL_EDGES, annotations: {} };
+  }
+  return { nodes: [], edges: [], annotations: {} };
 }
 
 export const INITIAL_NODES: Node[] = [
@@ -403,7 +370,7 @@ export interface FlowCanvasState {
   ungroupSelectedNodes: () => boolean;
 
   // Multiboard Slice
-  boards: BoardEntry[];
+  boards: BoardMeta[];
   activeBoardId: string;
   switchBoard: (targetId: string) => void;
   createBoard: (name?: string) => string;
@@ -1537,33 +1504,26 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         const state = get();
         if (targetId === state.activeBoardId) return;
 
+        const storage = getCanvasStorage();
+
         // 1. Immediately snapshot current board
-        const currentKey = getBoardStorageKey(state.activeBoardId);
-        try {
-          localStorage.setItem(
-            currentKey,
-            JSON.stringify({
-              nodes: state.nodes,
-              edges: state.edges,
-              annotations: state.annotations,
-              updatedAt: Date.now(),
-            })
-          );
-        } catch (err) {
-          console.warn("Failed to save snapshot before switch:", err);
-        }
+        const previous = storage.loadBoardSync(state.activeBoardId);
+        storage.saveBoardSync(
+          state.activeBoardId,
+          nextBoardSnapshot({
+            nodes: state.nodes,
+            edges: state.edges,
+            annotations: state.annotations,
+            previous,
+          })
+        );
 
         // 2. Load target board nodes, edges, annotations
         const targetSnapshot = loadBoardSnapshotFromStorage(targetId);
 
-        // 3. Update localStorage pointers
-        try {
-          localStorage.setItem(ACTIVE_BOARD_KEY, targetId);
-          const targetBoard = state.boards.find((b) => b.id === targetId);
-          if (targetBoard) {
-            localStorage.setItem("foqz_board_name", targetBoard.name);
-          }
-        } catch {}
+        // 3. Update active-board pointers
+        const targetBoard = state.boards.find((b) => b.id === targetId);
+        storage.setActiveBoardIdSync(targetId, targetBoard?.name);
 
         // 4. Update store state
         set({
@@ -1594,16 +1554,14 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         const state = get();
         const newId = `board-${Date.now()}`;
         const newName = name?.trim() || `Foqz Board ${state.boards.length + 1}`;
-        const newEntry: BoardEntry = {
+        const newEntry: BoardMeta = {
           id: newId,
           name: newName,
           createdAt: Date.now(),
         };
         const updatedBoards = [...state.boards, newEntry];
 
-        try {
-          localStorage.setItem(STORAGE_BOARDS_KEY, JSON.stringify(updatedBoards));
-        } catch {}
+        getCanvasStorage().saveBoardCatalogSync(updatedBoards);
 
         set({ boards: updatedBoards });
         get().switchBoard(newId);
@@ -1615,10 +1573,9 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
         if (state.boards.length <= 1) return;
 
         const remaining = state.boards.filter((b) => b.id !== boardIdToDelete);
-        try {
-          localStorage.setItem(STORAGE_BOARDS_KEY, JSON.stringify(remaining));
-          localStorage.removeItem(getBoardStorageKey(boardIdToDelete));
-        } catch {}
+        const storage = getCanvasStorage();
+        storage.saveBoardCatalogSync(remaining);
+        storage.deleteBoardSync(boardIdToDelete);
 
         set({ boards: remaining });
 
@@ -1635,23 +1592,23 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           b.id === idToRename ? { ...b, name: trimmed } : b
         );
 
-        try {
-          localStorage.setItem(STORAGE_BOARDS_KEY, JSON.stringify(updatedBoards));
-          if (idToRename === state.activeBoardId) {
-            localStorage.setItem("foqz_board_name", trimmed);
-          }
-        } catch {}
+        const storage = getCanvasStorage();
+        storage.saveBoardCatalogSync(updatedBoards);
+        if (idToRename === state.activeBoardId) {
+          storage.setActiveBoardIdSync(idToRename, trimmed);
+        }
 
         set({ boards: updatedBoards });
       },
 
       resetBoard: () => {
         const state = get();
-        const key = getBoardStorageKey(state.activeBoardId);
-        try {
-          localStorage.removeItem(key);
-        } catch {}
-        if (state.activeBoardId === "board-default" && typeof window !== "undefined" && window.focusStore?.clearBoardFile) {
+        getCanvasStorage().deleteBoardSync(state.activeBoardId);
+        if (
+          state.activeBoardId === DEFAULT_BOARD_ID &&
+          typeof window !== "undefined" &&
+          window.focusStore?.clearBoardFile
+        ) {
           try {
             window.focusStore.clearBoardFile();
           } catch {}
