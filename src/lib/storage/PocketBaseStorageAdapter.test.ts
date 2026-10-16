@@ -164,4 +164,53 @@ describe("PocketBaseStorageAdapter", () => {
     stop();
     expect(seen).toEqual([4]);
   });
+
+  it("closes a realtime socket that connects after the session was reset", async () => {
+    let finish: (unsubscribe: () => void) => void = () => {};
+    const closed = { count: 0 };
+    const client: PbClientLike = {
+      autoCancellation() {},
+      authStore: {
+        isValid: true,
+        token: "token",
+        record: { id: "user-1" },
+        clear() {},
+        onChange() {
+          return () => {};
+        },
+      },
+      collection() {
+        return {
+          async getFullList() {
+            return [];
+          },
+          async getFirstListItem() {
+            throw Object.assign(new Error("not found"), { status: 404 });
+          },
+          async create() {
+            return { id: "rec" };
+          },
+          async update() {
+            return { id: "rec" };
+          },
+          async delete() {
+            return true;
+          },
+          subscribe() {
+            return new Promise<() => void>((resolve) => {
+              finish = resolve;
+            });
+          },
+        };
+      },
+    };
+    const adapter = new PocketBaseStorageAdapter(() => client);
+    const pending = adapter.subscribeChanges(() => {});
+    adapter.resetSession();
+    finish(() => {
+      closed.count += 1;
+    });
+    await pending;
+    expect(closed.count).toBe(1);
+  });
 });

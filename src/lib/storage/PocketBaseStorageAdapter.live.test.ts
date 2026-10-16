@@ -81,4 +81,35 @@ describe.skipIf(!url)("PocketBaseStorageAdapter against a PocketBase server", ()
     const remote = await adapter.loadBoard("board-conflict");
     expect(remote?.revision).toBe(8);
   });
+
+  it.skipIf(typeof EventSource === "undefined")(
+    "receives a remote board update on one realtime subscription",
+    async () => {
+      const owner = await registerUser();
+      const listener = new PocketBase(url);
+      listener.autoCancellation(false);
+      listener.authStore.save(owner.authStore.token, owner.authStore.record);
+      const adapter = new PocketBaseStorageAdapter(() => toPocketBaseClient(listener));
+      const snapshot = createEmptySnapshot({ revision: 1, updatedAt: 1 });
+      await adapter.saveBoard("board-live", snapshot, "Live");
+
+      const seen: number[] = [];
+      const stop = await adapter.subscribeChanges((event) => {
+        if (event.localId === "board-live" && event.snapshot) seen.push(event.snapshot.revision);
+      });
+      const row = await owner.collection("boards").getFirstListItem('local_id = "board-live"');
+      await owner.collection("boards").update(row.id, {
+        revision: 3,
+        snapshot: { ...snapshot, revision: 3 },
+        last_modified_by: owner.authStore.record?.id,
+      });
+
+      const deadline = Date.now() + 5000;
+      while (seen.length === 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      stop();
+      expect(seen).toContain(3);
+    }
+  );
 });

@@ -36,6 +36,8 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
   private readonly handlers = new Set<RealtimeHandler>();
   private realtime: Promise<void> | null = null;
   private unsubscribeRealtime: (() => Promise<void> | void) | null = null;
+  /** Bumped on disconnect so a subscribe that resolves later is closed immediately. */
+  private realtimeGeneration = 0;
 
   constructor(private readonly getClient: () => PbClientLike) {}
 
@@ -277,13 +279,21 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
   private async ensureRealtime(): Promise<void> {
     if (this.unsubscribeRealtime) return;
     if (!this.realtime) {
+      const generation = this.realtimeGeneration;
       this.realtime = this.client
         .collection(BOARDS_COLLECTION)
         .subscribe("*", (data) => this.dispatch(data))
         .then((unsubscribe) => {
+          if (generation !== this.realtimeGeneration) {
+            void Promise.resolve(unsubscribe()).catch(() => {
+              // The socket is already gone. Nothing left to clean up.
+            });
+            return;
+          }
           this.unsubscribeRealtime = unsubscribe;
         })
         .catch((err) => {
+          if (generation !== this.realtimeGeneration) return;
           this.realtime = null;
           throw err;
         });
@@ -292,10 +302,15 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
   }
 
   private stopRealtime(): void {
+    this.realtimeGeneration += 1;
     const unsubscribe = this.unsubscribeRealtime;
     this.unsubscribeRealtime = null;
     this.realtime = null;
-    if (unsubscribe) void unsubscribe();
+    if (unsubscribe) {
+      void Promise.resolve(unsubscribe()).catch(() => {
+        // The socket is already gone. Nothing left to clean up.
+      });
+    }
   }
 
   private dispatch(data: PbSubscribeEvent): void {
