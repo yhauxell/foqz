@@ -108,6 +108,15 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
     description: "Spawn a new resizable task card",
   },
   {
+    id: "create-quick-task",
+    name: "Quick Task Capture",
+    keys: ["meta+shift+n", "ctrl+shift+n"],
+    keyDisplay: "⌘⇧N",
+    category: "Create",
+    description:
+      "Global shortcut: open quick capture with title, description, and project or runway destination",
+  },
+  {
     id: "create-project",
     name: "New Project Frame",
     keys: ["meta+shift+p", "ctrl+shift+p", "alt+p"],

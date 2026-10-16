@@ -55,6 +55,24 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await page.screenshot({ path: 'test-results/spotlight-search.png' });
   });
 
+  test('opens quick task capture via global shortcut and creates a task', async ({ page }) => {
+    await page.keyboard.press('Control+Shift+N');
+
+    const dialog = page.getByRole('dialog', { name: 'Quick Task' });
+    await expect(dialog).toBeVisible();
+    await expect(page.getByLabel('Title')).toBeVisible();
+    await expect(page.getByLabel('Description')).toBeVisible();
+    await expect(page.getByLabel('Add to project or runway')).toBeVisible();
+
+    await page.getByLabel('Title').fill('Ship quick capture flow');
+    await page.getByLabel('Description').fill('Title, notes, and destination in one chord');
+    await page.getByRole('button', { name: 'Create Task' }).click();
+
+    await expect(dialog).not.toBeVisible();
+    await expect(page.getByText('Ship quick capture flow').first()).toBeVisible();
+    await page.screenshot({ path: 'test-results/quick-task-created.png' });
+  });
+
   test('opens clear board confirmation modal and can cancel or clear', async ({ page }) => {
     // Open board actions menu
     const actionsMenuBtn = page.locator("button[title='Board actions & exports']");

@@ -258,15 +258,30 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
     const handleNewTask = (e: any) => {
       const title = e.detail?.title || "New Task";
+      const notes = typeof e.detail?.notes === "string" ? e.detail.notes : "";
+      const parentId =
+        typeof e.detail?.parentId === "string" && e.detail.parentId
+          ? e.detail.parentId
+          : undefined;
+      const priorityRaw = Number(e.detail?.priority);
+      const priority =
+        priorityRaw === 1 || priorityRaw === 2 || priorityRaw === 3 || priorityRaw === 4
+          ? (priorityRaw as 1 | 2 | 3 | 4)
+          : 3;
       const center = screenToFlowPosition({
         x: window.innerWidth / 2,
         y: window.innerHeight / 2,
       });
-      const pos = e.detail?.position || useFlowCanvasStore.getState().cursorPosition || center;
+      // When nesting into a project/runway, let createTask place inside the frame.
+      const pos = parentId
+        ? e.detail?.position
+        : e.detail?.position || useFlowCanvasStore.getState().cursorPosition || center;
       const id = useFlowCanvasStore.getState().createTask({
         title,
+        notes,
         status: "open",
-        priority: 3,
+        priority,
+        parentId,
         position: pos,
       });
       window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
