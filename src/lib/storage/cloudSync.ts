@@ -148,9 +148,17 @@ export function startCloudSync(): () => void {
     adapter.resetSession();
     engine.handleAuthChanged();
   };
+  const flushPending = () => {
+    void engine.flush();
+  };
+  const onHide = () => {
+    if (document.visibilityState === "hidden") flushPending();
+  };
   window.addEventListener("online", onOnline);
   window.addEventListener("offline", onOffline);
   window.addEventListener(POCKETBASE_URL_EVENT, onUrl);
+  window.addEventListener("pagehide", flushPending);
+  document.addEventListener("visibilitychange", onHide);
   engine.start();
 
   return () => {
@@ -160,6 +168,8 @@ export function startCloudSync(): () => void {
     window.removeEventListener("online", onOnline);
     window.removeEventListener("offline", onOffline);
     window.removeEventListener(POCKETBASE_URL_EVENT, onUrl);
+    window.removeEventListener("pagehide", flushPending);
+    document.removeEventListener("visibilitychange", onHide);
     adapter.resetSession();
     if (activeEngine === engine) activeEngine = null;
   };

@@ -152,6 +152,13 @@ describe("nextBoardSnapshot", () => {
         viewport: { x: 3, y: 4, zoom: 1 },
       })
     ).toBe(true);
+    expect(
+      boardNeedsSave(
+        previous,
+        { nodes: [sampleNode], edges: [], annotations: {}, viewport: { x: 3, y: 4, zoom: 1 } },
+        "different-content"
+      )
+    ).toBe(true);
   });
 });
 

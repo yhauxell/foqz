@@ -57,10 +57,12 @@ import {
   findFrameAt,
 } from "./store/flowCanvasStore";
 import {
+  boardFingerprint,
   boardNeedsSave,
   getCanvasStorage,
   nextBoardSnapshot,
   normalizeBoardViewport,
+  sameViewport,
 } from "@/lib/storage";
 
 function getSvgPathFromStroke(stroke: number[][]) {
@@ -144,6 +146,17 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   const viewportSerial = useFlowCanvasStore((s) => s.viewportSerial);
   const [initialViewport] = useState(() => useFlowCanvasStore.getState().boardViewport);
   const adoptedViewportSerial = useRef(0);
+  const contentFp = useRef<{
+    nodes: typeof nodes;
+    edges: typeof edges;
+    annotations: typeof annotations;
+    fp: string;
+  } | null>(null);
+  const storedFp = useRef<{
+    boardId: string;
+    fp: string;
+    viewport?: { x: number; y: number; zoom: number };
+  } | null>(null);
 
   // In-Canvas Chat state
   const [inlineChatNodeId, setInlineChatNodeId] = useState<string | null>(null);
@@ -549,33 +562,43 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   const persistCanvas = useCallback(() => {
     try {
       const storage = getCanvasStorage();
-      const previous = storage.loadBoardSync(activeBoardId);
       const store = useFlowCanvasStore.getState();
       const restoring = store.viewportSerial !== adoptedViewportSerial.current;
       const viewport = restoring
         ? (store.boardViewport ?? undefined)
         : normalizeBoardViewport(getViewport());
+      const hit = contentFp.current;
+      const fp =
+        hit && hit.nodes === nodes && hit.edges === edges && hit.annotations === annotations
+          ? hit.fp
+          : boardFingerprint({ nodes, edges, annotations });
+      if (!hit || hit.nodes !== nodes || hit.edges !== edges || hit.annotations !== annotations) {
+        contentFp.current = { nodes, edges, annotations, fp };
+      }
+      const remembered = storedFp.current;
       if (
-        !boardNeedsSave(previous, {
-          nodes,
-          edges,
-          annotations,
-          viewport,
-        })
+        remembered &&
+        remembered.boardId === activeBoardId &&
+        remembered.fp === fp &&
+        sameViewport(remembered.viewport, normalizeBoardViewport(viewport ?? undefined))
       ) {
         return;
       }
+      const previous = storage.loadBoardSync(activeBoardId);
+      if (!boardNeedsSave(previous, { nodes, edges, annotations, viewport }, fp)) {
+        storedFp.current = { boardId: activeBoardId, fp, viewport: previous?.viewport };
+        return;
+      }
       if (viewport) store.setBoardViewport(viewport);
-      storage.saveBoardSync(
-        activeBoardId,
-        nextBoardSnapshot({
-          nodes,
-          edges,
-          annotations,
-          previous,
-          viewport,
-        })
-      );
+      const next = nextBoardSnapshot({
+        nodes,
+        edges,
+        annotations,
+        previous,
+        viewport,
+      });
+      storage.saveBoardSync(activeBoardId, next);
+      storedFp.current = { boardId: activeBoardId, fp, viewport: next.viewport };
     } catch (err) {
       console.warn("Failed to save React Flow snapshot:", err);
     }

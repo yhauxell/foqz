@@ -105,10 +105,12 @@ export function boardNeedsSave(
     edges: unknown;
     annotations: unknown;
     viewport?: BoardViewport | null;
-  }
+  },
+  contentFingerprint?: string
 ): boolean {
   if (!previous) return true;
-  if (boardFingerprint(previous) !== boardFingerprint(next)) return true;
+  const nextFp = contentFingerprint ?? boardFingerprint(next);
+  if (boardFingerprint(previous) !== nextFp) return true;
   return !sameViewport(previous.viewport, normalizeBoardViewport(next.viewport ?? undefined));
 }
 

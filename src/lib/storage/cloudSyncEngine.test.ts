@@ -110,6 +110,20 @@ function harness(options?: { online?: boolean; authenticated?: boolean }) {
 }
 
 describe("createCloudSyncEngine", () => {
+  it("sends a pending save when flush runs before the debounce", async () => {
+    const sync = harness();
+    await sync.engine.reconcile();
+    sync.engine.noteMutation({
+      type: "save",
+      boardId: "board-default",
+      snapshot: createEmptySnapshot({ revision: 1 }),
+    });
+    expect(sync.saves).toHaveLength(0);
+    await sync.engine.flush();
+    expect(sync.saves).toHaveLength(1);
+    sync.engine.stop();
+  });
+
   it("coalesces rapid saves into the latest snapshot", async () => {
     const sync = harness();
     await sync.engine.reconcile();

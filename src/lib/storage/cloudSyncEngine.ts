@@ -94,6 +94,8 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
   }
 
   async function flush(): Promise<CloudPhase | "idle"> {
+    timer?.cancel();
+    timer = null;
     if (flushing) {
       flushAgain = true;
       await flushing;
