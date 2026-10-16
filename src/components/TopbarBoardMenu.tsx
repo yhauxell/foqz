@@ -20,6 +20,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useFlowCanvasStore, useTemporalFlowStore } from "@/poc/store/flowCanvasStore";
+import { getCanvasStorage } from "@/lib/storage";
+import {
+  BOARD_SNAPSHOT_VERSION,
+  type BoardSnapshot,
+} from "@/types/storage";
 
 interface TopbarBoardMenuProps {
   onZoomToFit?: () => void;
@@ -107,8 +112,18 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
   }, []);
 
   const handleExportJson = useCallback(() => {
-    const { nodes, edges, annotations } = useFlowCanvasStore.getState();
-    const data = JSON.stringify({ nodes, edges, annotations, version: 1 }, null, 2);
+    const { nodes, edges, annotations, activeBoardId } = useFlowCanvasStore.getState();
+    const previous = getCanvasStorage().loadBoardSync(activeBoardId);
+    const snapshot: BoardSnapshot = {
+      version: BOARD_SNAPSHOT_VERSION,
+      revision: previous?.revision ?? 0,
+      nodes,
+      edges,
+      annotations,
+      ...(previous?.viewport ? { viewport: previous.viewport } : {}),
+      updatedAt: Date.now(),
+    };
+    const data = JSON.stringify(snapshot, null, 2);
     const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

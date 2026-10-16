@@ -51,13 +51,12 @@ import { AnnotationThread } from "./components/AnnotationThread";
 import getStroke from "perfect-freehand";
 import {
   useFlowCanvasStore,
-  FLOW_STORAGE_KEY,
-  getBoardStorageKey,
   INITIAL_NODES,
   INITIAL_EDGES,
   getMaxZIndex,
   findFrameAt,
 } from "./store/flowCanvasStore";
+import { getCanvasStorage, nextBoardSnapshot } from "@/lib/storage";
 
 function getSvgPathFromStroke(stroke: number[][]) {
   if (!stroke.length) return "";
@@ -501,14 +500,20 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     };
   }, [fitView, screenToFlowPosition, flowToScreenPosition, setNodes, setSelectedNodeId]);
 
-  // 3. Debounced Auto-save to localStorage
+  // 3. Debounced Auto-save through the canvas storage adapter
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
-        const key = getBoardStorageKey(activeBoardId);
-        localStorage.setItem(
-          key,
-          JSON.stringify({ nodes, edges, annotations, updatedAt: Date.now() })
+        const storage = getCanvasStorage();
+        const previous = storage.loadBoardSync(activeBoardId);
+        storage.saveBoardSync(
+          activeBoardId,
+          nextBoardSnapshot({
+            nodes,
+            edges,
+            annotations,
+            previous,
+          })
         );
       } catch (err) {
         console.warn("Failed to save React Flow snapshot:", err);

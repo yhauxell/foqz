@@ -39,6 +39,11 @@ import {
 import { discoverLocalServers, type DiscoveredLocalServer } from "@/lib/ollama";
 import { useCallback, useEffect, useState } from "react";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
+import { getCanvasStorage, normalizeBoardSnapshot } from "@/lib/storage";
+import {
+  BOARD_SNAPSHOT_VERSION,
+  type BoardSnapshot,
+} from "@/types/storage";
 
 function AiConnectorCard({
   icon: Icon,
@@ -768,8 +773,18 @@ export function FocusSettings({
   const exportBoard = useCallback(async () => {
     setSaveError(null);
     try {
-      const { nodes, edges } = useFlowCanvasStore.getState();
-      const data = JSON.stringify({ nodes, edges, version: 1, exportedAt: Date.now() }, null, 2);
+      const { nodes, edges, annotations, activeBoardId } = useFlowCanvasStore.getState();
+      const previous = getCanvasStorage().loadBoardSync(activeBoardId);
+      const snapshot: BoardSnapshot = {
+        version: BOARD_SNAPSHOT_VERSION,
+        revision: previous?.revision ?? 0,
+        nodes,
+        edges,
+        annotations,
+        ...(previous?.viewport ? { viewport: previous.viewport } : {}),
+        updatedAt: Date.now(),
+      };
+      const data = JSON.stringify(snapshot, null, 2);
       const blob = new Blob([data], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -792,13 +807,15 @@ export function FocusSettings({
         const file = (e.target as HTMLInputElement).files?.[0];
         if (!file) return;
         const text = await file.text();
-        const parsed = JSON.parse(text);
-        if (Array.isArray(parsed.nodes)) {
-          useFlowCanvasStore.getState().setNodes(parsed.nodes);
+        const snapshot = normalizeBoardSnapshot(JSON.parse(text));
+        if (!snapshot) {
+          setSaveError("Invalid board JSON: expected nodes and edges arrays");
+          return;
         }
-        if (Array.isArray(parsed.edges)) {
-          useFlowCanvasStore.getState().setEdges(parsed.edges);
-        }
+        const store = useFlowCanvasStore.getState();
+        store.setNodes(snapshot.nodes);
+        store.setEdges(snapshot.edges);
+        useFlowCanvasStore.setState({ annotations: snapshot.annotations });
       };
       input.click();
     } catch (e) {
