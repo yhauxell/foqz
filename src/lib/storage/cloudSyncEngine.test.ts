@@ -101,6 +101,21 @@ describe("createCloudSyncEngine", () => {
     sync.engine.stop();
   });
 
+  it("serializes the canvas when the debounce fires", async () => {
+    const sync = harness();
+    await sync.engine.reconcile();
+    const snapshot = createEmptySnapshot({
+      revision: 1,
+      nodes: [{ id: "a", position: { x: 0, y: 0 }, data: {} }],
+    });
+    sync.engine.noteMutation({ type: "save", boardId: "board-default", snapshot });
+    const node = snapshot.nodes[0];
+    if (node) node.position = { x: 9, y: 4 };
+    await sync.flushTimer();
+    expect(sync.saves[0]?.nodes[0]?.position).toEqual({ x: 9, y: 4 });
+    sync.engine.stop();
+  });
+
   it("keeps edits on device while offline", async () => {
     const sync = harness({ online: false });
     sync.engine.noteMutation({

@@ -105,7 +105,12 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
       deps.onStatus("offline", OFFLINE_DETAIL);
       return "offline";
     }
-    const saves = new Map(pendingSaves);
+    const saves = new Map<string, BoardSnapshot>();
+    for (const [boardId, snapshot] of pendingSaves) {
+      // Clone when the debounce fires, not on the local save turn, so a large
+      // board is not serialized twice while the canvas is writing localStorage.
+      saves.set(boardId, cloneSnapshot(snapshot));
+    }
     const deletes = new Set(pendingDeletes);
     const catalog = pendingCatalog;
     pendingSaves.clear();
@@ -345,7 +350,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
       if (stopped || !deps.isAuthenticated()) return;
       if (event.type === "save") {
         pendingDeletes.delete(event.boardId);
-        pendingSaves.set(event.boardId, cloneSnapshot(event.snapshot));
+        pendingSaves.set(event.boardId, event.snapshot);
       } else if (event.type === "delete") {
         pendingSaves.delete(event.boardId);
         pendingDeletes.add(event.boardId);
