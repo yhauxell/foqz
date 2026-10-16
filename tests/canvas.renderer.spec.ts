@@ -56,21 +56,33 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
   });
 
   test('opens quick task capture via global shortcut and creates a task', async ({ page }) => {
-    await page.keyboard.press('Control+Shift+N');
+    // Prefer the topbar affordance in Chromium — Ctrl+Shift+N opens Incognito there.
+    await page.getByRole('button', { name: 'Quick Task Capture' }).click();
 
     const dialog = page.getByRole('dialog', { name: 'Quick Task' });
     await expect(dialog).toBeVisible();
-    await expect(page.getByLabel('Title')).toBeVisible();
-    await expect(page.getByLabel('Description')).toBeVisible();
-    await expect(page.getByLabel('Add to project or runway')).toBeVisible();
+    const capture = page.getByLabel('Capture note');
+    await expect(capture).toBeVisible();
 
-    await page.getByLabel('Title').fill('Ship quick capture flow');
-    await page.getByLabel('Description').fill('Title, notes, and destination in one chord');
-    await page.getByRole('button', { name: 'Create Task' }).click();
+    await capture.fill('Ship natural-language quick capture with slash filing');
+    await dialog.getByRole('button', { name: 'Capture', exact: true }).click();
 
-    await expect(dialog).not.toBeVisible();
-    await expect(page.getByText('Ship quick capture flow').first()).toBeVisible();
+    await expect(dialog).not.toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Ship natural-language quick capture/i).first()).toBeVisible();
     await page.screenshot({ path: 'test-results/quick-task-created.png' });
+  });
+
+  test('quick task slash autocomplete lists destinations', async ({ page }) => {
+    await page.getByRole('button', { name: 'Quick Task Capture' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Quick Task' });
+    await expect(dialog).toBeVisible();
+
+    const capture = page.getByLabel('Capture note');
+    await capture.click();
+    await capture.fill('Polish landing ');
+    await capture.press('/');
+    await expect(dialog.getByText('Project or runway', { exact: true })).toBeVisible();
+    await page.screenshot({ path: 'test-results/quick-task-slash-autocomplete.png' });
   });
 
   test('opens clear board confirmation modal and can cancel or clear', async ({ page }) => {

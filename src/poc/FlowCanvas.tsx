@@ -263,6 +263,9 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         typeof e.detail?.parentId === "string" && e.detail.parentId
           ? e.detail.parentId
           : undefined;
+      const relatedTaskIds: string[] = Array.isArray(e.detail?.relatedTaskIds)
+        ? e.detail.relatedTaskIds.filter((x: unknown) => typeof x === "string")
+        : [];
       const priorityRaw = Number(e.detail?.priority);
       const priority =
         priorityRaw === 1 || priorityRaw === 2 || priorityRaw === 3 || priorityRaw === 4
@@ -276,7 +279,8 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       const pos = parentId
         ? e.detail?.position
         : e.detail?.position || useFlowCanvasStore.getState().cursorPosition || center;
-      const id = useFlowCanvasStore.getState().createTask({
+      const store = useFlowCanvasStore.getState();
+      const id = store.createTask({
         title,
         notes,
         status: "open",
@@ -284,6 +288,24 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         parentId,
         position: pos,
       });
+
+      if (relatedTaskIds.length > 0) {
+        const existingIds = new Set(store.nodes.map((n) => n.id));
+        const now = Date.now();
+        const citationEdges = relatedTaskIds
+          .filter((targetId) => targetId !== id && existingIds.has(targetId))
+          .map((targetId, idx) => ({
+            id: `edge-cite-${now}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+            source: id,
+            target: targetId,
+            type: "semantic" as const,
+            data: { relation: "depends" as const },
+          }));
+        if (citationEdges.length > 0) {
+          useFlowCanvasStore.getState().setEdges((eds) => [...eds, ...citationEdges]);
+        }
+      }
+
       window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
       setActiveTool("select");
     };

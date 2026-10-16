@@ -114,7 +114,7 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
     keyDisplay: "⌘⇧N",
     category: "Create",
     description:
-      "Global shortcut: open quick capture with title, description, and project or runway destination",
+      "Global shortcut: natural-language capture — AI files it; / project or runway, @ cite tasks",
   },
   {
     id: "create-project",
