@@ -11,6 +11,7 @@ import {
 } from "@/lib/storage/keys";
 import { boardFingerprint } from "@/lib/storage/fingerprint";
 import {
+  boardNeedsSave,
   createEmptySnapshot,
   nextBoardSnapshot,
   normalizeBoardSnapshot,
@@ -127,6 +128,30 @@ describe("nextBoardSnapshot", () => {
       viewport: { x: 1.2344, y: 0, zoom: 1 },
     });
     expect(next.viewport).toEqual({ x: 1.234, y: 0, zoom: 1 });
+  });
+
+  it("does not ask for a save when only selection chrome changed", () => {
+    const previous = createEmptySnapshot({
+      revision: 4,
+      nodes: [sampleNode],
+      viewport: { x: 3, y: 4, zoom: 1 },
+    });
+    expect(
+      boardNeedsSave(previous, {
+        nodes: [{ ...sampleNode, selected: true }],
+        edges: [],
+        annotations: {},
+        viewport: { x: 3, y: 4, zoom: 1 },
+      })
+    ).toBe(false);
+    expect(
+      boardNeedsSave(previous, {
+        nodes: [{ ...sampleNode, position: { x: 80, y: 20 } }],
+        edges: [],
+        annotations: {},
+        viewport: { x: 3, y: 4, zoom: 1 },
+      })
+    ).toBe(true);
   });
 });
 

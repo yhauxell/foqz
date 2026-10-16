@@ -57,11 +57,10 @@ import {
   findFrameAt,
 } from "./store/flowCanvasStore";
 import {
-  boardFingerprint,
+  boardNeedsSave,
   getCanvasStorage,
   nextBoardSnapshot,
   normalizeBoardViewport,
-  sameViewport,
 } from "@/lib/storage";
 
 function getSvgPathFromStroke(stroke: number[][]) {
@@ -556,9 +555,16 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       const viewport = restoring
         ? (store.boardViewport ?? undefined)
         : normalizeBoardViewport(getViewport());
-      const fingerprint = boardFingerprint({ nodes, edges, annotations });
-      const contentSame = previous != null && boardFingerprint(previous) === fingerprint;
-      if (contentSame && sameViewport(previous?.viewport, viewport)) return;
+      if (
+        !boardNeedsSave(previous, {
+          nodes,
+          edges,
+          annotations,
+          viewport,
+        })
+      ) {
+        return;
+      }
       if (viewport) store.setBoardViewport(viewport);
       storage.saveBoardSync(
         activeBoardId,

@@ -12,6 +12,7 @@ import {
   FLOW_STORAGE_KEY,
   STORAGE_BOARDS_KEY,
   getBoardStorageKey,
+  boardNeedsSave,
   getCanvasStorage,
   nextBoardSnapshot,
 } from "@/lib/storage";
@@ -1518,18 +1519,28 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
 
         const storage = getCanvasStorage();
 
-        // 1. Immediately snapshot current board
+        // Snapshot the current board only when its content or view changed.
         const previous = storage.loadBoardSync(state.activeBoardId);
-        storage.saveBoardSync(
-          state.activeBoardId,
-          nextBoardSnapshot({
+        const viewport = state.boardViewport ?? previous?.viewport;
+        if (
+          boardNeedsSave(previous, {
             nodes: state.nodes,
             edges: state.edges,
             annotations: state.annotations,
-            previous,
-            viewport: state.boardViewport ?? previous?.viewport,
+            viewport,
           })
-        );
+        ) {
+          storage.saveBoardSync(
+            state.activeBoardId,
+            nextBoardSnapshot({
+              nodes: state.nodes,
+              edges: state.edges,
+              annotations: state.annotations,
+              previous,
+              viewport,
+            })
+          );
+        }
 
         // 2. Load target board nodes, edges, annotations
         const targetSnapshot = loadBoardSnapshotFromStorage(targetId);
@@ -1557,8 +1568,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           useFlowCanvasStore.temporal.getState().clear();
         } catch {}
 
-        // 6. Center canvas on new board
-        if (typeof window !== "undefined") {
+        // Fit only a board that has never stored a view. A saved viewport is restored.
+        if (!targetSnapshot.viewport && typeof window !== "undefined") {
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent("foqz:flow-zoom-fit"));
           }, 50);

@@ -1,6 +1,10 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { Annotation } from "@/types/annotations";
-import { persistableEdges, persistableNodes } from "@/lib/storage/fingerprint";
+import {
+  boardFingerprint,
+  persistableEdges,
+  persistableNodes,
+} from "@/lib/storage/fingerprint";
 import {
   BOARD_SNAPSHOT_VERSION,
   type BoardSnapshot,
@@ -91,6 +95,21 @@ export function sameViewport(a?: BoardViewport, b?: BoardViewport): boolean {
   if (!a && !b) return true;
   if (!a || !b) return false;
   return a.x === b.x && a.y === b.y && a.zoom === b.zoom;
+}
+
+/** True when the live canvas differs from the last stored snapshot. */
+export function boardNeedsSave(
+  previous: BoardSnapshot | null | undefined,
+  next: {
+    nodes: unknown;
+    edges: unknown;
+    annotations: unknown;
+    viewport?: BoardViewport | null;
+  }
+): boolean {
+  if (!previous) return true;
+  if (boardFingerprint(previous) !== boardFingerprint(next)) return true;
+  return !sameViewport(previous.viewport, normalizeBoardViewport(next.viewport ?? undefined));
 }
 
 /** Build the next snapshot for a save, bumping revision from a prior value. */

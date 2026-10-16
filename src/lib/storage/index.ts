@@ -15,6 +15,7 @@ export { boardFingerprint } from "@/lib/storage/fingerprint";
 export {
   createEmptySnapshot,
   nextBoardSnapshot,
+  boardNeedsSave,
   normalizeBoardSnapshot,
   normalizeBoardViewport,
   sameViewport,
