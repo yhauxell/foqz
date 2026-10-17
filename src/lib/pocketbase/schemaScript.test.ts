@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  authTokenFrom,
   installerTokenFrom,
   isLoopbackUrl,
   placeholderAdminBlocked,
@@ -12,6 +13,12 @@ describe("pocketbase schema admin selection", () => {
     );
     expect(installerTokenFrom("  aaa.bbb.ccc  ")).toBe("aaa.bbb.ccc");
     expect(installerTokenFrom("")).toBe("");
+  });
+
+  it("accepts a raw or Bearer superuser JWT", () => {
+    expect(authTokenFrom("aaa.bbb.ccc")).toBe("aaa.bbb.ccc");
+    expect(authTokenFrom("Bearer aaa.bbb.ccc")).toBe("aaa.bbb.ccc");
+    expect(authTokenFrom("")).toBe("");
   });
 
   it("treats only loopback as a safe host for the example.com admin", () => {

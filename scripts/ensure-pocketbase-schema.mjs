@@ -8,8 +8,13 @@
  *   POCKETBASE_ADMIN_PASSWORD=... \
  *   node ./scripts/ensure-pocketbase-schema.mjs
  *
+ * Prefer a live superuser JWT (Admin UI / MCP `POCKETBASE_AUTH_TOKEN`):
+ *   POCKETBASE_URL=https://foqz.yruiz.site \
+ *   POCKETBASE_AUTH_TOKEN='eyJ...' \
+ *   node ./scripts/ensure-pocketbase-schema.mjs --apply
+ *
  * A fresh server with no superuser can use the installer URL from
- * `journalctl -u pb-foqz` instead of an email. The token lasts 30 minutes.
+ * `journalctl -u pb-foqz` instead. The installer token lasts 30 minutes.
  *   POCKETBASE_URL=https://foqz.yruiz.site \
  *   POCKETBASE_INSTALLER_TOKEN='https://foqz.yruiz.site/_/#/pbinstall/...' \
  *   node ./scripts/ensure-pocketbase-schema.mjs --apply
@@ -18,12 +23,17 @@
  *   node ./scripts/ensure-pocketbase-schema.mjs --apply
  */
 import { USERS_COLLECTION_ID } from "./pocketbase-schema-defs.mjs";
-import { installerTokenFrom, placeholderAdminBlocked } from "./pocketbase-schema-auth.mjs";
+import {
+  authTokenFrom,
+  installerTokenFrom,
+  placeholderAdminBlocked,
+} from "./pocketbase-schema-auth.mjs";
 
 const APPLY = process.argv.includes("--apply");
 const url = (process.env.POCKETBASE_URL || "https://foqz.yruiz.site").replace(/\/+$/, "");
 const email = process.env.POCKETBASE_ADMIN_EMAIL || "";
 const password = process.env.POCKETBASE_ADMIN_PASSWORD || "";
+const bearerToken = authTokenFrom(process.env.POCKETBASE_AUTH_TOKEN);
 const installerToken = installerTokenFrom(process.env.POCKETBASE_INSTALLER_TOKEN);
 
 const OWNER_RULE = "owner = @request.auth.id";
@@ -108,7 +118,7 @@ async function main() {
   console.log(`${APPLY ? "Apply" : "Dry run"} against ${url}`);
   console.log("Collections: workspaces, boards");
   console.log(`Users relation target: ${USERS_COLLECTION_ID}`);
-  if (placeholderAdminBlocked(url, email) && !installerToken) {
+  if (placeholderAdminBlocked(url, email) && !installerToken && !bearerToken) {
     console.error(
       "Refusing placeholder example.com admin against a non-local PocketBase server. No collections were changed."
     );
@@ -116,7 +126,8 @@ async function main() {
     return;
   }
 
-  const token = installerToken || (await passwordToken(url, email, password));
+  const token =
+    bearerToken || installerToken || (await passwordToken(url, email, password));
   if (!token) return;
 
   const headers = {
@@ -181,7 +192,7 @@ async function main() {
 async function passwordToken(baseUrl, identity, secret) {
   if (!identity || !secret) {
     console.log(
-      "Set POCKETBASE_ADMIN_EMAIL and POCKETBASE_ADMIN_PASSWORD, or POCKETBASE_INSTALLER_TOKEN (the pbinstall URL or its JWT)."
+      "Set POCKETBASE_AUTH_TOKEN, POCKETBASE_INSTALLER_TOKEN, or POCKETBASE_ADMIN_EMAIL and POCKETBASE_ADMIN_PASSWORD."
     );
     console.log("No request was sent.");
     return "";

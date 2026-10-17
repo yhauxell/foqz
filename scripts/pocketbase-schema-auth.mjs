@@ -1,7 +1,7 @@
 /**
  * How `ensure-pocketbase-schema.mjs` chooses an admin credential.
- * A fresh PocketBase prints a 30-minute installer URL. That JWT is a superuser
- * token. The example.com admin in this environment is only for loopback.
+ * Prefer a live superuser JWT (`POCKETBASE_AUTH_TOKEN` or an installer URL).
+ * Password login is the fallback. The example.com admin is only for loopback.
  */
 
 export function installerTokenFrom(raw) {
@@ -9,13 +9,22 @@ export function installerTokenFrom(raw) {
   if (!trimmed) return "";
   const marker = "/pbinstall/";
   const index = trimmed.indexOf(marker);
-  if (index === -1) return trimmed;
+  if (index === -1) return stripBearer(trimmed);
   const token = trimmed.slice(index + marker.length).split(/[/?#\s]/)[0] ?? "";
   try {
-    return decodeURIComponent(token);
+    return stripBearer(decodeURIComponent(token));
   } catch {
-    return token;
+    return stripBearer(token);
   }
+}
+
+/** Raw JWT or `Bearer <jwt>` from MCP / Admin UI. */
+export function authTokenFrom(raw) {
+  return stripBearer(String(raw ?? "").trim());
+}
+
+function stripBearer(value) {
+  return value.replace(/^Bearer\s+/i, "").trim();
 }
 
 export function isLoopbackUrl(value) {
