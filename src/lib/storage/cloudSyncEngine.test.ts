@@ -318,6 +318,88 @@ describe("createCloudSyncEngine", () => {
     sync.engine.stop();
   });
 
+  it("waits to report saved until a save that arrived mid-flush is written", async () => {
+    let releaseFirst: () => void = () => {};
+    let releaseSecond: () => void = () => {};
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    let calls = 0;
+    const sync = harness();
+    const original = sync.engine;
+    const engine = createCloudSyncEngine({
+      debounceMs: 1000,
+      isOnline: () => true,
+      isAuthenticated: () => true,
+      async saveBoard(_boardId, snapshot) {
+        sync.saves.push(snapshot);
+        calls += 1;
+        if (calls === 1) await firstGate;
+        else await secondGate;
+      },
+      async keepLocal(_boardId, snapshot) {
+        return snapshot;
+      },
+      async deleteBoard() {},
+      async saveCatalog() {},
+      async listRemote() {
+        return [];
+      },
+      async loadRemote() {
+        return null;
+      },
+      acknowledge() {},
+      async subscribeRemote() {
+        return () => {};
+      },
+      readLocalSnapshot: () => null,
+      listLocalBoards: () => [],
+      boardName: () => "Main",
+      memoryFingerprint: () => null,
+      applyToCanvas() {},
+      writeLocalSnapshot() {},
+      replaceLocalCatalog() {},
+      removeLocalBoard() {},
+      onStatus(phase, _detail, conflict) {
+        sync.statuses.push(phase);
+        sync.conflicts.push(Boolean(conflict));
+      },
+    });
+    engine.noteMutation({
+      type: "save",
+      boardId: "board-default",
+      snapshot: createEmptySnapshot({ revision: 1 }),
+    });
+    const first = engine.flush();
+    await Promise.resolve();
+    engine.noteMutation({
+      type: "save",
+      boardId: "board-default",
+      snapshot: createEmptySnapshot({ revision: 2 }),
+    });
+    let finished = false;
+    const second = engine.flush().then((phase) => {
+      finished = true;
+      return phase;
+    });
+    releaseFirst();
+    for (let i = 0; i < 8 && calls < 2; i += 1) {
+      await Promise.resolve();
+    }
+    expect(finished).toBe(false);
+    expect(calls).toBe(2);
+    releaseSecond();
+    await expect(second).resolves.toBe("saved");
+    await first;
+    expect(sync.saves.map((snapshot) => snapshot.revision)).toEqual([1, 2]);
+    expect(sync.statuses.at(-1)).toBe("saved");
+    original.stop();
+    engine.stop();
+  });
+
   it("takes the cloud copy when the same revision diverged and this device is idle", async () => {
     const sync = harness();
     const mine = createEmptySnapshot({

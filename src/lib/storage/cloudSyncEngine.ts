@@ -70,7 +70,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
 
   let stopped = false;
   let timer: { cancel: () => void } | null = null;
-  let flushing: Promise<{ phase: CloudPhase; detail: string | null; conflict: boolean }> | null = null;
+  let flushing: Promise<CloudPhase | "idle"> | null = null;
   let flushAgain = false;
   let holdForOnline = false;
   let reconciling: Promise<void> | null = null;
@@ -105,9 +105,32 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
     timer = null;
     if (flushing) {
       flushAgain = true;
-      await flushing;
-      return "idle";
+      return flushing;
     }
+    const run = drain();
+    flushing = run;
+    try {
+      return await run;
+    } finally {
+      if (flushing === run) flushing = null;
+    }
+  }
+
+  async function drain(): Promise<CloudPhase | "idle"> {
+    let phase: CloudPhase | "idle" = "idle";
+    do {
+      flushAgain = false;
+      phase = await flushOnce();
+    } while (
+      phase !== "offline" &&
+      phase !== "error" &&
+      (flushAgain || pendingSaves.size > 0 || pendingDeletes.size > 0 || pendingCatalog !== null)
+    );
+    if (phase === "saved") deps.onStatus("saved", null);
+    return phase;
+  }
+
+  async function flushOnce(): Promise<CloudPhase | "idle"> {
     if (stopped || !deps.isAuthenticated()) {
       pendingSaves.clear();
       pendingDeletes.clear();
@@ -133,41 +156,40 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
     if (saves.size === 0 && deletes.size === 0 && !catalog) return "idle";
 
     deps.onStatus("syncing", null);
-    flushing = (async () => {
-      let phase: CloudPhase = "saved";
-      let detail: string | null = null;
-      let conflict = false;
-      const finish = () => ({ phase, detail, conflict });
-      for (const boardId of deletes) {
-        saves.delete(boardId);
-        try {
-          await deps.deleteBoard(boardId);
-          lastPushed.delete(boardId);
-        } catch (err) {
-          detail = cloudErrorMessage(err);
-          if (isOfflineError(err)) {
-            pendingDeletes.add(boardId);
-            holdForOnline = true;
-            phase = "offline";
-            return finish();
-          }
+    let phase: CloudPhase = "saved";
+    let detail: string | null = null;
+    let conflict = false;
+    for (const boardId of deletes) {
+      saves.delete(boardId);
+      try {
+        await deps.deleteBoard(boardId);
+        lastPushed.delete(boardId);
+      } catch (err) {
+        detail = cloudErrorMessage(err);
+        if (isOfflineError(err)) {
+          pendingDeletes.add(boardId);
+          holdForOnline = true;
+          phase = "offline";
+          break;
+        }
+        phase = "error";
+      }
+    }
+    if (phase !== "offline" && catalog) {
+      try {
+        await deps.saveCatalog(catalog);
+      } catch (err) {
+        detail = cloudErrorMessage(err);
+        if (isOfflineError(err)) {
+          pendingCatalog = catalog;
+          holdForOnline = true;
+          phase = "offline";
+        } else {
           phase = "error";
         }
       }
-      if (catalog) {
-        try {
-          await deps.saveCatalog(catalog);
-        } catch (err) {
-          detail = cloudErrorMessage(err);
-          if (isOfflineError(err)) {
-            pendingCatalog = catalog;
-            holdForOnline = true;
-            phase = "offline";
-            return finish();
-          }
-          phase = "error";
-        }
-      }
+    }
+    if (phase !== "offline") {
       for (const [boardId, snapshot] of saves) {
         try {
           await deps.saveBoard(boardId, snapshot, deps.boardName(boardId));
@@ -178,37 +200,23 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
             pendingSaves.set(boardId, snapshot);
             holdForOnline = true;
             phase = "offline";
-            return finish();
+            break;
           }
           phase = "error";
           if (err instanceof CloudConflictError) conflict = true;
           else pendingSaves.set(boardId, snapshot);
         }
       }
-      return finish();
-    })();
-
-    let outcome: { phase: CloudPhase; detail: string | null; conflict: boolean };
-    try {
-      outcome = await flushing;
-    } finally {
-      flushing = null;
     }
-    const { phase, detail, conflict: saveConflict } = outcome;
 
     if (phase === "offline") {
       deps.onStatus("offline", detail ?? OFFLINE_DETAIL);
       return "offline";
     }
     if (phase === "error") {
-      deps.onStatus("error", detail ?? "Cloud sync failed.", saveConflict);
+      deps.onStatus("error", detail ?? "Cloud sync failed.", conflict);
       return "error";
     }
-    if (flushAgain || pendingSaves.size > 0 || pendingDeletes.size > 0 || pendingCatalog) {
-      flushAgain = false;
-      return flush();
-    }
-    deps.onStatus("saved", null);
     return "saved";
   }
 
