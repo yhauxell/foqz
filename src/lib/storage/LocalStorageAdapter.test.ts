@@ -9,10 +9,14 @@ import {
   STORAGE_BOARDS_KEY,
   getBoardStorageKey,
 } from "@/lib/storage/keys";
+import { boardFingerprint } from "@/lib/storage/fingerprint";
 import {
+  boardNeedsSave,
   createEmptySnapshot,
   nextBoardSnapshot,
   normalizeBoardSnapshot,
+  normalizeBoardViewport,
+  sameViewport,
 } from "@/lib/storage/snapshot";
 import { BOARD_SNAPSHOT_VERSION } from "@/types/storage";
 import type { Node } from "@xyflow/react";
@@ -77,6 +81,84 @@ describe("nextBoardSnapshot", () => {
     expect(next.version).toBe(BOARD_SNAPSHOT_VERSION);
     expect(next.nodes).toEqual([sampleNode]);
     expect(next.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+
+  it("stores canvas content without selection or measurement chrome", () => {
+    const previous = createEmptySnapshot({ revision: 1 });
+    const next = nextBoardSnapshot({
+      nodes: [{ ...sampleNode, selected: true, measured: { width: 10, height: 12 } } as Node],
+      edges: [{ id: "e1", source: "a", target: "b", selected: true }],
+      annotations: {},
+      previous,
+    });
+    expect(next.nodes[0]).toEqual(sampleNode);
+    expect(next.edges[0]).toEqual({ id: "e1", source: "a", target: "b" });
+    const selected = boardFingerprint({
+      nodes: [{ ...sampleNode, selected: true }],
+      edges: [],
+      annotations: {},
+    });
+    const plain = boardFingerprint({
+      nodes: [sampleNode],
+      edges: [],
+      annotations: {},
+    });
+    const moved = boardFingerprint({
+      nodes: [{ ...sampleNode, position: { x: 99, y: 20 } }],
+      edges: [],
+      annotations: {},
+    });
+    expect(selected).toBe(plain);
+    expect(moved).not.toBe(plain);
+  });
+
+  it("rounds viewport and treats a missing view as different", () => {
+    expect(normalizeBoardViewport({ x: 1.23456, y: -2, zoom: 1.2 })).toEqual({
+      x: 1.235,
+      y: -2,
+      zoom: 1.2,
+    });
+    expect(sameViewport(undefined, undefined)).toBe(true);
+    expect(sameViewport(undefined, { x: 0, y: 0, zoom: 1 })).toBe(false);
+    const next = nextBoardSnapshot({
+      nodes: [],
+      edges: [],
+      annotations: {},
+      previous: createEmptySnapshot({ revision: 1 }),
+      viewport: { x: 1.2344, y: 0, zoom: 1 },
+    });
+    expect(next.viewport).toEqual({ x: 1.234, y: 0, zoom: 1 });
+  });
+
+  it("does not ask for a save when only selection chrome changed", () => {
+    const previous = createEmptySnapshot({
+      revision: 4,
+      nodes: [sampleNode],
+      viewport: { x: 3, y: 4, zoom: 1 },
+    });
+    expect(
+      boardNeedsSave(previous, {
+        nodes: [{ ...sampleNode, selected: true }],
+        edges: [],
+        annotations: {},
+        viewport: { x: 3, y: 4, zoom: 1 },
+      })
+    ).toBe(false);
+    expect(
+      boardNeedsSave(previous, {
+        nodes: [{ ...sampleNode, position: { x: 80, y: 20 } }],
+        edges: [],
+        annotations: {},
+        viewport: { x: 3, y: 4, zoom: 1 },
+      })
+    ).toBe(true);
+    expect(
+      boardNeedsSave(
+        previous,
+        { nodes: [sampleNode], edges: [], annotations: {}, viewport: { x: 3, y: 4, zoom: 1 } },
+        "different-content"
+      )
+    ).toBe(true);
   });
 });
 

@@ -11,7 +11,7 @@ import {
 } from "@/lib/pocketbase/errors";
 import type { PbClientLike, PbRecord, PbSubscribeEvent } from "@/lib/pocketbase/types";
 import { boardFingerprint, snapshotByteLength } from "@/lib/storage/fingerprint";
-import { createEmptySnapshot, normalizeBoardSnapshot } from "@/lib/storage/snapshot";
+import { normalizeBoardSnapshot, sameViewport } from "@/lib/storage/snapshot";
 import type { BoardMeta, BoardSnapshot, CanvasStorageAdapter } from "@/types/storage";
 
 export interface RemoteBoardEvent {
@@ -47,15 +47,13 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
   }
 
   async saveBoardCatalog(boards: BoardMeta[]): Promise<void> {
-    const workspaceId = await this.ensureWorkspace();
     const existing = await this.listBoardRecords();
     const byLocal = new Map(existing.map((record) => [String(record.local_id), record]));
     for (const board of boards) {
       const row = byLocal.get(board.id);
-      if (!row) {
-        await this.createBoardRecord(workspaceId, board.id, board.name, createEmptySnapshot());
-        continue;
-      }
+      // A missing board is created by saveBoard with the real snapshot.
+      // Inserting an empty revision here would publish a blank canvas first.
+      if (!row) continue;
       this.remember(board.id, row);
       if (row.name !== board.name) {
         await this.client.collection(BOARDS_COLLECTION).update(String(row.id), {
@@ -103,11 +101,12 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
     }
     const remoteSnapshot = snapshotFromRecord(existing);
     if (remoteSnapshot && remoteRevision === snapshot.revision) {
-      if (boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot)) {
+      const sameCanvas = boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot);
+      if (sameCanvas && sameViewport(remoteSnapshot.viewport, snapshot.viewport)) {
         this.ackedRevision.set(boardId, snapshot.revision);
         return;
       }
-      // Same counter, different canvas. Another device saved this revision first.
+      // Same counter, different canvas or view. Another device saved this revision first.
       throw new CloudConflictError(boardId, remoteRevision, snapshot.revision);
     }
     const updated = await this.client.collection(BOARDS_COLLECTION).update(String(existing.id), {
@@ -118,6 +117,63 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
     });
     this.remember(boardId, updated);
     this.ackedRevision.set(boardId, snapshot.revision);
+  }
+
+  /**
+   * Write this device's snapshot after the user chooses it over the cloud copy.
+   * The stored revision becomes one past the higher counter so the sequence
+   * stays monotonic. Ordinary saves never take this path.
+   */
+  async keepLocalBoard(
+    boardId: string,
+    snapshot: BoardSnapshot,
+    name?: string
+  ): Promise<BoardSnapshot> {
+    const bytes = snapshotByteLength(snapshot);
+    if (bytes > MAX_SNAPSHOT_BYTES) {
+      throw new SnapshotTooLargeError(bytes, MAX_SNAPSHOT_BYTES);
+    }
+    const workspaceId = await this.ensureWorkspace();
+    const existing = await this.findBoard(boardId);
+    if (!existing) {
+      const created = await this.createBoardRecord(
+        workspaceId,
+        boardId,
+        name?.trim() || boardId,
+        snapshot
+      );
+      const stored = snapshotFromRecord(created) ?? snapshot;
+      this.ackedRevision.set(boardId, stored.revision);
+      return stored;
+    }
+
+    const remoteRevision = revisionOf(existing);
+    const remoteSnapshot = snapshotFromRecord(existing);
+    if (
+      remoteSnapshot &&
+      boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot) &&
+      sameViewport(remoteSnapshot.viewport, snapshot.viewport)
+    ) {
+      const revision = Math.max(snapshot.revision, remoteRevision);
+      this.remember(boardId, existing);
+      this.ackedRevision.set(boardId, revision);
+      return revision === snapshot.revision ? snapshot : { ...snapshot, revision };
+    }
+
+    const written: BoardSnapshot = {
+      ...snapshot,
+      revision: Math.max(snapshot.revision, remoteRevision) + 1,
+      updatedAt: Date.now(),
+    };
+    const updated = await this.client.collection(BOARDS_COLLECTION).update(String(existing.id), {
+      snapshot: written,
+      revision: written.revision,
+      last_modified_by: this.requireUserId(),
+      ...(name ? { name } : {}),
+    });
+    this.remember(boardId, updated);
+    this.ackedRevision.set(boardId, written.revision);
+    return written;
   }
 
   async deleteBoard(boardId: string): Promise<void> {
@@ -239,8 +295,8 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
     const records = await this.client.collection(BOARDS_COLLECTION).getFullList({
       filter: `workspace = "${escapeFilter(workspaceId)}"`,
       batch: 200,
-      // Do not sort by `created` here. The list rule joins `workspace`, and
-      // PocketBase 0.39 rejects `sort=created` because that column is ambiguous.
+      // Sort locally. `created` is an autodate column added by the schema
+      // script; a server that does not have it yet still returns this list.
       fields: "id,local_id,name,created,revision,workspace",
     });
     records.sort((a, b) => String(a.created ?? "").localeCompare(String(b.created ?? "")));
@@ -282,6 +338,25 @@ export class PocketBaseStorageAdapter implements CanvasStorageAdapter {
     } catch (err) {
       const existing = await this.findBoard(boardId);
       if (!existing) throw err;
+      const remoteRevision = revisionOf(existing);
+      const remoteSnapshot = snapshotFromRecord(existing);
+      const sameCanvas =
+        remoteSnapshot !== null &&
+        boardFingerprint(remoteSnapshot) === boardFingerprint(snapshot) &&
+        sameViewport(remoteSnapshot.viewport, snapshot.viewport);
+      if (
+        remoteSnapshot &&
+        (remoteRevision > snapshot.revision ||
+          (remoteRevision === snapshot.revision && !sameCanvas))
+      ) {
+        this.remember(boardId, existing);
+        throw new CloudConflictError(boardId, remoteRevision, snapshot.revision);
+      }
+      if (sameCanvas && remoteSnapshot) {
+        this.remember(boardId, existing);
+        this.ackedRevision.set(boardId, Math.max(snapshot.revision, remoteRevision));
+        return existing;
+      }
       const updated = await this.client.collection(BOARDS_COLLECTION).update(String(existing.id), {
         name,
         snapshot,

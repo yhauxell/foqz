@@ -20,6 +20,8 @@ function createFakeClient() {
   ]);
   const handlers = new Set<(event: PbSubscribeEvent) => void>();
   let seq = 1;
+  let failCreates = 0;
+  let missFinds = 0;
   const auth = {
     isValid: true,
     token: "token",
@@ -44,6 +46,12 @@ function createFakeClient() {
           return table.map((row) => ({ ...row }));
         },
         async getFirstListItem(filter: string) {
+          if (missFinds > 0 && filter.includes("local_id")) {
+            missFinds -= 1;
+            const error = new Error("not found") as Error & { status: number };
+            error.status = 404;
+            throw error;
+          }
           const found = table.find((row) => matches(filter, row));
           if (!found) {
             const error = new Error("not found") as Error & { status: number };
@@ -53,6 +61,12 @@ function createFakeClient() {
           return { ...found };
         },
         async create(data: Record<string, unknown>) {
+          if (failCreates > 0) {
+            failCreates -= 1;
+            const error = new Error("unique") as Error & { status: number };
+            error.status = 400;
+            throw error;
+          }
           const row: PbRecord = {
             id: `rec-${seq++}`,
             created: "2026-10-16 12:00:00.000Z",
@@ -89,6 +103,12 @@ function createFakeClient() {
   return {
     client,
     tables,
+    failNextCreate() {
+      failCreates += 1;
+    },
+    missNextFind() {
+      missFinds += 1;
+    },
     emit(event: PbSubscribeEvent) {
       for (const handler of handlers) handler(event);
     },
@@ -117,6 +137,28 @@ describe("PocketBaseStorageAdapter", () => {
     expect(await adapter.listBoards()).toEqual([
       expect.objectContaining({ id: "board-default", name: "Main" }),
     ]);
+  });
+
+  it("lists boards by the created timestamp", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    await adapter.saveBoard("board-b", createEmptySnapshot({ revision: 1 }), "Second");
+    await adapter.saveBoard("board-a", createEmptySnapshot({ revision: 1 }), "First");
+    const boards = fake.tables.get("boards") ?? [];
+    const second = boards.find((row) => row.local_id === "board-b");
+    const first = boards.find((row) => row.local_id === "board-a");
+    if (second) second.created = "2026-10-16 12:00:02.000Z";
+    if (first) first.created = "2026-10-16 12:00:01.000Z";
+
+    const listed = await adapter.listBoards();
+    expect(listed.map((board) => board.id)).toEqual(["board-a", "board-b"]);
+  });
+
+  it("does not publish an empty board when the catalog names one that is not in the cloud", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    await adapter.saveBoardCatalog([{ id: "board-local", name: "Local only", createdAt: 1 }]);
+    expect(fake.tables.get("boards") ?? []).toHaveLength(0);
   });
 
   it("refuses to overwrite a newer remote revision", async () => {
@@ -162,6 +204,120 @@ describe("PocketBaseStorageAdapter", () => {
       )
     ).rejects.toBeInstanceOf(CloudConflictError);
     expect((row?.snapshot as { nodes?: { id: string }[] })?.nodes?.[0]?.id).toBe("remote");
+  });
+
+  it("refuses a same-revision write when only the viewport differs", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    const snapshot = createEmptySnapshot({
+      revision: 2,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+    await adapter.saveBoard("board-default", snapshot, "Main");
+    const row = fake.tables.get("boards")?.[0];
+    if (row) {
+      row.snapshot = { ...snapshot, viewport: { x: 40, y: 10, zoom: 1 } };
+    }
+
+    await expect(adapter.saveBoard("board-default", snapshot, "Main")).rejects.toBeInstanceOf(
+      CloudConflictError
+    );
+    expect((row?.snapshot as { viewport?: { x: number } })?.viewport?.x).toBe(40);
+  });
+
+  it("keeps this device by advancing one revision past the cloud", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    await adapter.saveBoard(
+      "board-default",
+      createEmptySnapshot({
+        revision: 4,
+        nodes: [{ id: "remote", position: { x: 1, y: 1 }, data: {} }],
+      }),
+      "Main"
+    );
+    const kept = await adapter.keepLocalBoard(
+      "board-default",
+      createEmptySnapshot({
+        revision: 2,
+        nodes: [{ id: "local", position: { x: 0, y: 0 }, data: {} }],
+      }),
+      "Main"
+    );
+    expect(kept.revision).toBe(5);
+    expect(kept.nodes[0]?.id).toBe("local");
+    const row = fake.tables.get("boards")?.[0];
+    expect(row?.revision).toBe(5);
+  });
+
+  it("keeps a viewport-only local view by advancing one revision", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    const local = createEmptySnapshot({
+      revision: 3,
+      viewport: { x: 12, y: 4, zoom: 1 },
+    });
+    await adapter.saveBoard("board-default", local, "Main");
+    const row = fake.tables.get("boards")?.[0];
+    if (row) {
+      row.snapshot = { ...local, viewport: { x: 80, y: 4, zoom: 1 } };
+    }
+
+    const kept = await adapter.keepLocalBoard("board-default", local, "Main");
+    expect(kept.revision).toBe(4);
+    expect(kept.viewport).toEqual({ x: 12, y: 4, zoom: 1 });
+    expect(row?.revision).toBe(4);
+    expect((row?.snapshot as { viewport?: { x: number } })?.viewport?.x).toBe(12);
+  });
+
+  it("does not clobber a diverged board when create loses the insert race", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    await adapter.saveBoard(
+      "board-default",
+      createEmptySnapshot({
+        revision: 2,
+        nodes: [{ id: "remote", position: { x: 1, y: 1 }, data: {} }],
+      }),
+      "Main"
+    );
+    const racer = new PocketBaseStorageAdapter(() => fake.client);
+    fake.missNextFind();
+    fake.failNextCreate();
+    await expect(
+      racer.saveBoard(
+        "board-default",
+        createEmptySnapshot({
+          revision: 2,
+          nodes: [{ id: "local", position: { x: 0, y: 0 }, data: {} }],
+        }),
+        "Main"
+      )
+    ).rejects.toBeInstanceOf(CloudConflictError);
+    const row = fake.tables.get("boards")?.[0];
+    expect((row?.snapshot as { nodes?: { id: string }[] })?.nodes?.[0]?.id).toBe("remote");
+  });
+
+  it("does not drop a local viewport when create loses the insert race", async () => {
+    const fake = createFakeClient();
+    const adapter = new PocketBaseStorageAdapter(() => fake.client);
+    const remote = createEmptySnapshot({
+      revision: 2,
+      viewport: { x: 80, y: 0, zoom: 1 },
+    });
+    await adapter.saveBoard("board-default", remote, "Main");
+    const racer = new PocketBaseStorageAdapter(() => fake.client);
+    fake.missNextFind();
+    fake.failNextCreate();
+    const local = createEmptySnapshot({
+      revision: 2,
+      viewport: { x: 4, y: 9, zoom: 1 },
+    });
+    await expect(racer.saveBoard("board-default", local, "Main")).rejects.toBeInstanceOf(
+      CloudConflictError
+    );
+    const row = fake.tables.get("boards")?.[0];
+    expect((row?.snapshot as { viewport?: { x: number } })?.viewport?.x).toBe(80);
   });
 
   it("rejects snapshots over the byte cap before writing", async () => {

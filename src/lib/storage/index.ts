@@ -15,7 +15,10 @@ export { boardFingerprint } from "@/lib/storage/fingerprint";
 export {
   createEmptySnapshot,
   nextBoardSnapshot,
+  boardNeedsSave,
   normalizeBoardSnapshot,
+  normalizeBoardViewport,
+  sameViewport,
 } from "@/lib/storage/snapshot";
 
 let canvasStorage: LocalStorageAdapter = new LocalStorageAdapter();

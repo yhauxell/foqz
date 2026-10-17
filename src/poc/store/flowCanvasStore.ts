@@ -12,6 +12,7 @@ import {
   FLOW_STORAGE_KEY,
   STORAGE_BOARDS_KEY,
   getBoardStorageKey,
+  boardNeedsSave,
   getCanvasStorage,
   nextBoardSnapshot,
 } from "@/lib/storage";
@@ -38,6 +39,7 @@ export function loadBoardSnapshotFromStorage(boardId: string): {
   nodes: Node[];
   edges: Edge[];
   annotations: Record<string, Annotation>;
+  viewport?: BoardSnapshot["viewport"];
 } {
   const stored = getCanvasStorage().loadBoardSync(boardId);
   if (stored) {
@@ -45,6 +47,7 @@ export function loadBoardSnapshotFromStorage(boardId: string): {
       nodes: stored.nodes,
       edges: stored.edges,
       annotations: stored.annotations,
+      viewport: stored.viewport,
     };
   }
   if (boardId === DEFAULT_BOARD_ID) {
@@ -374,6 +377,11 @@ export interface FlowCanvasState {
   // Multiboard Slice
   boards: BoardMeta[];
   activeBoardId: string;
+  /** Last pan/zoom from the canvas, or the view applied from a saved board. */
+  boardViewport: BoardSnapshot["viewport"] | null;
+  /** Bumped when the canvas should move to `boardViewport`. */
+  viewportSerial: number;
+  setBoardViewport: (viewport: BoardSnapshot["viewport"] | null) => void;
   switchBoard: (targetId: string) => void;
   createBoard: (name?: string) => string;
   deleteBoard: (id: string) => void;
@@ -416,6 +424,9 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
     (set, get) => ({
       boards: initialBoards,
       activeBoardId: initialActiveBoardId,
+      boardViewport: initialSnapshot.viewport ?? null,
+      viewportSerial: initialSnapshot.viewport ? 1 : 0,
+      setBoardViewport: (viewport) => set({ boardViewport: viewport ?? null }),
       nodes: initialSnapshot.nodes,
       edges: initialSnapshot.edges,
       annotations: initialSnapshot.annotations,
@@ -1508,17 +1519,28 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
 
         const storage = getCanvasStorage();
 
-        // 1. Immediately snapshot current board
+        // Snapshot the current board only when its content or view changed.
         const previous = storage.loadBoardSync(state.activeBoardId);
-        storage.saveBoardSync(
-          state.activeBoardId,
-          nextBoardSnapshot({
+        const viewport = state.boardViewport ?? previous?.viewport;
+        if (
+          boardNeedsSave(previous, {
             nodes: state.nodes,
             edges: state.edges,
             annotations: state.annotations,
-            previous,
+            viewport,
           })
-        );
+        ) {
+          storage.saveBoardSync(
+            state.activeBoardId,
+            nextBoardSnapshot({
+              nodes: state.nodes,
+              edges: state.edges,
+              annotations: state.annotations,
+              previous,
+              viewport,
+            })
+          );
+        }
 
         // 2. Load target board nodes, edges, annotations
         const targetSnapshot = loadBoardSnapshotFromStorage(targetId);
@@ -1533,6 +1555,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           nodes: targetSnapshot.nodes,
           edges: targetSnapshot.edges,
           annotations: targetSnapshot.annotations,
+          boardViewport: targetSnapshot.viewport ?? null,
+          viewportSerial: state.viewportSerial + 1,
           selectedNodeId: null,
           activeFocusNodeId: null,
           activeAnnotationId: null,
@@ -1544,8 +1568,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           useFlowCanvasStore.temporal.getState().clear();
         } catch {}
 
-        // 6. Center canvas on new board
-        if (typeof window !== "undefined") {
+        // Fit only a board that has never stored a view. A saved viewport is restored.
+        if (!targetSnapshot.viewport && typeof window !== "undefined") {
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent("foqz:flow-zoom-fit"));
           }, 50);
@@ -1619,6 +1643,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           nodes: [],
           edges: [],
           annotations: {},
+          boardViewport: null,
+          viewportSerial: state.viewportSerial + 1,
           activeAnnotationId: null,
           selectedNodeId: null,
           activeFocusNodeId: null,
@@ -1637,6 +1663,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
             nodes: snapshot.nodes,
             edges: snapshot.edges,
             annotations: snapshot.annotations,
+            boardViewport: snapshot.viewport ?? null,
+            viewportSerial: state.viewportSerial + 1,
           });
         } catch (err) {
           console.warn("Failed to load Flow snapshot:", err);
@@ -1649,6 +1677,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
           nodes: snapshot.nodes,
           edges: snapshot.edges,
           annotations: snapshot.annotations,
+          boardViewport: snapshot.viewport ?? get().boardViewport,
+          viewportSerial: snapshot.viewport ? get().viewportSerial + 1 : get().viewportSerial,
           selectedNodeId: null,
           activeAnnotationId: null,
         });

@@ -1,5 +1,6 @@
 import PocketBase from "pocketbase";
 import {
+  CLOUD_REQUEST_TIMEOUT_MS,
   DEFAULT_POCKETBASE_URL,
   POCKETBASE_URL_KEY,
 } from "@/lib/pocketbase/constants";
@@ -43,6 +44,10 @@ export function getPocketBase(): PocketBase {
     // The SDK otherwise cancels the previous list/update when a newer one starts.
     // Debounced sync and realtime need those requests to finish.
     client.autoCancellation(false);
+    client.beforeSend = (requestUrl, options) => {
+      applyCloudRequestTimeout(requestUrl, options);
+      return { url: requestUrl, options };
+    };
     clientUrl = url;
   }
   return client;
@@ -101,6 +106,16 @@ export function toPocketBaseClient(pb: PocketBase): PbClientLike {
       };
     },
   };
+}
+
+/** Time out REST calls. The SSE socket at `/api/realtime` stays open. */
+export function applyCloudRequestTimeout(
+  url: string,
+  options: { signal?: AbortSignal | null }
+): void {
+  if (url.includes("/api/realtime")) return;
+  if (options.signal) return;
+  options.signal = AbortSignal.timeout(CLOUD_REQUEST_TIMEOUT_MS);
 }
 
 export function pocketBaseClient(): PbClientLike {

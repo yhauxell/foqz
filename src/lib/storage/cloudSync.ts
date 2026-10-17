@@ -24,13 +24,21 @@ interface CloudSyncState {
   phase: CloudPhase;
   detail: string | null;
   email: string | null;
+  /** True when the user can choose the cloud copy or this device's copy. */
+  conflict: boolean;
 }
 
 export const useCloudSyncStatus = create<CloudSyncState>(() => ({
   phase: "signed-out",
   detail: null,
   email: null,
+  conflict: false,
 }));
+
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  (window as unknown as { __foqzCloudSync?: typeof useCloudSyncStatus }).__foqzCloudSync =
+    useCloudSyncStatus;
+}
 
 let activeEngine: CloudSyncEngine | null = null;
 
@@ -38,14 +46,18 @@ export function requestCloudFlush(): void {
   void activeEngine?.flush();
 }
 
-export function requestCloudReconcile(options?: { preferRemote?: boolean }): void {
+export function requestCloudReconcile(options?: {
+  preferRemote?: boolean;
+  preferLocal?: boolean;
+}): void {
   void activeEngine?.reconcile(options);
 }
 
-function publishStatus(phase: CloudPhase, detail: string | null): void {
+function publishStatus(phase: CloudPhase, detail: string | null, conflict = false): void {
   useCloudSyncStatus.setState({
     phase,
     detail,
+    conflict,
     email: readCloudSession().email,
   });
 }
@@ -92,6 +104,7 @@ export function startCloudSync(): () => void {
     isOnline: () => (typeof navigator === "undefined" ? true : navigator.onLine),
     isAuthenticated: () => Boolean(readCloudSession().userId),
     saveBoard: (boardId, snapshot, name) => adapter.saveBoard(boardId, snapshot, name),
+    keepLocal: (boardId, snapshot, name) => adapter.keepLocalBoard(boardId, snapshot, name),
     deleteBoard: (boardId) => adapter.deleteBoard(boardId),
     saveCatalog: (boards) => adapter.saveBoardCatalog(boards),
     listRemote: () => adapter.listBoards(),
@@ -112,6 +125,9 @@ export function startCloudSync(): () => void {
       });
     },
     applyToCanvas,
+    writeLocalSnapshot(boardId, snapshot) {
+      getCanvasStorage().saveBoardSync(boardId, snapshot, { notify: false });
+    },
     replaceLocalCatalog,
     removeLocalBoard,
     onStatus: publishStatus,
@@ -132,9 +148,17 @@ export function startCloudSync(): () => void {
     adapter.resetSession();
     engine.handleAuthChanged();
   };
+  const flushPending = () => {
+    void engine.flush();
+  };
+  const onHide = () => {
+    if (document.visibilityState === "hidden") flushPending();
+  };
   window.addEventListener("online", onOnline);
   window.addEventListener("offline", onOffline);
   window.addEventListener(POCKETBASE_URL_EVENT, onUrl);
+  window.addEventListener("pagehide", flushPending);
+  document.addEventListener("visibilitychange", onHide);
   engine.start();
 
   return () => {
@@ -144,6 +168,8 @@ export function startCloudSync(): () => void {
     window.removeEventListener("online", onOnline);
     window.removeEventListener("offline", onOffline);
     window.removeEventListener(POCKETBASE_URL_EVENT, onUrl);
+    window.removeEventListener("pagehide", flushPending);
+    document.removeEventListener("visibilitychange", onHide);
     adapter.resetSession();
     if (activeEngine === engine) activeEngine = null;
   };

@@ -1,5 +1,6 @@
 import { cloudErrorMessage, CloudConflictError, isOfflineError } from "@/lib/pocketbase/errors";
 import { boardFingerprint } from "@/lib/storage/fingerprint";
+import { normalizeBoardViewport, sameViewport } from "@/lib/storage/snapshot";
 import type { RemoteBoardEvent } from "@/lib/storage/PocketBaseStorageAdapter";
 import type { StorageMutation } from "@/lib/storage/LocalStorageAdapter";
 import type { BoardMeta, BoardSnapshot } from "@/types/storage";
@@ -11,6 +12,8 @@ export interface CloudSyncDeps {
   isOnline: () => boolean;
   isAuthenticated: () => boolean;
   saveBoard: (boardId: string, snapshot: BoardSnapshot, name?: string) => Promise<void>;
+  /** User chose this device over a newer or diverged cloud board. */
+  keepLocal: (boardId: string, snapshot: BoardSnapshot, name?: string) => Promise<BoardSnapshot>;
   deleteBoard: (boardId: string) => Promise<void>;
   saveCatalog: (boards: BoardMeta[]) => Promise<void>;
   listRemote: () => Promise<BoardMeta[]>;
@@ -23,9 +26,11 @@ export interface CloudSyncDeps {
   /** Fingerprint of the open canvas, or null when `boardId` is not the active board. */
   memoryFingerprint: (boardId: string) => string | null;
   applyToCanvas: (boardId: string, snapshot: BoardSnapshot) => void;
+  /** Persist a snapshot without replacing the open canvas or re-queueing a save. */
+  writeLocalSnapshot: (boardId: string, snapshot: BoardSnapshot) => void;
   replaceLocalCatalog: (boards: BoardMeta[]) => void;
   removeLocalBoard: (boardId: string) => void;
-  onStatus: (phase: CloudPhase, detail: string | null) => void;
+  onStatus: (phase: CloudPhase, detail: string | null, conflict?: boolean) => void;
   schedule?: (fn: () => void | Promise<void>, ms: number) => { cancel: () => void };
 }
 
@@ -34,13 +39,20 @@ export interface CloudSyncEngine {
   stop(): void;
   noteMutation(event: StorageMutation): void;
   flush(): Promise<CloudPhase | "idle">;
-  reconcile(options?: { preferRemote?: boolean }): Promise<void>;
+  reconcile(options?: { preferRemote?: boolean; preferLocal?: boolean }): Promise<void>;
   handleOnline(): void;
   handleOffline(): void;
   handleAuthChanged(): void;
 }
 
 const OFFLINE_DETAIL = "You are offline. Changes stay on this device until you reconnect.";
+
+/** Content plus view, so a pan on another device is not treated as our own echo. */
+function pushedIdentity(snapshot: BoardSnapshot): string {
+  const view = normalizeBoardViewport(snapshot.viewport);
+  const viewKey = view ? `${view.x},${view.y},${view.zoom}` : "";
+  return `${boardFingerprint(snapshot)}@${viewKey}`;
+}
 
 /**
  * Debounced bridge from local board writes to PocketBase.
@@ -58,7 +70,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
 
   let stopped = false;
   let timer: { cancel: () => void } | null = null;
-  let flushing: Promise<{ phase: CloudPhase; detail: string | null }> | null = null;
+  let flushing: Promise<CloudPhase | "idle"> | null = null;
   let flushAgain = false;
   let holdForOnline = false;
   let reconciling: Promise<void> | null = null;
@@ -89,11 +101,36 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
   }
 
   async function flush(): Promise<CloudPhase | "idle"> {
+    timer?.cancel();
+    timer = null;
     if (flushing) {
       flushAgain = true;
-      await flushing;
-      return "idle";
+      return flushing;
     }
+    const run = drain();
+    flushing = run;
+    try {
+      return await run;
+    } finally {
+      if (flushing === run) flushing = null;
+    }
+  }
+
+  async function drain(): Promise<CloudPhase | "idle"> {
+    let phase: CloudPhase | "idle" = "idle";
+    do {
+      flushAgain = false;
+      phase = await flushOnce();
+    } while (
+      phase !== "offline" &&
+      phase !== "error" &&
+      (flushAgain || pendingSaves.size > 0 || pendingDeletes.size > 0 || pendingCatalog !== null)
+    );
+    if (phase === "saved") deps.onStatus("saved", null);
+    return phase;
+  }
+
+  async function flushOnce(): Promise<CloudPhase | "idle"> {
     if (stopped || !deps.isAuthenticated()) {
       pendingSaves.clear();
       pendingDeletes.clear();
@@ -119,82 +156,77 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
     if (saves.size === 0 && deletes.size === 0 && !catalog) return "idle";
 
     deps.onStatus("syncing", null);
-    flushing = (async () => {
-      let phase: CloudPhase = "saved";
-      let detail: string | null = null;
-      const finish = () => ({ phase, detail });
-      for (const boardId of deletes) {
-        saves.delete(boardId);
-        try {
-          await deps.deleteBoard(boardId);
-          lastPushed.delete(boardId);
-        } catch (err) {
-          detail = cloudErrorMessage(err);
-          if (isOfflineError(err)) {
-            pendingDeletes.add(boardId);
-            holdForOnline = true;
-            phase = "offline";
-            return finish();
-          }
+    let phase: CloudPhase = "saved";
+    let detail: string | null = null;
+    let conflict = false;
+    const deleteList = [...deletes];
+    const saveList = [...saves];
+    const parkOffline = (deleteFrom: number, saveFrom: number, keepCatalog: boolean) => {
+      for (const boardId of deleteList.slice(deleteFrom)) pendingDeletes.add(boardId);
+      for (const [boardId, snapshot] of saveList.slice(saveFrom)) pendingSaves.set(boardId, snapshot);
+      if (keepCatalog && catalog) pendingCatalog = catalog;
+      holdForOnline = true;
+    };
+
+    for (let index = 0; index < deleteList.length; index += 1) {
+      const boardId = deleteList[index];
+      saves.delete(boardId);
+      const saveAt = saveList.findIndex(([id]) => id === boardId);
+      if (saveAt >= 0) saveList.splice(saveAt, 1);
+      try {
+        await deps.deleteBoard(boardId);
+        lastPushed.delete(boardId);
+      } catch (err) {
+        detail = cloudErrorMessage(err);
+        if (isOfflineError(err)) {
+          parkOffline(index, 0, true);
+          phase = "offline";
+          break;
+        }
+        phase = "error";
+      }
+    }
+    if (phase !== "offline" && catalog) {
+      try {
+        await deps.saveCatalog(catalog);
+      } catch (err) {
+        detail = cloudErrorMessage(err);
+        if (isOfflineError(err)) {
+          parkOffline(deleteList.length, 0, true);
+          phase = "offline";
+        } else {
           phase = "error";
         }
       }
-      if (catalog) {
-        try {
-          await deps.saveCatalog(catalog);
-        } catch (err) {
-          detail = cloudErrorMessage(err);
-          if (isOfflineError(err)) {
-            pendingCatalog = catalog;
-            holdForOnline = true;
-            phase = "offline";
-            return finish();
-          }
-          phase = "error";
-        }
-      }
-      for (const [boardId, snapshot] of saves) {
+    }
+    if (phase !== "offline") {
+      for (let index = 0; index < saveList.length; index += 1) {
+        const [boardId, snapshot] = saveList[index];
         try {
           await deps.saveBoard(boardId, snapshot, deps.boardName(boardId));
-          lastPushed.set(boardId, boardFingerprint(snapshot));
+          lastPushed.set(boardId, pushedIdentity(snapshot));
         } catch (err) {
           detail = cloudErrorMessage(err);
           if (isOfflineError(err)) {
-            pendingSaves.set(boardId, snapshot);
-            holdForOnline = true;
+            parkOffline(deleteList.length, index, false);
             phase = "offline";
-            return finish();
+            break;
           }
           phase = "error";
-          if (!(err instanceof CloudConflictError)) {
-            pendingSaves.set(boardId, snapshot);
-          }
+          if (err instanceof CloudConflictError) conflict = true;
+          else pendingSaves.set(boardId, snapshot);
         }
       }
-      return finish();
-    })();
-
-    let outcome: { phase: CloudPhase; detail: string | null };
-    try {
-      outcome = await flushing;
-    } finally {
-      flushing = null;
     }
-    const { phase, detail } = outcome;
 
     if (phase === "offline") {
       deps.onStatus("offline", detail ?? OFFLINE_DETAIL);
       return "offline";
     }
     if (phase === "error") {
-      deps.onStatus("error", detail ?? "Cloud sync failed.");
+      deps.onStatus("error", detail ?? "Cloud sync failed.", conflict);
       return "error";
     }
-    if (flushAgain || pendingSaves.size > 0 || pendingDeletes.size > 0 || pendingCatalog) {
-      flushAgain = false;
-      return flush();
-    }
-    deps.onStatus("saved", null);
     return "saved";
   }
 
@@ -219,9 +251,21 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
     }
     const snapshot = event.snapshot;
     if (!snapshot) return;
+    const identity = pushedIdentity(snapshot);
     const fp = boardFingerprint(snapshot);
-    if (lastPushed.get(event.localId) === fp) {
+    if (lastPushed.get(event.localId) === identity) {
       deps.acknowledge(event.localId, snapshot.revision);
+      const local = deps.readLocalSnapshot(event.localId);
+      // Same canvas at a higher counter. Keep the local revision in step so the
+      // next edit does not collide with a save this device already matches.
+      if (
+        local &&
+        snapshot.revision > local.revision &&
+        boardFingerprint(local) === fp &&
+        sameViewport(local.viewport, snapshot.viewport)
+      ) {
+        deps.writeLocalSnapshot(event.localId, snapshot);
+      }
       return;
     }
     const local = deps.readLocalSnapshot(event.localId);
@@ -229,7 +273,8 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
     if (
       local &&
       snapshot.revision === local.revision &&
-      boardFingerprint(local) === fp
+      boardFingerprint(local) === fp &&
+      sameViewport(local.viewport, snapshot.viewport)
     ) {
       deps.acknowledge(event.localId, snapshot.revision);
       return;
@@ -242,12 +287,12 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
       return;
     }
     deps.acknowledge(event.localId, snapshot.revision);
-    lastPushed.set(event.localId, fp);
+    lastPushed.set(event.localId, identity);
     deps.applyToCanvas(event.localId, snapshot);
     deps.onStatus("saved", null);
   }
 
-  async function reconcile(options?: { preferRemote?: boolean }): Promise<void> {
+  async function reconcile(options?: { preferRemote?: boolean; preferLocal?: boolean }): Promise<void> {
     if (reconciling) {
       await reconciling;
       if (!options?.preferRemote) return;
@@ -286,19 +331,42 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
         }
         if (remote && !local) {
           deps.acknowledge(meta.id, remote.revision);
-          lastPushed.set(meta.id, boardFingerprint(remote));
+          lastPushed.set(meta.id, pushedIdentity(remote));
           deps.applyToCanvas(meta.id, remote);
           continue;
         }
         if (!remote || !local) continue;
-        if (remote.revision > local.revision) {
-          if (!options?.preferRemote && isDirty(meta.id, local)) {
-            conflict = `Remote changes on “${meta.name}” are newer. Use the cloud copy or keep this device’s version.`;
-            continue;
+        const remoteFp = boardFingerprint(remote);
+        const localFp = boardFingerprint(local);
+        const diverged =
+          remote.revision > local.revision ||
+          (remote.revision === local.revision &&
+            (remoteFp !== localFp || !sameViewport(remote.viewport, local.viewport)));
+        if (diverged && options?.preferLocal) {
+          const written = await deps.keepLocal(meta.id, local, meta.name);
+          deps.acknowledge(meta.id, written.revision);
+          lastPushed.set(meta.id, pushedIdentity(written));
+          const pending = pendingSaves.get(meta.id);
+          if (pending && boardFingerprint(pending) !== boardFingerprint(written)) {
+            const revision = Math.max(pending.revision, written.revision + 1);
+            const next = revision === pending.revision ? pending : { ...pending, revision };
+            pendingSaves.set(meta.id, next);
+            deps.writeLocalSnapshot(meta.id, next);
+          } else {
+            pendingSaves.delete(meta.id);
+            deps.writeLocalSnapshot(meta.id, written);
           }
+          continue;
+        }
+        if (diverged && (options?.preferRemote || !isDirty(meta.id, local))) {
           deps.acknowledge(meta.id, remote.revision);
-          lastPushed.set(meta.id, boardFingerprint(remote));
+          lastPushed.set(meta.id, pushedIdentity(remote));
+          pendingSaves.delete(meta.id);
           deps.applyToCanvas(meta.id, remote);
+          continue;
+        }
+        if (diverged) {
+          conflict = `Remote changes on “${meta.name}” differ from this device. Use the cloud copy or keep this device’s version.`;
           continue;
         }
         if (local.revision > remote.revision) {
@@ -307,12 +375,12 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
           continue;
         }
         deps.acknowledge(meta.id, remote.revision);
-        lastPushed.set(meta.id, boardFingerprint(local));
+        lastPushed.set(meta.id, pushedIdentity(local));
       }
 
       await ensureSubscription();
       const flushed = await flush();
-      if (conflict) deps.onStatus("error", conflict);
+      if (conflict) deps.onStatus("error", conflict, true);
       else if (flushed === "idle") deps.onStatus("saved", null);
     };
 

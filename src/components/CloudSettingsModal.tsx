@@ -25,9 +25,9 @@ export function CloudSettingsModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const phase = useCloudSyncStatus((state) => state.phase);
   const detail = useCloudSyncStatus((state) => state.detail);
   const email = useCloudSyncStatus((state) => state.email);
+  const conflict = useCloudSyncStatus((state) => state.conflict);
   const [serverUrl, setServerUrl] = useState(DEFAULT_POCKETBASE_URL);
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
@@ -122,15 +122,25 @@ export function CloudSettingsModal({
               Signed in as <span className="font-medium">{email}</span>
             </p>
             <div className="flex flex-wrap justify-end gap-2">
-              {phase === "error" ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => requestCloudReconcile({ preferRemote: true })}
-                >
-                  Use cloud copy
-                </Button>
+              {conflict ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => requestCloudReconcile({ preferRemote: true })}
+                  >
+                    Use cloud copy
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => requestCloudReconcile({ preferLocal: true })}
+                  >
+                    Keep this device
+                  </Button>
+                </>
               ) : null}
               <Button type="button" variant="outline" size="sm" onClick={() => requestCloudFlush()}>
                 Sync now
