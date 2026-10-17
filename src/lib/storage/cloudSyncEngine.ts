@@ -159,16 +159,27 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
     let phase: CloudPhase = "saved";
     let detail: string | null = null;
     let conflict = false;
-    for (const boardId of deletes) {
+    const deleteList = [...deletes];
+    const saveList = [...saves];
+    const parkOffline = (deleteFrom: number, saveFrom: number, keepCatalog: boolean) => {
+      for (const boardId of deleteList.slice(deleteFrom)) pendingDeletes.add(boardId);
+      for (const [boardId, snapshot] of saveList.slice(saveFrom)) pendingSaves.set(boardId, snapshot);
+      if (keepCatalog && catalog) pendingCatalog = catalog;
+      holdForOnline = true;
+    };
+
+    for (let index = 0; index < deleteList.length; index += 1) {
+      const boardId = deleteList[index];
       saves.delete(boardId);
+      const saveAt = saveList.findIndex(([id]) => id === boardId);
+      if (saveAt >= 0) saveList.splice(saveAt, 1);
       try {
         await deps.deleteBoard(boardId);
         lastPushed.delete(boardId);
       } catch (err) {
         detail = cloudErrorMessage(err);
         if (isOfflineError(err)) {
-          pendingDeletes.add(boardId);
-          holdForOnline = true;
+          parkOffline(index, 0, true);
           phase = "offline";
           break;
         }
@@ -181,8 +192,7 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
       } catch (err) {
         detail = cloudErrorMessage(err);
         if (isOfflineError(err)) {
-          pendingCatalog = catalog;
-          holdForOnline = true;
+          parkOffline(deleteList.length, 0, true);
           phase = "offline";
         } else {
           phase = "error";
@@ -190,15 +200,15 @@ export function createCloudSyncEngine(deps: CloudSyncDeps): CloudSyncEngine {
       }
     }
     if (phase !== "offline") {
-      for (const [boardId, snapshot] of saves) {
+      for (let index = 0; index < saveList.length; index += 1) {
+        const [boardId, snapshot] = saveList[index];
         try {
           await deps.saveBoard(boardId, snapshot, deps.boardName(boardId));
           lastPushed.set(boardId, pushedIdentity(snapshot));
         } catch (err) {
           detail = cloudErrorMessage(err);
           if (isOfflineError(err)) {
-            pendingSaves.set(boardId, snapshot);
-            holdForOnline = true;
+            parkOffline(deleteList.length, index, false);
             phase = "offline";
             break;
           }

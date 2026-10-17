@@ -152,6 +152,67 @@ describe("createCloudSyncEngine", () => {
     sync.engine.stop();
   });
 
+  it("retries every unsent board after the network drops mid-flush", async () => {
+    const sync = harness();
+    let drop = true;
+    const sent: string[] = [];
+    const engine = createCloudSyncEngine({
+      debounceMs: 1000,
+      isOnline: () => true,
+      isAuthenticated: () => true,
+      async saveBoard(boardId) {
+        if (drop) {
+          drop = false;
+          throw new TypeError("Failed to fetch");
+        }
+        sent.push(boardId);
+      },
+      async keepLocal(_boardId, snapshot) {
+        return snapshot;
+      },
+      async deleteBoard() {},
+      async saveCatalog() {},
+      async listRemote() {
+        return [];
+      },
+      async loadRemote() {
+        return null;
+      },
+      acknowledge() {},
+      async subscribeRemote() {
+        return () => {};
+      },
+      readLocalSnapshot: () => null,
+      listLocalBoards: () => [],
+      boardName: () => "Main",
+      memoryFingerprint: () => null,
+      applyToCanvas() {},
+      writeLocalSnapshot() {},
+      replaceLocalCatalog() {},
+      removeLocalBoard() {},
+      onStatus(phase, _detail, conflict) {
+        sync.statuses.push(phase);
+        sync.conflicts.push(Boolean(conflict));
+      },
+    });
+    engine.noteMutation({
+      type: "save",
+      boardId: "board-a",
+      snapshot: createEmptySnapshot({ revision: 1 }),
+    });
+    engine.noteMutation({
+      type: "save",
+      boardId: "board-b",
+      snapshot: createEmptySnapshot({ revision: 1 }),
+    });
+    await expect(engine.flush()).resolves.toBe("offline");
+    expect(sent).toEqual([]);
+    await expect(engine.flush()).resolves.toBe("saved");
+    expect(sent).toEqual(["board-a", "board-b"]);
+    sync.engine.stop();
+    engine.stop();
+  });
+
   it("keeps edits on device while offline", async () => {
     const sync = harness({ online: false });
     sync.engine.noteMutation({
