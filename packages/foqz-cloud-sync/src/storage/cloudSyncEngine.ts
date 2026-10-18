@@ -1,7 +1,7 @@
-import { cloudErrorMessage, CloudConflictError, isOfflineError } from "@/lib/pocketbase/errors";
+import { cloudErrorMessage, CloudConflictError, isOfflineError } from "../pocketbase/errors";
 import { boardFingerprint } from "@/lib/storage/fingerprint";
 import { normalizeBoardViewport, sameViewport } from "@/lib/storage/snapshot";
-import type { RemoteBoardEvent } from "@/lib/storage/PocketBaseStorageAdapter";
+import type { RemoteBoardEvent } from "./PocketBaseStorageAdapter";
 import type { StorageMutation } from "@/lib/storage/LocalStorageAdapter";
 import type { BoardMeta, BoardSnapshot } from "@/types/storage";
 

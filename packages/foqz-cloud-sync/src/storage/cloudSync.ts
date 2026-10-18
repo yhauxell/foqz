@@ -5,16 +5,16 @@ import {
   pocketBaseClient,
   POCKETBASE_URL_EVENT,
   readCloudSession,
-} from "@/lib/pocketbase/client";
-import { CLOUD_SAVE_DEBOUNCE_MS } from "@/lib/pocketbase/constants";
+} from "../pocketbase/client";
+import { CLOUD_SAVE_DEBOUNCE_MS } from "../pocketbase/constants";
 import { boardFingerprint } from "@/lib/storage/fingerprint";
 import { getCanvasStorage } from "@/lib/storage";
 import {
   createCloudSyncEngine,
   type CloudPhase,
   type CloudSyncEngine,
-} from "@/lib/storage/cloudSyncEngine";
-import { PocketBaseStorageAdapter } from "@/lib/storage/PocketBaseStorageAdapter";
+} from "./cloudSyncEngine";
+import { PocketBaseStorageAdapter } from "./PocketBaseStorageAdapter";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 import type { BoardMeta, BoardSnapshot } from "@/types/storage";
 

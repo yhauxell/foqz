@@ -1,0 +1,29 @@
+{
+  "name": "@foqz/cloud-sync",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private PocketBase cloud sync for Foqz (not for the public app surface)",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./scripts/*": "./scripts/*"
+  },
+  "scripts": {
+    "pocketbase:schema": "node ./scripts/ensure-pocketbase-schema.mjs"
+  },
+  "peerDependencies": {
+    "pocketbase": "^0.28.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "pocketbase": "^0.28.1"
+  },
+  "files": [
+    "src",
+    "scripts",
+    "README.md"
+  ]
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyCloudRequestTimeout } from "@/lib/pocketbase/client";
+import { applyCloudRequestTimeout } from "./client";
 
 describe("applyCloudRequestTimeout", () => {
   it("leaves the realtime socket untimed", () => {

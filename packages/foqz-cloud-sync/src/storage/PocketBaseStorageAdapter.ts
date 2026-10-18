@@ -2,14 +2,14 @@ import {
   BOARDS_COLLECTION,
   MAX_SNAPSHOT_BYTES,
   WORKSPACES_COLLECTION,
-} from "@/lib/pocketbase/constants";
+} from "../pocketbase/constants";
 import {
   CloudAuthError,
   CloudConflictError,
   isNotFoundError,
   SnapshotTooLargeError,
-} from "@/lib/pocketbase/errors";
-import type { PbClientLike, PbRecord, PbSubscribeEvent } from "@/lib/pocketbase/types";
+} from "../pocketbase/errors";
+import type { PbClientLike, PbRecord, PbSubscribeEvent } from "../pocketbase/types";
 import { boardFingerprint, snapshotByteLength } from "@/lib/storage/fingerprint";
 import { normalizeBoardSnapshot, sameViewport } from "@/lib/storage/snapshot";
 import type { BoardMeta, BoardSnapshot, CanvasStorageAdapter } from "@/types/storage";

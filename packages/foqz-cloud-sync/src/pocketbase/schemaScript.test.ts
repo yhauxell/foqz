@@ -4,7 +4,7 @@ import {
   installerTokenFrom,
   isLoopbackUrl,
   placeholderAdminBlocked,
-} from "../../../scripts/pocketbase-schema-auth.mjs";
+} from "../../scripts/pocketbase-schema-auth.mjs";
 
 describe("pocketbase schema admin selection", () => {
   it("reads the JWT from an installer URL", () => {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { MAX_SNAPSHOT_BYTES } from "@/lib/pocketbase/constants";
-import { CloudConflictError, SnapshotTooLargeError } from "@/lib/pocketbase/errors";
-import type { PbClientLike, PbRecord, PbSubscribeEvent } from "@/lib/pocketbase/types";
-import { PocketBaseStorageAdapter } from "@/lib/storage/PocketBaseStorageAdapter";
+import { MAX_SNAPSHOT_BYTES } from "../pocketbase/constants";
+import { CloudConflictError, SnapshotTooLargeError } from "../pocketbase/errors";
+import type { PbClientLike, PbRecord, PbSubscribeEvent } from "../pocketbase/types";
+import { PocketBaseStorageAdapter } from "./PocketBaseStorageAdapter";
 import { createEmptySnapshot } from "@/lib/storage/snapshot";
 
 function matches(filter: string, row: PbRecord): boolean {

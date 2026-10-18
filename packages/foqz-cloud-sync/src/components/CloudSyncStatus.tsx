@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, Cloud, CloudOff, Loader2 } from "lucide-react";
-import { useCloudSyncStatus, type CloudPhase } from "@/lib/storage/cloudSync";
+import { useCloudSyncStatus, type CloudPhase } from "../storage/cloudSync";
 
 const LABEL: Record<CloudPhase, string> = {
   "signed-out": "Cloud",

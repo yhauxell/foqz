@@ -3,8 +3,8 @@ import {
   CLOUD_REQUEST_TIMEOUT_MS,
   DEFAULT_POCKETBASE_URL,
   POCKETBASE_URL_KEY,
-} from "@/lib/pocketbase/constants";
-import type { PbClientLike } from "@/lib/pocketbase/types";
+} from "./constants";
+import type { PbClientLike } from "./types";
 
 export const POCKETBASE_URL_EVENT = "foqz:pocketbase-url-changed";
 

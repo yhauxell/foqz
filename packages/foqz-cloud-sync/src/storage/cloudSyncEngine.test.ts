@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createCloudSyncEngine, type CloudPhase } from "@/lib/storage/cloudSyncEngine";
+import { createCloudSyncEngine, type CloudPhase } from "./cloudSyncEngine";
 import { boardFingerprint } from "@/lib/storage/fingerprint";
-import type { RemoteBoardEvent } from "@/lib/storage/PocketBaseStorageAdapter";
+import type { RemoteBoardEvent } from "./PocketBaseStorageAdapter";
 import { createEmptySnapshot } from "@/lib/storage/snapshot";
 import type { BoardMeta, BoardSnapshot } from "@/types/storage";
 

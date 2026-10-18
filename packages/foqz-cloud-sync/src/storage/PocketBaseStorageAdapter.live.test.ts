@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import PocketBase from "pocketbase";
 import { describe, expect, it } from "vitest";
-import { CloudConflictError } from "@/lib/pocketbase/errors";
-import { toPocketBaseClient } from "@/lib/pocketbase/client";
-import { PocketBaseStorageAdapter } from "@/lib/storage/PocketBaseStorageAdapter";
+import { CloudConflictError } from "../pocketbase/errors";
+import { toPocketBaseClient } from "../pocketbase/client";
+import { PocketBaseStorageAdapter } from "./PocketBaseStorageAdapter";
 import { createEmptySnapshot } from "@/lib/storage/snapshot";
 
 const url = process.env.POCKETBASE_URL ?? "";

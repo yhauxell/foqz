@@ -9,14 +9,14 @@ import {
   logoutPocketBase,
   registerWithPassword,
   setPocketBaseUrl,
-} from "@/lib/pocketbase/client";
-import { DEFAULT_POCKETBASE_URL } from "@/lib/pocketbase/constants";
-import { authErrorMessage } from "@/lib/pocketbase/errors";
+} from "../pocketbase/client";
+import { DEFAULT_POCKETBASE_URL } from "../pocketbase/constants";
+import { authErrorMessage } from "../pocketbase/errors";
 import {
   requestCloudFlush,
   requestCloudReconcile,
   useCloudSyncStatus,
-} from "@/lib/storage/cloudSync";
+} from "../storage/cloudSync";
 
 export function CloudSettingsModal({
   open,
