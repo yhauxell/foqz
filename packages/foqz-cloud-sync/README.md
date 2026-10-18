@@ -52,11 +52,18 @@ These stay in the public app; the package expects them at runtime:
 - `@/types/storage`
 - `@/components/ui/button`, `@/components/ui/input`
 
-## Push to a private remote
+## Private remote
+
+Target repo: **[yhauxell/foqz-cloud](https://github.com/yhauxell/foqz-cloud)** (private).
 
 ```bash
-git remote add private git@github.com:<org>/foqz-cloud-sync.git   # or private foqz fork
-git push private cursor/private-foqz-cloud-sync-9b39:main
+# From this package directory (or unpack foqz-cloud-sync.tgz):
+git remote add origin git@github.com:yhauxell/foqz-cloud.git
+git push -u origin main
 ```
 
-Or unpack the release tarball from `/opt/cursor/artifacts/foqz-cloud-sync.tgz` into a private repo.
+Or from the extraction branch in foqz:
+
+```bash
+git subtree push --prefix=packages/foqz-cloud-sync origin-foqz-cloud main
+```
