@@ -12,6 +12,7 @@ import {
   FolderPlus,
   Layers,
   LayoutGrid,
+  BookOpen,
 } from "lucide-react";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 import { RUNWAY_TEMPLATES, type RunwayTemplateId } from "@/types/canvas";
@@ -192,6 +193,17 @@ export function WaypointRail() {
         title="Fit All Content (Space+1 / ⌘0)"
       >
         <Compass className="size-5" />
+      </button>
+
+      {/* Logbook / Finished Work */}
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new CustomEvent("foqz:open-logbook"))}
+        className="size-10 rounded-full flex items-center justify-center text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-500/10 active:scale-95 transition-all cursor-pointer"
+        title="Open Logbook (Finished Tasks 📒)"
+        aria-label="Open Logbook"
+      >
+        <BookOpen className="size-5" />
       </button>
 
       {/* 2. Active Focus Pill (if timer or active task is present) */}

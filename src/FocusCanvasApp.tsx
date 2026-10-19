@@ -9,11 +9,13 @@ import { GitHubIssuesModal } from "@/components/GitHubIssuesModal";
 import { CreateGitHubIssueModal } from "@/components/CreateGitHubIssueModal";
 import { QuickTaskModal } from "@/components/QuickTaskModal";
 import { useOllama } from "@/lib/ollama";
-import { Keyboard, Maximize2, Minimize2, Plus, Search, Settings, Sparkles, MessageSquare, X } from "lucide-react";
+import { Keyboard, Maximize2, Minimize2, Plus, Search, Settings, Sparkles, MessageSquare, X, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ShortcutsModal } from "@/poc/components/ShortcutsModal";
 import { AnnotationsPanel } from "@/components/AnnotationsPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { LogbookDrawer } from "@/components/LogbookDrawer";
+import { useWorkdaySweepTicker } from "@/lib/useWorkdaySweepTicker";
 import { FlowCanvasAppWrapper } from "./poc/FlowCanvasAppWrapper";
 import { useFlowCanvasStore } from "./poc/store/flowCanvasStore";
 import { useGitHubSyncEngine } from "@/lib/githubTaskSync";
@@ -52,6 +54,8 @@ function FocusCanvasAppInner() {
   const [createIssueTaskId, setCreateIssueTaskId] = useState<string | null>(null);
   const [quickTaskOpen, setQuickTaskOpen] = useState(false);
   const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
+  const [logbookOpen, setLogbookOpen] = useState(false);
+  const { activeSweepToast, undoSweep, dismissSweepToast } = useWorkdaySweepTicker();
   const annotations = useFlowCanvasStore((s) => s.annotations);
 
   const [runwayNotification, setRunwayNotification] = useState<{
@@ -245,6 +249,10 @@ function FocusCanvasAppInner() {
       setQuickTaskOpen(true);
     };
 
+    const onOpenLogbookEvent = () => {
+      setLogbookOpen(true);
+    };
+
     window.addEventListener("foqz:open-copilot", onOpenCopilotEvent);
     window.addEventListener("foqz:set-focus-target", onFocusTargetEvent);
     window.addEventListener("foqz:open-spotlight", onOpenSpotlightEvent);
@@ -253,6 +261,7 @@ function FocusCanvasAppInner() {
     window.addEventListener("foqz:open-github-issues", onOpenGithubIssuesEvent);
     window.addEventListener("foqz:open-create-github-issue", onOpenCreateGithubIssueEvent);
     window.addEventListener("foqz:open-quick-task", onOpenQuickTaskEvent);
+    window.addEventListener("foqz:open-logbook", onOpenLogbookEvent);
 
     return () => {
       window.removeEventListener("foqz:open-copilot", onOpenCopilotEvent);
@@ -263,6 +272,7 @@ function FocusCanvasAppInner() {
       window.removeEventListener("foqz:open-github-issues", onOpenGithubIssuesEvent);
       window.removeEventListener("foqz:open-create-github-issue", onOpenCreateGithubIssueEvent);
       window.removeEventListener("foqz:open-quick-task", onOpenQuickTaskEvent);
+      window.removeEventListener("foqz:open-logbook", onOpenLogbookEvent);
     };
   }, []);
 
@@ -626,6 +636,36 @@ function FocusCanvasAppInner() {
             onClose={() => setQuickTaskOpen(false)}
           />
 
+          <LogbookDrawer
+            open={logbookOpen}
+            onClose={() => setLogbookOpen(false)}
+          />
+
+          {/* Workday Sweep Toast with Undo */}
+          {activeSweepToast && (
+            <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-2.5 rounded-full bg-zinc-900/95 dark:bg-white/95 text-white dark:text-zinc-900 shadow-2xl backdrop-blur-xl border border-white/10 dark:border-black/10 text-xs font-medium animate-in fade-in slide-in-from-top-3 duration-200 select-none">
+              <span className="size-2 rounded-full bg-amber-400" />
+              <span>
+                {activeSweepToast.count} task{activeSweepToast.count > 1 ? "s" : ""} swept to Logbook
+              </span>
+              <button
+                type="button"
+                onClick={undoSweep}
+                className="ml-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500 text-zinc-950 hover:bg-amber-400 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="size-3" />
+                <span>Undo</span>
+              </button>
+              <button
+                type="button"
+                onClick={dismissSweepToast}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-white dark:hover:text-zinc-900 transition-colors cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          )}
           {/* Runway Auto-Advance & Clearance HUD Toast */}
           {runwayNotification && (
             <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2.5 px-4 py-2 rounded-full bg-zinc-900/95 dark:bg-white/95 text-white dark:text-zinc-900 shadow-2xl backdrop-blur-xl border border-white/10 dark:border-black/10 text-xs font-medium animate-in fade-in slide-in-from-top-3 duration-200 select-none pointer-events-none">
