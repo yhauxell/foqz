@@ -1,6 +1,6 @@
 import type { Edge } from '@xyflow/react'
 import type { McpTool, McpToolCallResult } from './mcpTypes'
-import { getFlowCanvasContext, getFlowProjectFrameContents } from './canvasContext'
+import { getFlowCanvasContext, getFlowCanvasContextAsync, getFlowProjectFrameContents } from './canvasContext'
 import {
   prioritizeDailyFocusSlot,
   auditPortfolioProjects,
@@ -716,7 +716,7 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
       }
 
       case 'get_canvas_summary': {
-        const ctx = getFlowCanvasContext(nodes, edges, selectedNodeId)
+        const ctx = await getFlowCanvasContextAsync(nodes, edges, selectedNodeId)
         const summary =
           args.scope === 'selected' && ctx.selectedSummary
             ? ctx.selectedSummary
@@ -744,7 +744,7 @@ export function createFlowCanvasToolExecutor(defaultNodeId?: string) {
           }
         }
 
-        const ctx = getFlowCanvasContext(nodes, edges, selectedNodeId)
+        const ctx = await getFlowCanvasContextAsync(nodes, edges, selectedNodeId)
         const currentGoal =
           args.criteria ||
           ctx.boardSummary ||
