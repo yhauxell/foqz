@@ -1,5 +1,7 @@
 # @foqz/cloud-sync (private)
 
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for how Foqz mounts this package.
+
 PocketBase board sync for Foqz. **Do not merge this package into the public `main` branch.** Keep it on a private remote or vendor it only into private Foqz builds.
 
 ## What’s included
