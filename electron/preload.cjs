@@ -66,6 +66,13 @@ contextBridge.exposeInMainWorld('focusStore', {
    * Invoke `handler` (may be async), then notify main so `app.quit()` can finish.
    * Returns an unsubscribe function.
    */
+  logbook: {
+    append: (payload) => ipcRenderer.invoke('logbook:append', payload),
+    listDays: (opts) => ipcRenderer.invoke('logbook:listDays', opts),
+    getEntriesByIds: (ids) => ipcRenderer.invoke('logbook:getEntriesByIds', ids),
+    removeEntry: (entryId) => ipcRenderer.invoke('logbook:removeEntry', entryId),
+    search: (query) => ipcRenderer.invoke('logbook:search', query),
+  },
   onPrepareShutdown: (handler) => {
     const wrapped = async () => {
       try {

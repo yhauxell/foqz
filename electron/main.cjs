@@ -16,8 +16,8 @@ const fsSync = require('node:fs')
 const path = require('node:path')
 const childProcess = require('node:child_process')
 const { McpClientManager } = require('./mcp/McpClientManager.cjs')
-const { getMcpConfigPath, loadMcpConfig } = require('./mcp/mcpConfig.cjs')
 const { FoqzMcpHost } = require('./mcp/FoqzMcpHost.cjs')
+const logbook = require('./logbook.cjs')
 
 // Ensure production macOS app inherits full user shell PATH (npx, node, uvx, bun, etc.)
 function fixSystemPath() {
@@ -801,6 +801,49 @@ ipcMain.handle('tray:setTooltip', (_event, text) => {
       tray.setToolTip(text.slice(0, 120))
     }
   } catch {}
+})
+
+ipcMain.handle('logbook:append', async (_event, payload) => {
+  try {
+    return await logbook.appendLogbookEntries(app.getPath('userData'), payload)
+  } catch (error) {
+    return { ok: false, error: error.message }
+  }
+})
+
+ipcMain.handle('logbook:listDays', async (_event, opts) => {
+  try {
+    return await logbook.listLogbookDays(app.getPath('userData'), opts)
+  } catch (error) {
+    console.error('logbook:listDays failed:', error)
+    return []
+  }
+})
+
+ipcMain.handle('logbook:getEntriesByIds', async (_event, ids) => {
+  try {
+    return await logbook.getLogbookEntriesByIds(app.getPath('userData'), ids)
+  } catch (error) {
+    console.error('logbook:getEntriesByIds failed:', error)
+    return []
+  }
+})
+
+ipcMain.handle('logbook:removeEntry', async (_event, entryId) => {
+  try {
+    return await logbook.removeLogbookEntry(app.getPath('userData'), entryId)
+  } catch (error) {
+    return { ok: false, error: error.message }
+  }
+})
+
+ipcMain.handle('logbook:search', async (_event, query) => {
+  try {
+    return await logbook.searchLogbook(app.getPath('userData'), query)
+  } catch (error) {
+    console.error('logbook:search failed:', error)
+    return []
+  }
 })
 
 ipcMain.handle('settings:get', async () => {

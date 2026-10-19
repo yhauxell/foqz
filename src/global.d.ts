@@ -1,5 +1,6 @@
 import type { AppSettings } from "./lib/appSettings";
 import type { McpHostApi, McpStoreApi } from "./lib/mcpTypes";
+import type { LogbookDay, LogbookEntry } from "./types/logbook";
 
 export {};
 
@@ -58,6 +59,19 @@ declare global {
         onStatusChange: (callback: (state: UpdaterState) => void) => () => void;
       };
       getAppVersion?: () => Promise<{ version: string; isPackaged: boolean }>;
+      /** Logbook persistence & query API */
+      logbook?: {
+        append: (payload: {
+          workdayId: string;
+          window?: { startMin: number; endMin: number };
+          entries: LogbookEntry[];
+          summary?: string;
+        }) => Promise<{ ok: boolean; sweptCount?: number; workdayId?: string; error?: string }>;
+        listDays: (opts?: { limitMonths?: number }) => Promise<LogbookDay[]>;
+        getEntriesByIds: (ids: string[]) => Promise<LogbookEntry[]>;
+        removeEntry: (entryId: string) => Promise<{ ok: boolean; removedEntry?: LogbookEntry; error?: string }>;
+        search: (query: string) => Promise<Array<LogbookEntry & { workdayId: string }>>;
+      };
       /** Electron: run before exit so timers can be stopped and the board saved. */
       onPrepareShutdown?: (handler: () => void | Promise<void>) => () => void;
     };
