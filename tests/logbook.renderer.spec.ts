@@ -42,10 +42,14 @@ test.describe('Foqz Done Lifecycle & Logbook Test Suite', () => {
         title: 'Complete Lifecycle Test Task',
         priority: 1,
         status: 'open',
+        position: { x: 700, y: 150 },
       });
       // Mark as done
       store.updateNodeData(taskId, { status: 'done' });
     });
+
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: 'test-results/logbook-task-done-on-canvas.png' });
 
     // 2. Open Logbook drawer and trigger Sweep Now
     const logbookRailBtn = page.locator("button[aria-label='Open Logbook']");
@@ -56,6 +60,7 @@ test.describe('Foqz Done Lifecycle & Logbook Test Suite', () => {
 
     // 3. Verify task appears inside Logbook drawer
     await expect(page.getByText('Complete Lifecycle Test Task')).toBeVisible();
+    await page.screenshot({ path: 'test-results/logbook-drawer-populated.png' });
 
     // Close Logbook
     await page.keyboard.press('Escape');
@@ -125,6 +130,7 @@ test.describe('Foqz Done Lifecycle & Logbook Test Suite', () => {
         title: 'Dependant API Endpoint',
         priority: 2,
         status: 'open',
+        position: { x: 700, y: 150 },
       });
       // Link taskB -> depends on taskA
       store.updateNodeData(taskBId, { dependencies: [taskAId] });
@@ -147,6 +153,8 @@ test.describe('Foqz Done Lifecycle & Logbook Test Suite', () => {
     // 4. Verify popover content displays the swept prerequisite
     await expect(page.getByText('Swept Dependencies (1)')).toBeVisible();
     await expect(page.getByText('Prerequisite Database Migration')).toBeVisible();
+
+    await page.waitForTimeout(300);
 
     // Take screenshot of dependency stub popover
     await page.screenshot({ path: 'test-results/logbook-dependency-stub-popover.png' });
