@@ -15,6 +15,9 @@ import {
   getCanvasStorage,
   nextBoardSnapshot,
 } from "@/lib/storage";
+import { isTaskEligibleForSweep, formatWorkdayId } from "@/lib/logbookTiming";
+import { appendLogbookEntries, removeLogbookEntry } from "@/lib/logbookService";
+import type { LogbookEntry } from "@/types/logbook";
 
 /** @deprecated Prefer BoardMeta from `@/types/storage`. */
 export type BoardEntry = BoardMeta;
@@ -338,6 +341,17 @@ export interface FlowCanvasState {
     parentId?: string;
   }) => string;
   sweepToInbox: () => { inboxId: string; sweptCount: number };
+  sweepCompletedTasks: (options?: {
+    force?: boolean;
+    workingHours?: { startMin: number; endMin: number };
+    now?: Date;
+  }) => Promise<{
+    sweptCount: number;
+    workdayId: string;
+    sweptNodes: Node[];
+    sweptEdges: Edge[];
+  } | null>;
+  restoreSweptTasks: (sweptNodes: Node[], sweptEdges: Edge[]) => Promise<boolean>;
   activeFocusNodeId: string | null;
   timerSecondsRemaining: number;
   isTimerRunning: boolean;
@@ -875,6 +889,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
             paper: props.paper || "cream",
             notes: props.notes || "",
             borderStyle: "solid",
+            completedAt: props.status === "done" ? Date.now() : undefined,
+            completedVia: props.status === "done" ? "manual" : undefined,
           },
           selected: true,
         };
@@ -1380,6 +1396,227 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
 
         window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id: targetInboxId } }));
         return { inboxId: targetInboxId, sweptCount: unparentedItems.length };
+      },
+
+      sweepCompletedTasks: async (options) => {
+        const state = get();
+        // Focus protection guardrail: if focus timer is running, pause sweep
+        if (state.isTimerRunning || state.activeFocusNodeId) {
+          return null;
+        }
+
+        const workingHours = options?.workingHours || { startMin: 540, endMin: 1020 };
+        const now = options?.now || new Date();
+        const force = options?.force ?? false;
+
+        const currentNodes = [...state.nodes];
+        const currentEdges = [...state.edges];
+
+        // 1. Identify completed focusTask nodes
+        const doneTasks = currentNodes.filter(
+          (n) => n.type === "focusTask" && (n.data as any)?.status === "done"
+        );
+
+        if (doneTasks.length === 0) return null;
+
+        // 2. Filter by eligibility unless forced
+        const eligibleTasks: Array<{ node: Node; workdayId: string }> = [];
+        for (const t of doneTasks) {
+          const completedAt = (t.data as any)?.completedAt || Date.now();
+          if (force) {
+            eligibleTasks.push({
+              node: t,
+              workdayId: formatWorkdayId(new Date(completedAt)),
+            });
+          } else {
+            const { eligible, workdayId } = isTaskEligibleForSweep(completedAt, now, workingHours);
+            if (eligible) {
+              eligibleTasks.push({ node: t, workdayId });
+            }
+          }
+        }
+
+        if (eligibleTasks.length === 0) return null;
+
+        const sweptNodeIds = new Set(eligibleTasks.map((et) => et.node.id));
+        const sweptNodes = eligibleTasks.map((et) => et.node);
+
+        // Group by workdayId for logbook batching
+        const tasksByWorkday = new Map<string, Node[]>();
+        for (const { node, workdayId } of eligibleTasks) {
+          const list = tasksByWorkday.get(workdayId) || [];
+          list.push(node);
+          tasksByWorkday.set(workdayId, list);
+        }
+
+        // 3. Find connected edges to be swept
+        const sweptEdges = currentEdges.filter(
+          (e) => sweptNodeIds.has(e.source) || sweptNodeIds.has(e.target)
+        );
+
+        // 4. Update live downstream dependents with resolvedDependencies
+        const updatedNodes = currentNodes
+          .filter((n) => !sweptNodeIds.has(n.id))
+          .map((n) => {
+            if (n.type !== "focusTask") return n;
+            const d = (n.data || {}) as Record<string, any>;
+            const liveDependencies = Array.isArray(d.dependencies) ? [...d.dependencies] : [];
+            const resolvedList = Array.isArray(d.resolvedDependencies) ? [...d.resolvedDependencies] : [];
+
+            let hasChange = false;
+            for (const sweptNode of sweptNodes) {
+              const sweptData = (sweptNode.data || {}) as Record<string, any>;
+              const isDep = liveDependencies.includes(sweptNode.id);
+              const hasEdgeFromSwept = currentEdges.some(
+                (e) => e.source === sweptNode.id && e.target === n.id
+              );
+
+              if (isDep || hasEdgeFromSwept) {
+                if (!resolvedList.some((r) => r.id === sweptNode.id)) {
+                  resolvedList.push({
+                    id: sweptNode.id,
+                    title: sweptData.title || "Untitled Task",
+                    completedAt: sweptData.completedAt || Date.now(),
+                  });
+                  hasChange = true;
+                }
+              }
+            }
+
+            if (hasChange) {
+              return {
+                ...n,
+                data: {
+                  ...d,
+                  resolvedDependencies: resolvedList,
+                },
+              };
+            }
+            return n;
+          });
+
+        // 5. Build LogbookEntry records and persist by workdayId
+        for (const [workdayId, taskNodes] of tasksByWorkday.entries()) {
+          const entries: LogbookEntry[] = taskNodes.map((node) => {
+            const d = (node.data || {}) as Record<string, any>;
+            const dependents = currentNodes
+              .filter(
+                (other) =>
+                  other.id !== node.id &&
+                  ((other.data as any)?.dependencies?.includes(node.id) ||
+                    currentEdges.some((e) => e.source === node.id && e.target === other.id))
+              )
+              .map((other) => other.id);
+
+            const parentFrame = node.parentId ? currentNodes.find((p) => p.id === node.parentId) : null;
+            const isProject = parentFrame?.type === "projectFrame";
+            const isRunway = parentFrame?.type === "runwayFrame";
+
+            const edgeLinks = currentEdges
+              .filter((e) => e.source === node.id || e.target === node.id)
+              .map((e) => (e.source === node.id ? e.target : e.source));
+
+            return {
+              id: node.id,
+              title: d.title || "Untitled Task",
+              notes: d.notes,
+              priority: d.priority,
+              completedAt: d.completedAt || Date.now(),
+              completedVia: d.completedVia || "manual",
+              focusSecondsSpent: d.focusSecondsSpent || 0,
+              projectId: d.originProjectId || (isProject ? parentFrame?.id : undefined),
+              projectTitle: d.originProjectTitle || (isProject ? (parentFrame?.data as any)?.title : undefined),
+              runwayId: isRunway ? parentFrame?.id : undefined,
+              githubRepo: d.githubRepo,
+              githubIssueNumber: d.githubIssueNumber,
+              relations: {
+                dependents,
+                dependencies: Array.isArray(d.dependencies) ? d.dependencies : [],
+                edgeLinks,
+                parentTaskId: d.parentTaskId,
+              },
+              lastPosition: {
+                x: node.position.x,
+                y: node.position.y,
+                parentId: node.parentId,
+              },
+            };
+          });
+
+          await appendLogbookEntries({
+            workdayId,
+            window: workingHours,
+            entries,
+          });
+        }
+
+        // 6. Remove swept edges and realign runways
+        const remainingEdges = currentEdges.filter(
+          (e) => !sweptNodeIds.has(e.source) && !sweptNodeIds.has(e.target)
+        );
+
+        const finalNodes = realignAllRunways(updatedNodes, state.activeFocusNodeId);
+
+        set({
+          nodes: finalNodes,
+          edges: remainingEdges,
+          selectedNodeId: sweptNodeIds.has(state.selectedNodeId || "") ? null : state.selectedNodeId,
+        });
+
+        return {
+          sweptCount: sweptNodes.length,
+          workdayId: Array.from(tasksByWorkday.keys())[0] || formatWorkdayId(now),
+          sweptNodes,
+          sweptEdges,
+        };
+      },
+
+      restoreSweptTasks: async (sweptNodes, sweptEdges) => {
+        const state = get();
+        if (!sweptNodes || sweptNodes.length === 0) return false;
+
+        const restoredIds = new Set(sweptNodes.map((n) => n.id));
+
+        // 1. Remove entries from Logbook files
+        for (const node of sweptNodes) {
+          await removeLogbookEntry(node.id);
+        }
+
+        // 2. Re-insert nodes and edges onto canvas
+        const existingNodeIds = new Set(state.nodes.map((n) => n.id));
+        const nodesToAdd = sweptNodes.filter((n) => !existingNodeIds.has(n.id));
+
+        const existingEdgeIds = new Set(state.edges.map((e) => e.id));
+        const edgesToAdd = sweptEdges.filter((e) => !existingEdgeIds.has(e.id));
+
+        // 3. Clean up resolvedDependencies on live nodes
+        const updatedNodes = state.nodes.map((n) => {
+          if (n.type !== "focusTask") return n;
+          const d = (n.data || {}) as Record<string, any>;
+          if (Array.isArray(d.resolvedDependencies)) {
+            const nextResolved = d.resolvedDependencies.filter((r: any) => !restoredIds.has(r.id));
+            if (nextResolved.length !== d.resolvedDependencies.length) {
+              return {
+                ...n,
+                data: {
+                  ...d,
+                  resolvedDependencies: nextResolved,
+                },
+              };
+            }
+          }
+          return n;
+        });
+
+        const mergedNodes = realignAllRunways([...updatedNodes, ...nodesToAdd], state.activeFocusNodeId);
+        const mergedEdges = [...state.edges, ...edgesToAdd];
+
+        set({
+          nodes: mergedNodes,
+          edges: mergedEdges,
+        });
+
+        return true;
       },
 
       updateNodeData: (id, patch, options) => {
@@ -1898,4 +2135,9 @@ export function useTemporalFlowStore<T>(
     equality
   );
 }
+
+if (typeof window !== "undefined") {
+  (window as any).useFlowCanvasStore = useFlowCanvasStore;
+}
+
 

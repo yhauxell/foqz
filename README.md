@@ -93,6 +93,17 @@ Most productivity tools force your thoughts into rigid linear lists or endless d
   - **Projects Section**: circle icons with project monograms and accent colors, plus `+` project button.
   - **Notification-Style Completed Badges**: counter badges showing completed items (`2`, `5`, or `✓` when fully cleared) without cluttering pending tasks.
   - Click any squircle or circle to fly camera smoothly to that spatial zone (`⌘0` / Space+1 to fit all).
+- **Logbook Quick Access**: Dedicated amber `BookOpen` action at the bottom of the rail to summon the Logbook drawer from anywhere on the canvas.
+
+### 📒 Done Lifecycle & Modular Logbook
+- **Daytime Retention**: Tasks marked `done` remain visible in place on the spatial canvas during your workday (`workingHours.startMin` to `workingHours.endMin`), allowing you to celebrate completed work and preserve spatial context throughout the day.
+- **Workday & Overnight Sweep**: At the end of your workday, completed tasks are automatically swept into the Logbook. Tasks completed after hours or late at night remain visible overnight and sweep the following morning at the start of your next workday.
+- **Deep Work Guardrails**: Sweeping is deferred automatically whenever a focus timer is actively running (`isTimerRunning` / `activeFocusNodeId`), guaranteeing uninterrupted focus sessions.
+- **Non-Intrusive HUD & 1-Click Undo**: A floating HUD pill notifies you of swept tasks and provides a one-click Undo action to restore them immediately back to their exact canvas positions.
+- **Logbook Drawer (`WaypointRail` Book Button)**: Slide-out drawer with month-by-month calendar navigation, full-text task search, completion metrics, and one-click "Restore to Canvas".
+- **Downstream Dependency Stubs**: When a task with live canvas dependents is swept, downstream cards receive an amber `[📖 N]` reference badge displaying the completed predecessor's title and completion timestamp.
+- **Relation-Gated AI Context Expansion**: Completed tasks stored in the logbook don't pollute the LLM token window; only completed predecessors directly linked to active canvas tasks are injected into AI planning prompts.
+- **Modular Crash-Resistant Storage**: Stored as monthly JSON files (`logbook/YYYY-MM.json`) in the user app data directory, utilizing atomic temporary writes and file renames to guarantee integrity against unexpected shutdowns.
 
 ### ⌨️ Keyboard Shortcuts
 | Shortcut | Action |
@@ -297,6 +308,7 @@ Foqz must be running for agents to reach it. The server only binds to `127.0.0.1
 foqz/
 ├── electron/                   # Electron main process & preload IPC
 │   ├── main.cjs                # Window management, tray, native menus, global shortcuts, auto-updater
+│   ├── logbook.cjs             # Modular monthly file storage (atomic temp-write + rename)
 │   └── preload.cjs             # ContextBridge API exposing secure disk & app hooks
 ├── electron-assets/            # App icons (.icns, .png, 2-tone macOS tray templates)
 ├── src/
@@ -304,7 +316,7 @@ foqz/
 │   │   ├── FlowCanvas.tsx      # Main canvas component — nodes, edges, tools, shortcuts
 │   │   ├── FlowCanvasAppWrapper.tsx  # ReactFlowProvider wrapper
 │   │   ├── nodes/              # Custom node renderers
-│   │   │   ├── FocusTaskNode.tsx     # Task card with timer, priority, notes
+│   │   │   ├── FocusTaskNode.tsx     # Task card with timer, priority, notes, resolved dependency badge
 │   │   │   ├── NoteNode.tsx          # Tactile paper sticky note (colors, folds, noise)
 │   │   │   ├── ProjectFrameNode.tsx  # Resizable project boundary frame
 │   │   │   ├── BoxNode.tsx           # Rough.js sketch-style box
@@ -318,34 +330,38 @@ foqz/
 │   │   │   ├── ReparentConfirmModal.tsx  # Confirm drag-out-of-project re-parenting
 │   │   │   └── ShortcutsModal.tsx    # Keyboard shortcuts cheatsheet overlay
 │   │   ├── store/
-│   │   │   └── flowCanvasStore.ts    # Zustand + Zundo store (nodes, edges, undo/redo, persistence)
+│   │   │   └── flowCanvasStore.ts    # Zustand + Zundo store (nodes, edges, undo/redo, sweep & restore)
 │   │   ├── hooks/
 │   │   │   └── useFlowCanvasShortcuts.ts  # Hotkey bindings via react-hotkeys-hook
 │   │   └── shortcuts/          # Shortcut definitions & config
 │   ├── components/             # App-level React UI components
 │   │   ├── ElementInlineChat.tsx      # Floating, draggable per-node AI chat panel
 │   │   ├── CopilotDrawer.tsx          # Full slide-over AI copilot with canvas spawner
+│   │   ├── LogbookDrawer.tsx          # Slide-out Logbook with search, history & 1-click restore
 │   │   ├── MonoFocusController.tsx    # Deep work lock-in overlay with timer & AI exit friction
 │   │   ├── GlobalSpotlight.tsx        # Cmd+K command palette for search & creation (/note, /sweep)
 │   │   ├── ProjectConnectorsModal.tsx # Per-project connectors & AGENT.md persona config
-│   │   ├── WaypointRail.tsx           # Spatial bookmark rail
+│   │   ├── WaypointRail.tsx           # Spatial bookmark rail with Logbook button
 │   │   ├── TopbarBoardMenu.tsx        # Board selector & management
 │   │   ├── FocusSettings.tsx          # App preferences (AI, MCP, theme, working hours)
 │   │   └── WorkspaceSidebar.tsx       # Spatial navigation & task metrics (legacy)
 │   ├── lib/                    # Utilities & AI helpers
 │   │   ├── canvasSpawner.ts    # Programmatic node generation from AI responses
 │   │   ├── canvasTools.ts      # Native Foqz agent tools (spawn, update, expand, triage)
+│   │   ├── logbookTiming.ts    # Workday retention & sweep milestone calculation
+│   │   ├── logbookService.ts   # Universal logbook IPC & web storage adapter
+│   │   ├── useWorkdaySweepTicker.ts   # Periodic 30s background sweep ticker & Undo toast
 │   │   ├── mcpAgentLoop.ts     # Multi-turn tool execution loop with abort/cancellation
 │   │   ├── agentProfiles.ts    # AGENT.md markdown parser & prompt templates
 │   │   ├── githubAgentSync.ts  # GitHub repo AGENT.md discovery & sync
-│   │   ├── canvasContext.ts    # Builds spatial context payload for AI prompts
+│   │   ├── canvasContext.ts    # Relation-gated spatial context builder for AI prompts
 │   │   ├── ollama.ts           # Ollama client & streaming parser
 │   │   ├── jev.ts              # TypeSafe/Jev integration for AI evaluations
 │   │   ├── mcp.ts              # MCP client management & tool dispatch
 │   │   └── appSettings.ts      # Settings schema, defaults & persistence
 │   ├── context/                # React contexts (settings, focus app state)
-│   ├── types/                  # Shared TypeScript type definitions
-│   ├── FocusCanvasApp.tsx      # Root app component & event bus orchestration
+│   ├── types/                  # Shared TypeScript type definitions (logbook, canvas, storage)
+│   ├── FocusCanvasApp.tsx      # Root app component, ticker & event bus orchestration
 │   └── styles.css              # Tailwind CSS v4 global styles & theme tokens
 ├── landing/                    # Web landing page source
 └── scripts/                    # Helper scripts (icon generation, landing sync)
@@ -377,13 +393,18 @@ foqz/
 
 ## Data Storage & Persistence
 
-Foqz stores board snapshots and settings as local JSON via Electron's `localStorage` bridge and the OS application data folder. No external databases, no binary formats.
+Foqz stores board snapshots, logs, and settings as local JSON via Electron's storage bridge and the OS application data folder. No external databases, no binary formats.
 
 - **macOS**: `~/Library/Application Support/foqz/`
 - **Windows**: `%APPDATA%\foqz\`
 - **Linux**: `~/.config/foqz/`
 
-Snapshots are clean JSON — back them up, sync with Syncthing, Dropbox, or version-control your workspaces however you like.
+### File Layout
+- `boards.json`: Board definitions and spatial canvas node/edge snapshots.
+- `settings.json`: User preferences, working hours, AI keys, and MCP configurations.
+- `logbook/YYYY-MM.json`: Modular monthly partitions containing completed tasks, time tracked, completion timestamps, and provenance telemetry.
+
+Snapshots and logbook partitions are clean JSON — back them up, sync with Syncthing, Dropbox, or version-control your workspaces however you like.
 
 ---
 
@@ -391,12 +412,13 @@ Snapshots are clean JSON — back them up, sync with Syncthing, Dropbox, or vers
 
 Active milestones are tracked in [GitHub Issues](https://github.com/yhauxell/foqz/issues?q=is%3Aissue+label%3Aroadmap):
 
+- [x] Done Lifecycle: workday retention, sweep ticker, and modular monthly Logbook
 - [ ] Auto-detect running local LLM servers (Ollama, LM Studio, llama.cpp, LocalAI)
 - [ ] Improved spatial layout algorithms for AI-generated canvas elements
 - [x] Custom SKILL and AGENT.md configuration profiles for the AI copilot
 - [x] Native window maximization and macOS Desktop Spaces support
 - [x] Autonomous agent loop with native canvas tools and cancel/abort execution controls
-- [ ] Deeper project-scoped AI context and cross-node awareness
+- [x] Deeper project-scoped AI context and cross-node awareness
 - [ ] Canvas collaboration / sync via local network or self-hosted backend
 
 ---

@@ -1115,6 +1115,7 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
               otherNodeId: e.source === node.id ? e.target : e.source,
               relation: (e.data as any)?.relation || 'depends',
             })),
+          resolvedDependencies: nodeData.resolvedDependencies || [],
         }
       : null
 

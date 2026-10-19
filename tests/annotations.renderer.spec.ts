@@ -50,8 +50,8 @@ test.describe('Foqz Annotations Flow (Figma/Miro-style AI Context)', () => {
     await expect(drawer).toBeVisible();
 
     // Verify filter pills
-    await expect(page.getByRole('button', { name: /Open/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Resolved/ })).toBeVisible();
+    await expect(drawer.getByRole('button', { name: /^Open/ })).toBeVisible();
+    await expect(drawer.getByRole('button', { name: /^Resolved/ })).toBeVisible();
 
     // Close drawer
     const closeBtn = drawer.locator("button[title='Close Annotations Panel']");

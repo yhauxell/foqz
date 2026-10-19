@@ -21,6 +21,7 @@ import {
   GitPullRequest,
   Tag,
   AlertTriangle,
+  BookOpen,
 } from "lucide-react";
 import { getIssuePullRequests, type RelatedPullRequest } from "@/lib/githubSync";
 import {
@@ -777,6 +778,66 @@ export const FocusTaskNode = memo(function FocusTaskNode({
             </div>
           )}
 
+          {/* Resolved Dependency Stubs (Swept into Logbook) */}
+          {Array.isArray(data.resolvedDependencies) && data.resolvedDependencies.length > 0 && (
+            <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+              <Popover>
+                <PopoverTrigger
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center justify-center gap-1 h-6 px-1.5 rounded-md border border-amber-500/35 bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25 shadow-2xs transition-colors cursor-pointer shrink-0"
+                  title={`${data.resolvedDependencies.length} completed dependency(ies) swept to Logbook`}
+                >
+                  <BookOpen className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span className="text-[10px] font-mono font-bold leading-none">
+                    {data.resolvedDependencies.length}
+                  </span>
+                </PopoverTrigger>
+                <PopoverContent
+                  side="bottom"
+                  align="end"
+                  sideOffset={6}
+                  className="w-80 rounded-2xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl border border-black/10 dark:border-white/10 shadow-2xl p-3 select-none text-xs flex flex-col gap-2 nodrag nopan z-[10050]"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between pb-1.5 border-b border-black/5 dark:border-white/5">
+                    <div className="flex items-center gap-1.5 font-semibold text-[11px] text-zinc-700 dark:text-zinc-200">
+                      <BookOpen className="size-3.5 text-amber-500" />
+                      <span>Swept Dependencies ({data.resolvedDependencies.length})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => window.dispatchEvent(new CustomEvent("foqz:open-logbook"))}
+                      className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline cursor-pointer font-medium"
+                    >
+                      Open Logbook 📒
+                    </button>
+                  </div>
+                  <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-0.5">
+                    {data.resolvedDependencies.map((dep) => (
+                      <div
+                        key={dep.id}
+                        className="flex items-center justify-between gap-2 p-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.04] dark:border-white/[0.04]"
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Check className="size-3 text-emerald-500 shrink-0" />
+                          <span className="truncate text-xs text-zinc-800 dark:text-zinc-200" title={dep.title}>
+                            {dep.title}
+                          </span>
+                        </div>
+                        {dep.completedAt && (
+                          <span className="text-[9px] font-mono text-zinc-400 shrink-0">
+                            {new Date(dep.completedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
+
           {/* Priority Pill */}
           <button
             type="button"
@@ -1260,6 +1321,66 @@ export const FocusTaskNode = memo(function FocusTaskNode({
 
               {/* Header Right Actions */}
               <div className="flex items-center gap-1 shrink-0">
+                {/* Resolved Dependency Stubs (Swept into Logbook) */}
+                {Array.isArray(data.resolvedDependencies) && data.resolvedDependencies.length > 0 && (
+                  <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <Popover>
+                      <PopoverTrigger
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center justify-center gap-1 h-5 px-1.5 rounded-md border border-amber-500/35 bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25 shadow-2xs transition-colors cursor-pointer shrink-0"
+                        title={`${data.resolvedDependencies.length} completed dependency(ies) swept to Logbook`}
+                      >
+                        <BookOpen className="size-3 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <span className="text-[9px] font-mono font-bold leading-none">
+                          {data.resolvedDependencies.length}
+                        </span>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        side="bottom"
+                        align="end"
+                        sideOffset={6}
+                        className="w-80 rounded-2xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl border border-black/10 dark:border-white/10 shadow-2xl p-3 select-none text-xs flex flex-col gap-2 nodrag nopan z-[10050]"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between pb-1.5 border-b border-black/5 dark:border-white/5">
+                          <div className="flex items-center gap-1.5 font-semibold text-[11px] text-zinc-700 dark:text-zinc-200">
+                            <BookOpen className="size-3.5 text-amber-500" />
+                            <span>Swept Dependencies ({data.resolvedDependencies.length})</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => window.dispatchEvent(new CustomEvent("foqz:open-logbook"))}
+                            className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline cursor-pointer font-medium"
+                          >
+                            Open Logbook 📒
+                          </button>
+                        </div>
+                        <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-0.5">
+                          {data.resolvedDependencies.map((dep) => (
+                            <div
+                              key={dep.id}
+                              className="flex items-center justify-between gap-2 p-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.04] dark:border-white/[0.04]"
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Check className="size-3 text-emerald-500 shrink-0" />
+                                <span className="truncate text-xs text-zinc-800 dark:text-zinc-200" title={dep.title}>
+                                  {dep.title}
+                                </span>
+                              </div>
+                              {dep.completedAt && (
+                                <span className="text-[9px] font-mono text-zinc-400 shrink-0">
+                                  {new Date(dep.completedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
+
                 {/* Send to Runway Button (when not inside runway) */}
                 {!isInsideRunway && (
                   runways.length > 1 ? (

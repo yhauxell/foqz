@@ -2,6 +2,8 @@
  * Foqz Canvas Context Extractor
  * Pure React Flow implementation for AI Copilot and MCP Tools.
  */
+import type { LogbookEntry } from "@/types/logbook";
+import { getLogbookEntriesByIds } from "./logbookService";
 
 export interface ShapeContextItem {
   id: string;
@@ -48,6 +50,7 @@ export function getFlowCanvasContext(
   nodes: any[],
   edges: any[] = [],
   selectedNodeId: string | null = null,
+  options?: { logbookEntries?: LogbookEntry[] }
 ): CanvasContextResult {
   const selectedNodes = nodes.filter(
     (n) => n.id === selectedNodeId || n.selected
@@ -190,6 +193,51 @@ export function getFlowCanvasContext(
     boardSummary += `\n\nTopological Dependencies & Relationships (${relationships.length}):\n${relationships.join("\n")}`;
   }
 
+  // Completed Preceding Work from Logbook (only for active tasks with explicit links)
+  const activeTasks = nodes.filter(
+    (n) => n.type === "focusTask" && (n.data?.status === "open" || n.data?.status === "doing")
+  );
+
+  const neededPrecedingIds = new Set<string>();
+  for (const t of activeTasks) {
+    const d = (t.data || {}) as Record<string, any>;
+    if (Array.isArray(d.dependencies)) {
+      for (const depId of d.dependencies) {
+        if (!nodes.some((n) => n.id === depId)) {
+          neededPrecedingIds.add(depId);
+        }
+      }
+    }
+    if (Array.isArray(d.resolvedDependencies)) {
+      for (const r of d.resolvedDependencies) {
+        neededPrecedingIds.add(r.id);
+      }
+    }
+    if (d.parentTaskId && !nodes.some((n) => n.id === d.parentTaskId)) {
+      neededPrecedingIds.add(d.parentTaskId);
+    }
+  }
+
+  const logbookEntries = options?.logbookEntries || [];
+  const relevantHistorical = logbookEntries.filter((e) => neededPrecedingIds.has(e.id));
+
+  if (relevantHistorical.length > 0) {
+    const historicalLines = relevantHistorical.map((e) => {
+      const proj = e.projectTitle ? `, Project: ${e.projectTitle}` : "";
+      const focus = e.focusSecondsSpent ? `, ${Math.round(e.focusSecondsSpent / 60)}m focus` : "";
+      const dateStr = new Date(e.completedAt).toLocaleDateString([], { month: "short", day: "numeric" });
+      return `- "[x] ${e.title}" (Finished ${dateStr}${focus}${proj})`;
+    });
+
+    const historicalMarkdown = `\n\n### Completed Preceding Work\n${historicalLines.join("\n")}`;
+    boardSummary += historicalMarkdown;
+
+    // If selected item is one of the active tasks referencing these, also include in selectedSummary
+    if (selectedNodes.some((sn) => activeTasks.some((at) => at.id === sn.id))) {
+      selectedSummary += historicalMarkdown;
+    }
+  }
+
   const primaryShape = selectedItems.length > 0 ? selectedItems[0].shape : null;
 
   return {
@@ -199,6 +247,51 @@ export function getFlowCanvasContext(
     boardSummary,
     primaryShape,
   };
+}
+
+/**
+ * Async version of getFlowCanvasContext that resolves missing historical dependencies
+ * against the Logbook storage layer before producing the AI prompt context.
+ */
+export async function getFlowCanvasContextAsync(
+  nodes: any[],
+  edges: any[] = [],
+  selectedNodeId: string | null = null,
+): Promise<CanvasContextResult> {
+  const activeTasks = nodes.filter(
+    (n) => n.type === "focusTask" && (n.data?.status === "open" || n.data?.status === "doing")
+  );
+
+  const neededPrecedingIds = new Set<string>();
+  for (const t of activeTasks) {
+    const d = (t.data || {}) as Record<string, any>;
+    if (Array.isArray(d.dependencies)) {
+      for (const depId of d.dependencies) {
+        if (!nodes.some((n) => n.id === depId)) {
+          neededPrecedingIds.add(depId);
+        }
+      }
+    }
+    if (Array.isArray(d.resolvedDependencies)) {
+      for (const r of d.resolvedDependencies) {
+        neededPrecedingIds.add(r.id);
+      }
+    }
+    if (d.parentTaskId && !nodes.some((n) => n.id === d.parentTaskId)) {
+      neededPrecedingIds.add(d.parentTaskId);
+    }
+  }
+
+  let logbookEntries: LogbookEntry[] = [];
+  if (neededPrecedingIds.size > 0) {
+    try {
+      logbookEntries = await getLogbookEntriesByIds(Array.from(neededPrecedingIds));
+    } catch (e) {
+      console.warn("Failed to query logbook entries for context:", e);
+    }
+  }
+
+  return getFlowCanvasContext(nodes, edges, selectedNodeId, { logbookEntries });
 }
 
 /**
