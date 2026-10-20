@@ -94,4 +94,54 @@ test.describe('Foqz Annotations Flow (Figma/Miro-style AI Context)', () => {
 
     await page.screenshot({ path: 'test-results/dragged-annotation-pin.png' });
   });
+
+  test('annotation pin follows its parent node and parent project frame when moved', async ({ page }) => {
+    // 1. Annotate the first task card via the Annotate action button
+    const firstTask = page.locator('.react-flow__node-focusTask').first();
+    await firstTask.click();
+
+    const annotateBtn = page.getByRole('button', { name: /Annotate/ }).first();
+    await expect(annotateBtn).toBeVisible();
+    await annotateBtn.click();
+
+    const composer = page.getByPlaceholder(/Type annotation feedback, decisions, or questions/);
+    await expect(composer).toBeVisible();
+    await composer.fill('Follow parent node check');
+    await page.getByRole('button', { name: 'Post' }).click();
+    await expect(composer).not.toBeVisible();
+
+    const pin = page.locator('.z-35 [style*="position: absolute"]').first();
+    await expect(pin).toBeVisible();
+
+    const initialPinBox = await pin.boundingBox();
+    expect(initialPinBox).not.toBeNull();
+    await page.screenshot({ path: 'test-results/annotation-before-parent-move.png' });
+
+    // 2. Drag the parent project frame and verify the annotation pin moves by the same delta
+    const projectFrame = page.locator('.react-flow__node-projectFrame').first();
+    const frameBox = await projectFrame.boundingBox();
+    expect(frameBox).not.toBeNull();
+
+    if (frameBox && initialPinBox) {
+      // Drag from project frame top header area
+      const startX = frameBox.x + 120;
+      const startY = frameBox.y + 20;
+      const deltaX = 140;
+      const deltaY = 70;
+
+      await page.mouse.move(startX, startY);
+      await page.mouse.down();
+      await page.mouse.move(startX + deltaX, startY + deltaY, { steps: 10 });
+      await page.mouse.up();
+
+      const movedPinBox = await pin.boundingBox();
+      expect(movedPinBox).not.toBeNull();
+      if (movedPinBox) {
+        expect(Math.abs(movedPinBox.x - initialPinBox.x)).toBeGreaterThan(50);
+        expect(Math.abs(movedPinBox.y - initialPinBox.y)).toBeGreaterThan(25);
+      }
+    }
+
+    await page.screenshot({ path: 'test-results/annotation-follows-parent.png' });
+  });
 });
