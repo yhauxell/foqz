@@ -57,6 +57,11 @@ import {
   findFrameAt,
 } from "./store/flowCanvasStore";
 import { getCanvasStorage, nextBoardSnapshot } from "@/lib/storage";
+import {
+  findAnnotationTargetAtFlowPos,
+  getNodeAbsolutePosition,
+  getNodeDimensions,
+} from "@/lib/canvasLayout";
 
 function getSvgPathFromStroke(stroke: number[][]) {
   if (!stroke.length) return "";
@@ -226,22 +231,16 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     const handleOpenAnnotationComposer = (e: CustomEvent<{ nodeId: string }>) => {
       const nodeId = e.detail?.nodeId;
       if (!nodeId) return;
-      const targetNode = useFlowCanvasStore.getState().nodes.find((n) => n.id === nodeId);
+      const currentNodes = useFlowCanvasStore.getState().nodes;
+      const targetNode = currentNodes.find((n) => n.id === nodeId);
       if (!targetNode) return;
 
-      const currentNodes = useFlowCanvasStore.getState().nodes;
-      let absX = targetNode.position.x;
-      let absY = targetNode.position.y;
-      if (targetNode.parentId) {
-        const parent = currentNodes.find((p) => p.id === targetNode.parentId);
-        if (parent) {
-          absX += parent.position.x;
-          absY += parent.position.y;
-        }
-      }
-      const width = Number(targetNode.style?.width ?? targetNode.width ?? 280);
-      const height = Number(targetNode.style?.height ?? targetNode.height ?? 82);
-      const cornerFlow = { x: absX + width, y: absY };
+      const internalNode = getInternalNode(targetNode.id);
+      const absPos =
+        internalNode?.internals?.positionAbsolute ?? getNodeAbsolutePosition(targetNode, currentNodes);
+      const dims = getNodeDimensions(targetNode);
+      const width = internalNode?.measured?.width ?? dims.w;
+      const cornerFlow = { x: absPos.x + width, y: absPos.y };
       const screenPos = flowToScreenPosition(cornerFlow);
       const containerRect = containerRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
       const title = (targetNode.data as any)?.title || (targetNode.data as any)?.label || (targetNode.data as any)?.text || targetNode.type;
@@ -1658,12 +1657,30 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         handleCreateNoteAt(pos);
       } else if (activeTool === "comment") {
         const containerRect = containerRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
-        setPendingComposer({
-          screenPos: { x: event.clientX - containerRect.left, y: event.clientY - containerRect.top },
-          flowPos: pos,
-          targetNodeId: null,
-          targetTitle: "Canvas",
-        });
+        const currentNodes = useFlowCanvasStore.getState().nodes;
+        const target = findAnnotationTargetAtFlowPos(pos, currentNodes);
+
+        if (target) {
+          const title =
+            (target.node.data as any)?.title ||
+            (target.node.data as any)?.label ||
+            (target.node.data as any)?.text ||
+            target.node.type;
+          setPendingComposer({
+            screenPos: { x: event.clientX - containerRect.left, y: event.clientY - containerRect.top },
+            flowPos: pos,
+            targetNodeId: target.node.id,
+            targetTitle: title,
+            rel: target.rel,
+          });
+        } else {
+          setPendingComposer({
+            screenPos: { x: event.clientX - containerRect.left, y: event.clientY - containerRect.top },
+            flowPos: pos,
+            targetNodeId: null,
+            targetTitle: "Canvas",
+          });
+        }
         setActiveTool("select");
       } else {
         setEdges((eds) =>
@@ -1696,29 +1713,31 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       }
       if (activeTool === "comment") {
         event.stopPropagation();
+        const flowPos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
         const currentNodes = useFlowCanvasStore.getState().nodes;
-        let absX = node.position.x;
-        let absY = node.position.y;
-        if (node.parentId) {
-          const parent = currentNodes.find((p) => p.id === node.parentId);
-          if (parent) {
-            absX += parent.position.x;
-            absY += parent.position.y;
-          }
-        }
-        const width = Number(node.style?.width ?? node.width ?? 280);
-        const height = Number(node.style?.height ?? node.height ?? 82);
-        const cornerFlow = { x: absX + width, y: absY };
-        const screenPos = flowToScreenPosition(cornerFlow);
+        const internalNode = getInternalNode(node.id);
+        const absPos =
+          internalNode?.internals?.positionAbsolute ?? getNodeAbsolutePosition(node, currentNodes);
+        const dims = getNodeDimensions(node);
+        const width = internalNode?.measured?.width ?? dims.w;
+        const height = internalNode?.measured?.height ?? dims.h;
+
+        const relX = Math.max(0.05, Math.min(0.95, (flowPos.x - absPos.x) / (width || 1)));
+        const relY = Math.max(0.05, Math.min(0.95, (flowPos.y - absPos.y) / (height || 1)));
+
         const containerRect = containerRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
-        const title = (node.data as any)?.title || (node.data as any)?.label || (node.data as any)?.text || node.type;
+        const title =
+          (node.data as any)?.title ||
+          (node.data as any)?.label ||
+          (node.data as any)?.text ||
+          node.type;
 
         setPendingComposer({
-          screenPos: { x: screenPos.x - containerRect.left, y: screenPos.y - containerRect.top },
-          flowPos: cornerFlow,
+          screenPos: { x: event.clientX - containerRect.left, y: event.clientY - containerRect.top },
+          flowPos,
           targetNodeId: node.id,
           targetTitle: title,
-          rel: { x: 0.95, y: 0.05 },
+          rel: { x: relX, y: relY },
         });
         setActiveTool("select");
         return;
@@ -1727,7 +1746,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         setSelectedNodeId(node.id);
       }
     },
-    [activeTool, screenToFlowPosition, flowToScreenPosition, handleCreateTaskAt, handleCreateTextAt, handleCreateNoteAt, setSelectedNodeId, setActiveTool]
+    [activeTool, screenToFlowPosition, getInternalNode, handleCreateTaskAt, handleCreateTextAt, handleCreateNoteAt, setSelectedNodeId, setActiveTool]
   );
 
   // Edge Click Handler (Selects edge, deselects nodes)
