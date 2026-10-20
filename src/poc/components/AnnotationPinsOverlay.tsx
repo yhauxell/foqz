@@ -1,14 +1,15 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { useReactFlow, type Node } from '@xyflow/react';
+import { useReactFlow, useViewport } from '@xyflow/react';
 import {
   MessageSquare,
-  HelpCircle,
-  Bookmark,
-  AlertCircle,
-  CheckCircle2,
   Sparkles,
 } from 'lucide-react';
 import type { Annotation, AnnotationKind } from '@/types/annotations';
+import {
+  findAnnotationTargetAtFlowPos,
+  getNodeAbsolutePosition,
+  getNodeDimensions,
+} from '@/lib/canvasLayout';
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore';
 
 interface AnnotationPinsOverlayProps {
@@ -49,7 +50,8 @@ export function AnnotationPinsOverlay({
   visible = true,
   onSelectAnnotation,
 }: AnnotationPinsOverlayProps) {
-  const { flowToScreenPosition, screenToFlowPosition } = useReactFlow();
+  const { flowToScreenPosition, screenToFlowPosition, getInternalNode } = useReactFlow();
+  const viewport = useViewport();
   const nodes = useFlowCanvasStore((s) => s.nodes);
   const annotations = useFlowCanvasStore((s) => s.annotations);
   const activeAnnotationId = useFlowCanvasStore((s) => s.activeAnnotationId);
@@ -107,56 +109,12 @@ export function AnnotationPinsOverlay({
       if (cur.isDragging) {
         const flowPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
         const currentNodes = useFlowCanvasStore.getState().nodes;
+        const target = findAnnotationTargetAtFlowPos(flowPos, currentNodes);
 
-        // Resolve absolute position of candidate nodes, preferring inner cards over container frames
-        const candidateNodes = [...currentNodes].sort((a, b) => {
-          const isFrameA = a.type === 'projectFrame' || a.type === 'runwayFrame';
-          const isFrameB = b.type === 'projectFrame' || b.type === 'runwayFrame';
-          if (isFrameA && !isFrameB) return 1;
-          if (!isFrameA && isFrameB) return -1;
-          return 0;
-        });
-
-        let targetNode: Node | null = null;
-        let targetAbsX = 0;
-        let targetAbsY = 0;
-        let targetWidth = 0;
-        let targetHeight = 0;
-
-        for (const n of candidateNodes) {
-          let absX = n.position.x;
-          let absY = n.position.y;
-          if (n.parentId) {
-            const parent = currentNodes.find((p) => p.id === n.parentId);
-            if (parent) {
-              absX += parent.position.x;
-              absY += parent.position.y;
-            }
-          }
-          const width = Number(n.style?.width ?? n.width ?? 280);
-          const height = Number(n.style?.height ?? n.height ?? 82);
-
-          if (
-            flowPos.x >= absX &&
-            flowPos.x <= absX + width &&
-            flowPos.y >= absY &&
-            flowPos.y <= absY + height
-          ) {
-            targetNode = n;
-            targetAbsX = absX;
-            targetAbsY = absY;
-            targetWidth = width;
-            targetHeight = height;
-            break;
-          }
-        }
-
-        if (targetNode) {
-          const relX = Math.max(0, Math.min(1, (flowPos.x - targetAbsX) / (targetWidth || 1)));
-          const relY = Math.max(0, Math.min(1, (flowPos.y - targetAbsY) / (targetHeight || 1)));
+        if (target) {
           useFlowCanvasStore.getState().moveAnnotationAnchor(cur.id, {
-            nodeId: targetNode.id,
-            rel: { x: relX, y: relY },
+            nodeId: target.node.id,
+            rel: target.rel,
           });
         } else {
           useFlowCanvasStore.getState().moveAnnotationAnchor(cur.id, {
@@ -198,25 +156,18 @@ export function AnnotationPinsOverlay({
         const node = nodes.find((n) => n.id === ann.anchor.nodeId);
         if (!node) continue;
 
-        // Resolve absolute position of node if nested inside a parent frame
-        let absX = node.position.x;
-        let absY = node.position.y;
-        if (node.parentId) {
-          const parent = nodes.find((p) => p.id === node.parentId);
-          if (parent) {
-            absX += parent.position.x;
-            absY += parent.position.y;
-          }
-        }
-
-        const width = Number(node.style?.width ?? node.width ?? 280);
-        const height = Number(node.style?.height ?? node.height ?? 82);
+        const internalNode = getInternalNode(node.id);
+        const absPos =
+          internalNode?.internals?.positionAbsolute ?? getNodeAbsolutePosition(node, nodes);
+        const dims = getNodeDimensions(node);
+        const width = internalNode?.measured?.width ?? dims.w;
+        const height = internalNode?.measured?.height ?? dims.h;
 
         const relX = ann.anchor.rel?.x ?? 0.85;
         const relY = ann.anchor.rel?.y ?? 0.15;
 
-        flowX = absX + width * relX;
-        flowY = absY + height * relY;
+        flowX = absPos.x + width * relX;
+        flowY = absPos.y + height * relY;
       } else if (ann.anchor.canvas) {
         flowX = ann.anchor.canvas.x;
         flowY = ann.anchor.canvas.y;
@@ -235,7 +186,17 @@ export function AnnotationPinsOverlay({
     }
 
     return result;
-  }, [visible, annotations, nodes, activeAnnotationId, flowToScreenPosition]);
+  }, [
+    visible,
+    annotations,
+    nodes,
+    activeAnnotationId,
+    flowToScreenPosition,
+    getInternalNode,
+    viewport.x,
+    viewport.y,
+    viewport.zoom,
+  ]);
 
   if (!visible) return null;
 

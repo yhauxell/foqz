@@ -10,7 +10,8 @@ export interface NodeBounds {
 
 export function getNodeDimensions(node: Node): { w: number; h: number } {
   const w = Number(
-    node.style?.width ??
+    node.measured?.width ??
+      node.style?.width ??
       (node.width ??
         (node.type === "focusTask"
           ? 280
@@ -30,7 +31,8 @@ export function getNodeDimensions(node: Node): { w: number; h: number } {
   );
 
   const h = Number(
-    node.style?.height ??
+    node.measured?.height ??
+      node.style?.height ??
       (node.height ??
         (node.type === "focusTask"
           ? 82
@@ -50,6 +52,72 @@ export function getNodeDimensions(node: Node): { w: number; h: number } {
   );
 
   return { w, h };
+}
+
+export function getNodeAbsolutePosition(node: Node, nodes: Node[]): { x: number; y: number } {
+  let absX = node.position.x;
+  let absY = node.position.y;
+  let currentParentId = node.parentId;
+  const visited = new Set<string>();
+
+  while (currentParentId && !visited.has(currentParentId)) {
+    visited.add(currentParentId);
+    const parent = nodes.find((p) => p.id === currentParentId);
+    if (!parent) break;
+    absX += parent.position.x;
+    absY += parent.position.y;
+    currentParentId = parent.parentId;
+  }
+
+  return { x: absX, y: absY };
+}
+
+export function findAnnotationTargetAtFlowPos(
+  flowPos: { x: number; y: number },
+  nodes: Node[]
+): {
+  node: Node;
+  absX: number;
+  absY: number;
+  width: number;
+  height: number;
+  rel: { x: number; y: number };
+} | null {
+  // Prefer inner cards/elements over container frames, and higher z-index / later DOM order first
+  const candidateNodes = [...nodes].sort((a, b) => {
+    const isFrameA = a.type === "projectFrame" || a.type === "runwayFrame";
+    const isFrameB = b.type === "projectFrame" || b.type === "runwayFrame";
+    if (isFrameA && !isFrameB) return 1;
+    if (!isFrameA && isFrameB) return -1;
+    const zA = Number(a.style?.zIndex ?? a.zIndex ?? 0);
+    const zB = Number(b.style?.zIndex ?? b.zIndex ?? 0);
+    return zB - zA;
+  });
+
+  for (const n of candidateNodes) {
+    const { x: absX, y: absY } = getNodeAbsolutePosition(n, nodes);
+    const { w: width, h: height } = getNodeDimensions(n);
+
+    if (
+      flowPos.x >= absX &&
+      flowPos.x <= absX + width &&
+      flowPos.y >= absY &&
+      flowPos.y <= absY + height
+    ) {
+      const relX = Math.max(0, Math.min(1, (flowPos.x - absX) / (width || 1)));
+      const relY = Math.max(0, Math.min(1, (flowPos.y - absY) / (height || 1)));
+      return {
+        node: n,
+        absX,
+        absY,
+        width,
+        height,
+        rel: { x: relX, y: relY },
+      };
+    }
+  }
+
+  return null;
 }
 
 /**
