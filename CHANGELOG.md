@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.1](https://github.com/yhauxell/foqz/compare/v0.13.0...v0.13.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **annotations:** anchor annotations to parent node and track live position and viewport ([#70](https://github.com/yhauxell/foqz/issues/70)) ([ace4e2f](https://github.com/yhauxell/foqz/commit/ace4e2fd96c573b269bede067331819fa8657212))
+* **shortcuts:** remove duplicate uppercase hotkey bindings that spawn double tasks ([#72](https://github.com/yhauxell/foqz/issues/72)) ([05ad225](https://github.com/yhauxell/foqz/commit/05ad2257c748f7335e2a8aab548e0bc93a6cc58f))
+
 ## [0.13.0](https://github.com/yhauxell/foqz/compare/v0.12.0...v0.13.0) (2026-10-19)
 
 
