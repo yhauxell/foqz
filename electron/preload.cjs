@@ -47,9 +47,6 @@ contextBridge.exposeInMainWorld('focusStore', {
       return () => ipcRenderer.removeListener('mcpHost:call', listener)
     },
   },
-  jev: {
-    evaluate: (req, options) => ipcRenderer.invoke('jev:evaluate', { req, options }),
-  },
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),
     getState: () => ipcRenderer.invoke('updater:getState'),

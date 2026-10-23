@@ -5,12 +5,7 @@
 
 export type AnnotationAuthor = "user" | "ai" | "system";
 
-export type AnnotationKind =
-  | "comment"
-  | "question"
-  | "decision"
-  | "constraint"
-  | "todo";
+export type AnnotationKind = "comment" | "question" | "decision";
 
 export type AnnotationStatus = "open" | "resolved";
 

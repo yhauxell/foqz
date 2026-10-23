@@ -12,13 +12,6 @@ function getInitialCached(): AppSettings {
         const parsed = JSON.parse(raw);
         return mergeAppSettings(parsed);
       }
-      const localKey = localStorage.getItem("foqz_typesafe_api_key");
-      if (localKey) {
-        return mergeAppSettings({
-          ...DEFAULT_APP_SETTINGS,
-          typesafeApiKey: localKey,
-        });
-      }
     } catch {}
   }
   return { ...DEFAULT_APP_SETTINGS };

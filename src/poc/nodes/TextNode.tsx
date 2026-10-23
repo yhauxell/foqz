@@ -3,6 +3,7 @@ import { Handle, Position, NodeResizer, type NodeProps, type Node } from "@xyflo
 import { renderMarkdownBlock } from "@/lib/markdown";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { applyFormattingToTextarea } from "../utils/textFormatting";
+import { TodoCheckbox } from "../components/TodoCheckbox";
 
 export interface TextNodeData {
   text: string;
@@ -10,6 +11,9 @@ export interface TextNodeData {
   color?: string;
   isNew?: boolean;
   autoEdit?: boolean;
+  /** To-do behavior: shows a checkbox, can be focused, swept to the Logbook when done. */
+  actionable?: boolean;
+  status?: "open" | "done";
   [key: string]: unknown;
 }
 
@@ -27,6 +31,9 @@ export const TextNode = memo(function TextNode({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const valRef = useRef(val);
+  const isFocusTarget = useFlowCanvasStore((s) => s.activeFocusNodeId === id);
+  const actionable = data.actionable === true;
+  const done = actionable && data.status === "done";
 
   useEffect(() => {
     valRef.current = val;
@@ -130,10 +137,14 @@ export const TextNode = memo(function TextNode({
       className={`relative min-w-[120px] p-2.5 rounded-xl transition-all ${
         isEditing ? "cursor-text" : "cursor-default"
       } ${
-        selected
+        isFocusTarget
+          ? "ring-2 ring-rose-500 bg-white/80 dark:bg-zinc-900/80 shadow-lg shadow-rose-500/10"
+          : selected
           ? "ring-1.5 ring-blue-500/70 bg-white/70 dark:bg-zinc-900/70 shadow-xs"
           : "hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-      }`}
+      } ${actionable ? "flex items-start gap-2" : ""}`}
+      data-actionable={actionable || undefined}
+      data-done={done || undefined}
       style={{
         contain: "layout style",
         width: width ? `${width}px` : undefined,
@@ -171,6 +182,15 @@ export const TextNode = memo(function TextNode({
         position={Position.Left}
         className="!w-2 !h-2 !bg-zinc-400 dark:!bg-zinc-500 hover:!bg-blue-500 hover:!scale-150 transition-all cursor-crosshair !border !border-white dark:!border-zinc-800"
       />
+
+      {actionable && (
+        <TodoCheckbox
+          nodeId={id}
+          done={done}
+          size={Math.max(14, Math.round((data.fontSize || 16) * 0.95))}
+          style={{ marginTop: Math.round((data.fontSize || 16) * 0.22) }}
+        />
+      )}
 
       {isEditing ? (
         <textarea
@@ -218,7 +238,7 @@ export const TextNode = memo(function TextNode({
               setVal(updated);
             }
           }}
-          className="w-full h-full min-w-[120px] bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none shadow-none focus:ring-0 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400/80 dark:placeholder:text-zinc-500/80 leading-relaxed font-sans"
+          className="w-full h-full min-w-[120px] flex-1 bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none shadow-none focus:ring-0 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400/80 dark:placeholder:text-zinc-500/80 leading-relaxed font-sans"
           style={{
             fontSize: data.fontSize || 16,
             color: data.color,
@@ -228,9 +248,9 @@ export const TextNode = memo(function TextNode({
         />
       ) : (
         <div
-          className={`break-words select-text ${
+          className={`break-words select-text min-w-0 flex-1 ${
             !val ? "text-zinc-400/80 dark:text-zinc-500/80 italic select-none" : "text-zinc-900 dark:text-zinc-100"
-          } task-markdown-body leading-relaxed whitespace-pre-wrap`}
+          } ${done ? "line-through opacity-50" : ""} task-markdown-body leading-relaxed whitespace-pre-wrap`}
           style={{
             fontSize: data.fontSize || 16,
             color: data.color,

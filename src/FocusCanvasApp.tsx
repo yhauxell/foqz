@@ -1,17 +1,14 @@
-import { FocusSettings } from "@/components/FocusSettings";
+import { FocusSettings, type SettingsTab } from "@/components/FocusSettings";
 import { FocusAppSettingsProvider, useFocusAppSettings } from "@/context/FocusAppSettingsContext";
 import { TopbarBoardMenu } from "@/components/TopbarBoardMenu";
-import { WaypointRail } from "@/components/WaypointRail";
-import { MonoFocusController } from "@/components/MonoFocusController";
-import { GlobalSpotlight } from "@/components/GlobalSpotlight";
+import { FocusInPlace } from "@/components/FocusInPlace";
+import { GlobalSpotlight, type CommandBarView } from "@/components/GlobalSpotlight";
 import { ProjectConnectorsModal } from "@/components/ProjectConnectorsModal";
 import { GitHubIssuesModal } from "@/components/GitHubIssuesModal";
 import { CreateGitHubIssueModal } from "@/components/CreateGitHubIssueModal";
-import { QuickTaskModal } from "@/components/QuickTaskModal";
 import { useOllama } from "@/lib/ollama";
-import { Keyboard, Maximize2, Minimize2, Plus, Search, Settings, Sparkles, MessageSquare, X, RotateCcw } from "lucide-react";
+import { BookOpen, Maximize2, Minimize2, Search, Settings, Sparkles, MessageSquare, X, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { ShortcutsModal } from "@/poc/components/ShortcutsModal";
 import { AnnotationsPanel } from "@/components/AnnotationsPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LogbookDrawer } from "@/components/LogbookDrawer";
@@ -20,6 +17,8 @@ import { FlowCanvasAppWrapper } from "./poc/FlowCanvasAppWrapper";
 import { useFlowCanvasStore } from "./poc/store/flowCanvasStore";
 import { useGitHubSyncEngine } from "@/lib/githubTaskSync";
 import { useMcpHostBridge } from "@/lib/mcpHostBridge";
+import { isActionable, startFocus, stopFocus } from "@/lib/nodeBehaviors";
+import { playFocusBlockEndFeedback } from "@/lib/focusSessionFeedback";
 
 export function FocusCanvasApp() {
   return (
@@ -40,11 +39,10 @@ function FocusCanvasAppInner() {
   const [connectorsShapeId, setConnectorsShapeId] = useState<string | null>(null);
   const [connectorsInitialTab, setConnectorsInitialTab] = useState<"connectors" | "context">("connectors");
   const [spotlightOpen, setSpotlightOpen] = useState(false);
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [spotlightView, setSpotlightView] = useState<CommandBarView>("search");
+  const [spotlightCapture, setSpotlightCapture] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<
-    "general" | "workingHours" | "ai" | "mcp" | "data"
-  >("general");
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("app");
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [githubIssuesOpen, setGithubIssuesOpen] = useState(false);
   const [githubIssuesProjectId, setGithubIssuesProjectId] = useState<string | null>(null);
@@ -52,48 +50,10 @@ function FocusCanvasAppInner() {
 
   const [createIssueOpen, setCreateIssueOpen] = useState(false);
   const [createIssueTaskId, setCreateIssueTaskId] = useState<string | null>(null);
-  const [quickTaskOpen, setQuickTaskOpen] = useState(false);
   const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
   const [logbookOpen, setLogbookOpen] = useState(false);
   const { activeSweepToast, undoSweep, dismissSweepToast } = useWorkdaySweepTicker();
   const annotations = useFlowCanvasStore((s) => s.annotations);
-
-  const [runwayNotification, setRunwayNotification] = useState<{
-    type: "advanced" | "cleared";
-    message: string;
-  } | null>(null);
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const onAdvanced = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (timer) clearTimeout(timer);
-      setRunwayNotification({
-        type: "advanced",
-        message: `🛫 Landed! Cleared for next: "${detail.toTaskTitle || 'Next Task'}"`,
-      });
-      timer = setTimeout(() => setRunwayNotification(null), 3500);
-    };
-
-    const onCleared = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (timer) clearTimeout(timer);
-      setRunwayNotification({
-        type: "cleared",
-        message: `🎉 Runway Cleared! All tasks completed today.`,
-      });
-      timer = setTimeout(() => setRunwayNotification(null), 4000);
-    };
-
-    window.addEventListener("foqz:runway-advanced", onAdvanced);
-    window.addEventListener("foqz:runway-cleared", onCleared);
-    return () => {
-      if (timer) clearTimeout(timer);
-      window.removeEventListener("foqz:runway-advanced", onAdvanced);
-      window.removeEventListener("foqz:runway-cleared", onCleared);
-    };
-  }, []);
 
   // Global Link Click Interceptor: Ensure all links open in user's external browser
   useEffect(() => {
@@ -179,7 +139,7 @@ function FocusCanvasAppInner() {
   }, []);
 
   const handleOpenSettings = useCallback(
-    (initialTab: "general" | "workingHours" | "ai" | "mcp" | "data" = "general") => {
+    (initialTab: SettingsTab = "app") => {
       setSettingsInitialTab(initialTab);
       setSettingsOpen(true);
     },
@@ -206,16 +166,21 @@ function FocusCanvasAppInner() {
     const onFocusTargetEvent = (e: any) => {
       const shapeId = e.detail?.shapeId || (typeof e.detail === "string" ? e.detail : null);
       if (shapeId) {
+        if (useFlowCanvasStore.getState().activeFocusNodeId === shapeId) return;
         useFlowCanvasStore.getState().setSelectedNodeId(shapeId);
-        useFlowCanvasStore.getState().setActiveFocusNodeId(shapeId);
-      } else {
-        useFlowCanvasStore.getState().setActiveFocusNodeId(null);
+        startFocus(shapeId);
+      } else if (useFlowCanvasStore.getState().activeFocusNodeId) {
+        stopFocus();
       }
     };
 
-    const onOpenSpotlightEvent = () => {
+    const openCommandBar = (view: CommandBarView = "search", capture = false) => {
+      setSpotlightView(view);
+      setSpotlightCapture(capture);
       setSpotlightOpen(true);
     };
+
+    const onOpenSpotlightEvent = () => openCommandBar();
 
     const onOpenConnectorsEvent = (e: any) => {
       const shapeId = e.detail?.shapeId || (typeof e.detail === "string" ? e.detail : null);
@@ -227,9 +192,7 @@ function FocusCanvasAppInner() {
       }
     };
 
-    const onOpenShortcutsEvent = () => {
-      setShortcutsOpen(true);
-    };
+    const onOpenShortcutsEvent = () => openCommandBar("shortcuts");
 
     const onOpenGithubIssuesEvent = (e: any) => {
       const projectId = e.detail?.projectId || null;
@@ -245,12 +208,15 @@ function FocusCanvasAppInner() {
       setCreateIssueOpen(true);
     };
 
-    const onOpenQuickTaskEvent = () => {
-      setQuickTaskOpen(true);
-    };
+    const onOpenCaptureEvent = () => openCommandBar("search", true);
 
     const onOpenLogbookEvent = () => {
       setLogbookOpen(true);
+    };
+
+    const onOpenSettingsEvent = () => {
+      setSettingsInitialTab("app");
+      setSettingsOpen(true);
     };
 
     window.addEventListener("foqz:open-copilot", onOpenCopilotEvent);
@@ -260,8 +226,9 @@ function FocusCanvasAppInner() {
     window.addEventListener("foqz:open-shortcuts", onOpenShortcutsEvent);
     window.addEventListener("foqz:open-github-issues", onOpenGithubIssuesEvent);
     window.addEventListener("foqz:open-create-github-issue", onOpenCreateGithubIssueEvent);
-    window.addEventListener("foqz:open-quick-task", onOpenQuickTaskEvent);
+    window.addEventListener("foqz:open-quick-task", onOpenCaptureEvent);
     window.addEventListener("foqz:open-logbook", onOpenLogbookEvent);
+    window.addEventListener("foqz:open-settings", onOpenSettingsEvent);
 
     return () => {
       window.removeEventListener("foqz:open-copilot", onOpenCopilotEvent);
@@ -271,8 +238,9 @@ function FocusCanvasAppInner() {
       window.removeEventListener("foqz:open-shortcuts", onOpenShortcutsEvent);
       window.removeEventListener("foqz:open-github-issues", onOpenGithubIssuesEvent);
       window.removeEventListener("foqz:open-create-github-issue", onOpenCreateGithubIssueEvent);
-      window.removeEventListener("foqz:open-quick-task", onOpenQuickTaskEvent);
+      window.removeEventListener("foqz:open-quick-task", onOpenCaptureEvent);
       window.removeEventListener("foqz:open-logbook", onOpenLogbookEvent);
+      window.removeEventListener("foqz:open-settings", onOpenSettingsEvent);
     };
   }, []);
 
@@ -280,24 +248,27 @@ function FocusCanvasAppInner() {
   useEffect(() => {
     if (!storeActiveFocusNodeId || !isTimerRunning) return;
     const interval = setInterval(() => {
+      let reachedZero = false;
       useFlowCanvasStore.getState().setTimerSecondsRemaining((prev) => {
         if (prev <= 1) {
+          reachedZero = true;
           useFlowCanvasStore.getState().setIsTimerRunning(false);
           return 0;
         }
         return prev - 1;
       });
+      if (reachedZero) playFocusBlockEndFeedback("timer");
 
-      // Accumulate focus time telemetry on active task card
+      // Accumulate focus time on the focused node (any actionable text)
       const state = useFlowCanvasStore.getState();
       const activeNode = state.nodes.find((n) => n.id === storeActiveFocusNodeId);
-      if (activeNode && activeNode.type === "focusTask") {
+      if (activeNode && isActionable(activeNode)) {
         const currentSeconds = Number((activeNode.data as any)?.focusSecondsSpent) || 0;
         const currentTrackedMs = Number((activeNode.data as any)?.trackedMs) || 0;
         state.updateNodeData(storeActiveFocusNodeId, {
           focusSecondsSpent: currentSeconds + 1,
           trackedMs: currentTrackedMs + 1000,
-        }, { skipAutoAdvance: true });
+        });
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -309,11 +280,13 @@ function FocusCanvasAppInner() {
       // Spotlight: Cmd+K / Ctrl+K
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
+        setSpotlightView("search");
+        setSpotlightCapture(false);
         setSpotlightOpen((prev) => !prev);
         return;
       }
 
-      // Quick Task capture: Cmd+Shift+N / Ctrl+Shift+N (works even while typing)
+      // Capture: Cmd+Shift+N / Ctrl+Shift+N opens the command bar ready to write (works while typing)
       if (
         (e.metaKey || e.ctrlKey) &&
         e.shiftKey &&
@@ -321,7 +294,17 @@ function FocusCanvasAppInner() {
         (e.key === "n" || e.key === "N")
       ) {
         e.preventDefault();
-        setQuickTaskOpen(true);
+        setSpotlightView("search");
+        setSpotlightCapture(true);
+        setSpotlightOpen(true);
+        return;
+      }
+
+      // Settings: Cmd+, / Ctrl+,
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        setSettingsInitialTab("app");
+        setSettingsOpen(true);
         return;
       }
 
@@ -405,33 +388,24 @@ function FocusCanvasAppInner() {
           <TopbarBoardMenu />
         </div>
 
-        {/* Centered Omni-Spotlight + Quick Task (⌘K / ⌘⇧N) */}
+        {/* Centered command bar (⌘K) */}
         <div className="flex-1 flex justify-center items-center gap-1.5 px-2 sm:px-4 max-w-md sm:max-w-lg mx-auto">
           <button
             type="button"
-            onClick={() => setSpotlightOpen(true)}
+            onClick={() => {
+              setSpotlightView("search");
+              setSpotlightCapture(false);
+              setSpotlightOpen(true);
+            }}
             className="h-7 w-full max-w-xs sm:max-w-sm px-3 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-zinc-100/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all shadow-2xs flex items-center justify-between cursor-pointer group"
-            title="Create task, jump to project, or command canvas (⌘K)"
+            title="Find, run, or write (⌘K)"
           >
             <div className="flex items-center gap-2 truncate text-xs">
               <Search className="size-3.5 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 shrink-0 transition-colors" />
-              <span className="truncate">⌘K  Create, jump, or command...</span>
+              <span className="truncate">Find, run, or just type to write…</span>
             </div>
             <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono opacity-60 group-hover:opacity-90 px-1.5 py-0.2 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/60 transition-opacity shrink-0 ml-1.5">
               ⌘K
-            </kbd>
-          </button>
-          <button
-            type="button"
-            onClick={() => setQuickTaskOpen(true)}
-            className="h-7 shrink-0 inline-flex items-center gap-1 px-2.5 rounded-full border border-emerald-200/80 dark:border-emerald-900/60 bg-emerald-50/80 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 transition-all shadow-2xs cursor-pointer"
-            title="Quick Task Capture (⌘⇧N)"
-            aria-label="Quick Task Capture"
-          >
-            <Plus className="size-3.5" />
-            <span className="hidden md:inline text-[11px] font-medium">Task</span>
-            <kbd className="hidden lg:inline-flex items-center text-[10px] font-mono opacity-70 px-1 py-0.5 rounded bg-white/80 dark:bg-zinc-900/80 border border-emerald-200/70 dark:border-emerald-800/60">
-              ⌘⇧N
             </kbd>
           </button>
         </div>
@@ -494,15 +468,15 @@ function FocusCanvasAppInner() {
             );
           })()}
 
-          {/* Keyboard Shortcuts Modal */}
+          {/* Logbook (done items swept from the board) */}
           <button
             type="button"
             className="size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-            aria-label="Keyboard Shortcuts"
-            title="Keyboard Shortcuts (?)"
-            onClick={() => setShortcutsOpen(true)}
+            aria-label="Open Logbook"
+            title="Logbook: done items moved off the board"
+            onClick={() => setLogbookOpen(true)}
           >
-            <Keyboard className="size-3.5" />
+            <BookOpen className="size-3.5" />
           </button>
 
           {/* Settings Modal */}
@@ -511,7 +485,7 @@ function FocusCanvasAppInner() {
             className="size-7 rounded-full border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
             aria-label="Settings"
             title="Settings (⌘,)"
-            onClick={() => handleOpenSettings("general")}
+            onClick={() => handleOpenSettings("app")}
           >
             <Settings className="size-3.5" />
           </button>
@@ -574,31 +548,16 @@ function FocusCanvasAppInner() {
             </aside>
           )}
 
-          {/* Floating Spatial Waypoint Rail */}
-          <WaypointRail />
-
-          {/* Universal Shell Overlays */}
-          <ErrorBoundary onReset={() => useFlowCanvasStore.getState().setActiveFocusNodeId(null)}>
-            <MonoFocusController
-              activeShapeId={storeActiveFocusNodeId}
-              onClearFocus={() => {
-                useFlowCanvasStore.getState().setActiveFocusNodeId(null);
-                useFlowCanvasStore.getState().setIsTimerRunning(false);
-                window.dispatchEvent(
-                  new CustomEvent("foqz:set-focus-target", { detail: { shapeId: null } })
-                );
-              }}
-            />
+          {/* Focus in place: dims the board, floats the timer */}
+          <ErrorBoundary onReset={() => stopFocus()}>
+            <FocusInPlace />
           </ErrorBoundary>
 
           <GlobalSpotlight
             open={spotlightOpen}
             onClose={() => setSpotlightOpen(false)}
-            onSelectFocusTarget={(id) => {
-              window.dispatchEvent(
-                new CustomEvent("foqz:flow-center-on", { detail: { id } })
-              );
-            }}
+            initialView={spotlightView}
+            captureMode={spotlightCapture}
           />
 
           <ProjectConnectorsModal
@@ -611,11 +570,6 @@ function FocusCanvasAppInner() {
             open={settingsOpen}
             onClose={() => setSettingsOpen(false)}
             initialTab={settingsInitialTab}
-          />
-
-          <ShortcutsModal
-            open={shortcutsOpen}
-            onClose={() => setShortcutsOpen(false)}
           />
 
           <GitHubIssuesModal
@@ -631,11 +585,6 @@ function FocusCanvasAppInner() {
             taskId={createIssueTaskId}
           />
 
-          <QuickTaskModal
-            open={quickTaskOpen}
-            onClose={() => setQuickTaskOpen(false)}
-          />
-
           <LogbookDrawer
             open={logbookOpen}
             onClose={() => setLogbookOpen(false)}
@@ -646,7 +595,7 @@ function FocusCanvasAppInner() {
             <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-2.5 rounded-full bg-zinc-900/95 dark:bg-white/95 text-white dark:text-zinc-900 shadow-2xl backdrop-blur-xl border border-white/10 dark:border-black/10 text-xs font-medium animate-in fade-in slide-in-from-top-3 duration-200 select-none">
               <span className="size-2 rounded-full bg-amber-400" />
               <span>
-                {activeSweepToast.count} task{activeSweepToast.count > 1 ? "s" : ""} swept to Logbook
+                {activeSweepToast.count} done item{activeSweepToast.count > 1 ? "s" : ""} moved to the Logbook
               </span>
               <button
                 type="button"
@@ -664,19 +613,6 @@ function FocusCanvasAppInner() {
               >
                 <X className="size-3" />
               </button>
-            </div>
-          )}
-          {/* Runway Auto-Advance & Clearance HUD Toast */}
-          {runwayNotification && (
-            <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2.5 px-4 py-2 rounded-full bg-zinc-900/95 dark:bg-white/95 text-white dark:text-zinc-900 shadow-2xl backdrop-blur-xl border border-white/10 dark:border-black/10 text-xs font-medium animate-in fade-in slide-in-from-top-3 duration-200 select-none pointer-events-none">
-              <span
-                className={`size-2 rounded-full ${
-                  runwayNotification.type === "cleared"
-                    ? "bg-amber-400 animate-bounce"
-                    : "bg-emerald-400 animate-ping"
-                }`}
-              />
-              <span>{runwayNotification.message}</span>
             </div>
           )}
         </main>

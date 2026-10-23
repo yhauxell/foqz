@@ -8,7 +8,7 @@ import {
 } from './ollama'
 import { encodeToolName } from './mcpAgentLoop'
 
-export type AiProviderName = 'ollama' | 'openai' | 'gemini'
+export type AiProviderName = 'ollama' | 'openai'
 
 export interface AiChatMessage extends OllamaChatMessage {
   tool_call_id?: string
@@ -39,57 +39,6 @@ export interface OpenAiToolDefinition {
   }
 }
 
-export interface GeminiFunctionDeclaration {
-  name: string
-  description?: string
-  parameters?: Record<string, any>
-}
-
-/**
- * Strips JSON Schema keywords not supported or restricted by Google Gemini v1beta function declarations
- * (e.g. $schema, additionalProperties, default, title).
- */
-export function sanitizeGeminiParameters(schema?: Record<string, any>): Record<string, any> {
-  if (!schema || typeof schema !== 'object') {
-    return { type: 'object', properties: {} }
-  }
-
-  const clean: Record<string, any> = {}
-
-  if (schema.type) {
-    clean.type = typeof schema.type === 'string' ? schema.type.toLowerCase() : 'object'
-  } else {
-    clean.type = 'object'
-  }
-
-  if (typeof schema.description === 'string') {
-    clean.description = schema.description
-  }
-
-  if (Array.isArray(schema.enum)) {
-    clean.enum = schema.enum
-  }
-
-  if (Array.isArray(schema.required) && schema.required.length > 0) {
-    clean.required = schema.required
-  }
-
-  if (schema.properties && typeof schema.properties === 'object') {
-    clean.properties = {}
-    for (const [key, propDef] of Object.entries(schema.properties)) {
-      if (propDef && typeof propDef === 'object') {
-        clean.properties[key] = sanitizeGeminiParameters(propDef as Record<string, any>)
-      }
-    }
-  }
-
-  if (schema.items && typeof schema.items === 'object') {
-    clean.items = sanitizeGeminiParameters(schema.items as Record<string, any>)
-  }
-
-  return clean
-}
-
 /**
  * Format MCP tools into OpenAI standard function calling schema.
  */
@@ -104,17 +53,6 @@ export function formatMcpToolsForOpenAi(tools: McpTool[]): OpenAiToolDefinition[
         properties: {},
       },
     },
-  }))
-}
-
-/**
- * Format MCP tools into Google Gemini function declarations.
- */
-export function formatMcpToolsForGemini(tools: McpTool[]): GeminiFunctionDeclaration[] {
-  return tools.map((t) => ({
-    name: encodeToolName(t.serverName, t.name),
-    description: t.description || '',
-    parameters: sanitizeGeminiParameters(t.inputSchema),
   }))
 }
 
@@ -318,180 +256,7 @@ export async function streamOpenAiChatWithTools(
 }
 
 /**
- * Streams chat completion from Google Gemini API with native function declarations.
- */
-export async function streamGeminiChatWithTools(
-  opts: StreamAiChatOptions,
-): Promise<StreamAiChatResult> {
-  const apiKey = opts.apiKey?.trim() || ''
-  if (!apiKey) {
-    throw new Error('Gemini API key is required.')
-  }
-
-  const model = opts.model || 'gemini-1.5-flash'
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?key=${encodeURIComponent(apiKey)}&alt=sse`
-
-  // Extract system prompt if present
-  const systemMsgs = opts.messages.filter((m) => m.role === 'system')
-  const systemInstruction =
-    systemMsgs.length > 0
-      ? { parts: [{ text: systemMsgs.map((m) => m.content).join('\n\n') }] }
-      : undefined
-
-  // Convert conversation turns into Gemini contents
-  const contents: any[] = []
-  for (const msg of opts.messages) {
-    if (msg.role === 'system') continue
-
-    if (msg.role === 'user') {
-      contents.push({
-        role: 'user',
-        parts: [{ text: msg.content || ' ' }],
-      })
-    } else if (msg.role === 'assistant') {
-      const parts: any[] = []
-      if (msg.content && msg.content.trim()) {
-        parts.push({ text: msg.content })
-      }
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
-        for (const tc of msg.tool_calls) {
-          parts.push({
-            functionCall: {
-              name: tc.function.name,
-              args: tc.function.arguments || {},
-            },
-          })
-        }
-      }
-      if (parts.length === 0) {
-        parts.push({ text: ' ' })
-      }
-      contents.push({ role: 'model', parts })
-    } else if (msg.role === 'tool') {
-      let outputObj: any = { content: msg.content }
-      try {
-        outputObj = JSON.parse(msg.content)
-      } catch {}
-
-      contents.push({
-        role: 'user',
-        parts: [
-          {
-            functionResponse: {
-              name: msg.name || 'tool_result',
-              response: typeof outputObj === 'object' && outputObj !== null ? outputObj : { content: msg.content },
-            },
-          },
-        ],
-      })
-    }
-  }
-
-  const geminiFunctions = opts.tools && opts.tools.length > 0 ? formatMcpToolsForGemini(opts.tools) : []
-  const tools = geminiFunctions.length > 0 ? [{ functionDeclarations: geminiFunctions }] : undefined
-
-  const payload: Record<string, any> = {
-    contents,
-    systemInstruction,
-  }
-  if (tools) {
-    payload.tools = tools
-  }
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    signal: opts.signal,
-  })
-
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => res.statusText)
-    let message = errorText
-    try {
-      const parsed = JSON.parse(errorText)
-      if (parsed?.error?.message) message = parsed.error.message
-      else if (parsed?.message) message = parsed.message
-    } catch {}
-    throw new Error(`Gemini error (${res.status}): ${message}`)
-  }
-
-  if (!res.body) {
-    throw new Error('ReadableStream not supported by Gemini response.')
-  }
-
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-  let accumulatedContent = ''
-  const toolCalls: OllamaToolCall[] = []
-
-  const processLine = (line: string) => {
-    const trimmed = line.trim()
-    if (!trimmed || !trimmed.startsWith('data:')) return
-    const dataStr = trimmed.slice(5).trim()
-
-    try {
-      const json = JSON.parse(dataStr)
-      const candidate = json.candidates?.[0]
-      if (!candidate?.content?.parts) return
-
-      for (const part of candidate.content.parts) {
-        if (part.text) {
-          accumulatedContent += part.text
-          opts.onChunk?.(part.text)
-        }
-        if (part.functionCall) {
-          toolCalls.push({
-            id: `call_gemini_${Date.now()}_${toolCalls.length}`,
-            function: {
-              name: part.functionCall.name,
-              arguments: part.functionCall.args || {},
-            },
-          })
-        }
-      }
-    } catch {
-      // ignore chunk json parse errors
-    }
-  }
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-
-    for (const line of lines) {
-      processLine(line)
-    }
-  }
-
-  if (buffer.trim()) {
-    processLine(buffer)
-  }
-
-  // Fallback: If model emitted tool JSON in content text instead of functionCall
-  if (toolCalls.length === 0 && opts.tools && opts.tools.length > 0 && accumulatedContent.trim()) {
-    const extracted = parseToolCallsFromContent(
-      accumulatedContent,
-      formatMcpToolsForOpenAi(opts.tools) as unknown as OllamaToolDefinition[],
-    )
-    if (extracted.length > 0) {
-      toolCalls.push(...extracted)
-    }
-  }
-
-  return {
-    content: accumulatedContent,
-    toolCalls,
-  }
-}
-
-/**
- * Universal chat streaming dispatcher with full tool calling for Ollama, OpenAI, and Gemini.
+ * Universal chat streaming dispatcher with tool calling for Ollama and OpenAI-compatible endpoints.
  */
 export async function streamAiChatWithTools(
   opts: StreamAiChatOptions,
@@ -501,10 +266,6 @@ export async function streamAiChatWithTools(
   try {
     if (provider === 'openai') {
       return await streamOpenAiChatWithTools(opts)
-    }
-
-    if (provider === 'gemini') {
-      return await streamGeminiChatWithTools(opts)
     }
 
     // Default: Ollama
@@ -529,9 +290,6 @@ export async function streamAiChatWithTools(
       }
       if (provider === 'openai') {
         return await streamOpenAiChatWithTools(noToolsOpts)
-      }
-      if (provider === 'gemini') {
-        return await streamGeminiChatWithTools(noToolsOpts)
       }
       return await streamOllamaChat({
         baseUrl: opts.baseUrl,

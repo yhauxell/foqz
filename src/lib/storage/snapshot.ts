@@ -5,6 +5,7 @@ import {
   type BoardSnapshot,
   type BoardViewport,
 } from "@/types/storage";
+import { migrateBoardSnapshot } from "@/lib/storage/migrate";
 
 export function createEmptySnapshot(
   overrides?: Partial<BoardSnapshot>
@@ -23,8 +24,12 @@ export function createEmptySnapshot(
 /**
  * Normalize raw JSON (including legacy `{ nodes, edges, annotations?, updatedAt? }`
  * payloads without version/revision) into a canonical {@link BoardSnapshot}.
+ * Older versions are migrated to the current one unless `migrate` is false.
  */
-export function normalizeBoardSnapshot(raw: unknown): BoardSnapshot | null {
+export function normalizeBoardSnapshot(
+  raw: unknown,
+  options?: { migrate?: boolean }
+): BoardSnapshot | null {
   if (!raw || typeof raw !== "object") return null;
   const parsed = raw as Record<string, unknown>;
 
@@ -42,10 +47,11 @@ export function normalizeBoardSnapshot(raw: unknown): BoardSnapshot | null {
       ? Math.max(0, Math.floor(parsed.revision))
       : 0;
 
+  // Payloads written before versioning are v1.
   const version =
     typeof parsed.version === "number" && Number.isFinite(parsed.version)
       ? Math.floor(parsed.version)
-      : BOARD_SNAPSHOT_VERSION;
+      : 1;
 
   const updatedAt =
     typeof parsed.updatedAt === "number" && Number.isFinite(parsed.updatedAt)
@@ -64,7 +70,7 @@ export function normalizeBoardSnapshot(raw: unknown): BoardSnapshot | null {
     }
   }
 
-  return {
+  const snapshot: BoardSnapshot = {
     version,
     revision,
     nodes,
@@ -73,6 +79,8 @@ export function normalizeBoardSnapshot(raw: unknown): BoardSnapshot | null {
     ...(viewport ? { viewport } : {}),
     updatedAt,
   };
+  if (options?.migrate === false) return snapshot;
+  return migrateBoardSnapshot(snapshot).snapshot;
 }
 
 /** Build the next snapshot for a save, bumping revision from a prior value. */

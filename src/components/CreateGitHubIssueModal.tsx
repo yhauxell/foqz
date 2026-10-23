@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { GitPullRequest, X, AlertCircle, Sparkles, Send, Check } from 'lucide-react'
 import { createGitHubIssue } from '../lib/githubSync'
-import { normalizeGithubRepoInput } from '../lib/githubAgentSync'
+import { normalizeGithubRepoInput } from '../lib/githubRepo'
+import { nodeTitle } from '../lib/nodePredicates'
+import { setTextStyle } from '../lib/nodeBehaviors'
 import { useFlowCanvasStore } from '../poc/store/flowCanvasStore'
 
 interface CreateGitHubIssueModalProps {
@@ -51,17 +53,13 @@ export function CreateGitHubIssueModal({
     if (open && taskNode) {
       const data = taskNode.data as any
       setRepoInput(defaultRepo)
-      setTitleInput(data.title || '')
-      setBodyInput(data.notes || '')
-      setLabelsInput(
-        Array.isArray(data.githubLabels)
-          ? data.githubLabels.join(', ')
-          : data.priority === 1
-          ? 'urgent, bug'
-          : data.priority === 2
-          ? 'enhancement'
-          : 'task'
+      setTitleInput(nodeTitle(taskNode))
+      setBodyInput(
+        typeof data.notes === 'string'
+          ? data.notes
+          : String(data.text || '').split('\n').slice(1).join('\n').trim()
       )
+      setLabelsInput(Array.isArray(data.githubLabels) ? data.githubLabels.join(', ') : '')
       setAssigneesInput(data.githubAssignee || '')
       setErrorMsg(null)
       setSuccessResult(null)
@@ -109,8 +107,12 @@ export function CreateGitHubIssueModal({
         ? titleInput
         : `#${result.number} ${titleInput.trim()}`
 
+      // GitHub-linked items show as cards: that is where the sync status and assignee live.
+      if (taskNode.type !== 'focusTask') setTextStyle(taskId, 'card')
       store.updateNodeData(taskId, {
         title: formattedTitle,
+        actionable: true,
+        status: (taskNode.data as any)?.status || 'open',
         githubIssueNumber: result.number,
         githubRepo: normalizedRepo,
         githubIssueUrl: result.html_url,

@@ -3,8 +3,6 @@ import {
   MessageSquare,
   HelpCircle,
   Bookmark,
-  AlertCircle,
-  CheckCircle2,
   X,
   Send,
   Eye,
@@ -24,8 +22,6 @@ const KIND_OPTIONS: Array<{ kind: AnnotationKind; label: string; icon: React.Rea
   { kind: 'comment', label: 'Comment', icon: <MessageSquare className="size-3" /> },
   { kind: 'question', label: 'Question', icon: <HelpCircle className="size-3" /> },
   { kind: 'decision', label: 'Decision', icon: <Bookmark className="size-3" /> },
-  { kind: 'constraint', label: 'Constraint', icon: <AlertCircle className="size-3" /> },
-  { kind: 'todo', label: 'To-do', icon: <CheckCircle2 className="size-3" /> },
 ];
 
 export function AnnotationComposer({

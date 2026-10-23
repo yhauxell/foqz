@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState, useCallback } from "react";
+import React, { memo, useEffect, useRef, useState } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -8,10 +8,10 @@ import {
   type EdgeProps,
   type Edge,
 } from "@xyflow/react";
-import { Ban, Link2, Package, Trash2, Zap } from "lucide-react";
+import { Link2, Package, Trash2, Zap } from "lucide-react";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
-export type SemanticRelation = "depends" | "blocks" | "aggregates";
+export type SemanticRelation = "depends" | "relates";
 
 export interface SemanticEdgeData {
   relation?: SemanticRelation;
@@ -42,16 +42,7 @@ const RELATION_CONFIG: Record<
     badgeBorder: "border-blue-200 dark:border-blue-800",
     icon: Link2,
   },
-  blocks: {
-    label: "blocks",
-    stroke: "#ef4444",
-    badgeBg: "bg-rose-50/90 dark:bg-rose-950/90",
-    badgeText: "text-rose-700 dark:text-rose-300",
-    badgeBorder: "border-rose-200 dark:border-rose-800",
-    dashArray: "6 3",
-    icon: Ban,
-  },
-  aggregates: {
+  relates: {
     label: "relates to",
     stroke: "#10b981",
     badgeBg: "bg-emerald-50/90 dark:bg-emerald-950/90",
@@ -89,45 +80,7 @@ export const SemanticEdge = memo(function SemanticEdge({
   });
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
-
-  // Check if either connected node is in a runway frame
-  const isConnectedToRunway = useFlowCanvasStore(
-    useCallback(
-      (s) => {
-        const src = s.nodes.find((n) => n.id === source);
-        const tgt = s.nodes.find((n) => n.id === target);
-        if (!src || !tgt) return false;
-        const getParentRunwayId = (node: typeof src) => {
-          if (!node.parentId) return null;
-          const p = s.nodes.find((pNode) => pNode.id === node.parentId);
-          return p?.type === "runwayFrame" || String((p?.data as any)?.title || "").includes("Runway")
-            ? p.id
-            : null;
-        };
-        const srcRunway = getParentRunwayId(src);
-        const tgtRunway = getParentRunwayId(tgt);
-        // It's a cross-runway edge if one is in a runway and the other isn't, OR in different runways
-        return (srcRunway !== null || tgtRunway !== null) && srcRunway !== tgtRunway;
-      },
-      [source, target]
-    )
-  );
-
-  // Check if either connected endpoint is selected
-  const isEndpointSelected = useFlowCanvasStore(
-    useCallback(
-      (s) => {
-        const src = s.nodes.find((n) => n.id === source);
-        const tgt = s.nodes.find((n) => n.id === target);
-        return Boolean(src?.selected || tgt?.selected);
-      },
-      [source, target]
-    )
-  );
-
-  const isEdgeActive = selected || isEndpointSelected || isHovered || menuOpen;
 
   const isAnimated = Boolean(data?.animated);
   const relation: SemanticRelation = data?.relation || "depends";
@@ -142,11 +95,8 @@ export const SemanticEdge = memo(function SemanticEdge({
   if (relation === "depends") {
     strokeColor = selected ? "#2563eb" : "#3b82f6";
     isSolid = true;
-  } else if (relation === "blocks") {
-    strokeColor = selected ? "#dc2626" : "#ef4444";
-    strokeDasharray = "6 3";
   } else {
-    // aggregates
+    // relates
     strokeColor = selected ? "#059669" : "#10b981";
     strokeDasharray = "2 4";
     strokeLinecap = "round";
@@ -213,8 +163,6 @@ export const SemanticEdge = memo(function SemanticEdge({
         stroke="transparent"
         strokeWidth={24}
         className="cursor-pointer pointer-events-auto"
-        onPointerEnter={() => setIsHovered(true)}
-        onPointerLeave={() => setIsHovered(false)}
       />
 
       <BaseEdge
@@ -223,13 +171,11 @@ export const SemanticEdge = memo(function SemanticEdge({
         style={{
           ...style,
           stroke: strokeColor,
-          strokeWidth: selected ? 2.5 : isConnectedToRunway && !isEdgeActive ? 1.5 : 2,
-          strokeDasharray: isConnectedToRunway && !isEdgeActive ? "4 4" : strokeDasharray,
+          strokeWidth: selected ? 2.5 : 2,
+          strokeDasharray,
           strokeLinecap,
-          opacity: isConnectedToRunway && !isEdgeActive ? 0.18 : 1,
-          animation: isConnectedToRunway && !isEdgeActive ? "none" : (animationStyle ?? "none"),
+          animation: animationStyle ?? "none",
           transition: "stroke 150ms ease, stroke-width 150ms ease, opacity 200ms ease",
-          filter: isEdgeActive && isConnectedToRunway ? `drop-shadow(0 0 4px ${strokeColor})` : undefined,
         }}
       />
 
@@ -289,14 +235,11 @@ export const SemanticEdge = memo(function SemanticEdge({
           style={{
             position: "absolute",
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            pointerEvents: isConnectedToRunway && !isEdgeActive ? "none" : "all",
-            opacity: isConnectedToRunway && !isEdgeActive ? 0 : 1,
+            pointerEvents: "all",
             transition: "opacity 150ms ease",
             zIndex: menuOpen ? 10000 : selected ? 1002 : 1000,
           }}
           className="nodrag nopan"
-          onPointerEnter={() => setIsHovered(true)}
-          onPointerLeave={() => setIsHovered(false)}
         >
           {/* Main Clickable Relation Pill */}
           <div
@@ -371,28 +314,9 @@ export const SemanticEdge = memo(function SemanticEdge({
 
                 <button
                   type="button"
-                  onClick={(e) => handleSelectRelation("blocks", e)}
+                  onClick={(e) => handleSelectRelation("relates", e)}
                   className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    relation === "blocks"
-                      ? "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 font-semibold"
-                      : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                  }`}
-                >
-                  <svg className="size-2.5 opacity-50 shrink-0" viewBox="0 0 10 10" fill="none">
-                    <path d="M1 5h8M6 2l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <Ban className="size-3 text-rose-500 shrink-0" />
-                  <span>Blocks</span>
-                  <svg className="ml-auto size-8 h-2.5" viewBox="0 0 32 10" fill="none">
-                    <line x1="0" y1="5" x2="32" y2="5" stroke="#ef4444" strokeWidth="2" strokeDasharray="5 3" strokeLinecap="round" />
-                  </svg>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={(e) => handleSelectRelation("aggregates", e)}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    relation === "aggregates"
+                    relation === "relates"
                       ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 font-semibold"
                       : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   }`}

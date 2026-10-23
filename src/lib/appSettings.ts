@@ -1,12 +1,5 @@
 /** Persisted app preferences (mirrors `app-settings.json` in Electron userData). */
 
-import {
-  BUILTIN_AGENT_PROFILES,
-  BUILTIN_CUSTOM_SKILLS,
-  type AgentProfile,
-  type CustomSkill,
-} from './agentProfiles'
-
 export type AppWindowBounds = {
   x: number;
   y: number;
@@ -36,9 +29,6 @@ export type AppSettings = {
   playSoundOnTimerEnd: boolean;
   colorScheme: "light" | "dark" | "system";
   workingHours: WorkingHoursRange;
-  typesafeEnabled?: boolean;
-  typesafeApiKey?: string;
-  typesafeBaseUrl?: string;
   ollamaEnabled?: boolean;
   ollamaBaseUrl?: string;
   ollamaDefaultModel?: string;
@@ -46,16 +36,8 @@ export type AppSettings = {
   openaiApiKey?: string;
   openaiBaseUrl?: string;
   openaiDefaultModel?: string;
-  geminiEnabled?: boolean;
-  geminiApiKey?: string;
-  geminiDefaultModel?: string;
   githubToken?: string;
-  activeAiProvider?: "ollama" | "openai" | "gemini";
-  imageProvider?: "auto" | "openai" | "gemini" | "pollinations";
-  imageModel?: string;
-  agentProfiles?: AgentProfile[];
-  customSkills?: CustomSkill[];
-  activeAgentProfileId?: string;
+  activeAiProvider?: "ollama" | "openai";
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -73,9 +55,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   colorScheme: "light",
   // 9am..5pm
   workingHours: { startMin: 9 * 60, endMin: 17 * 60 },
-  typesafeEnabled: true,
-  typesafeApiKey: "",
-  typesafeBaseUrl: "https://api.typesafe.ai",
   ollamaEnabled: true,
   ollamaBaseUrl: "http://127.0.0.1:11434",
   ollamaDefaultModel: "",
@@ -83,15 +62,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   openaiApiKey: "",
   openaiBaseUrl: "https://api.openai.com/v1",
   openaiDefaultModel: "gpt-4o-mini",
-  geminiEnabled: false,
-  geminiApiKey: "",
-  geminiDefaultModel: "gemini-1.5-flash",
   githubToken: "",
-  imageProvider: "auto",
-  imageModel: "dall-e-3",
-  agentProfiles: BUILTIN_AGENT_PROFILES,
-  customSkills: BUILTIN_CUSTOM_SKILLS,
-  activeAgentProfileId: "default-copilot",
 };
 
 function isValidBounds(b: unknown): b is AppWindowBounds {
@@ -134,11 +105,52 @@ function normalizeWorkingHours(raw: unknown): WorkingHoursRange {
   return { startMin, endMin };
 }
 
+/** Google's OpenAI-compatible endpoint; Gemini settings migrate onto the OpenAI-compatible provider. */
+export const GEMINI_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai";
+
+/** Settings keys removed in v0.14 (Gemini provider, TypeSafe/Jev, image generation, agent profiles). */
+const REMOVED_SETTINGS_KEYS = [
+  "typesafeEnabled",
+  "typesafeApiKey",
+  "typesafeBaseUrl",
+  "geminiEnabled",
+  "geminiApiKey",
+  "geminiDefaultModel",
+  "imageProvider",
+  "imageModel",
+  "agentProfiles",
+  "customSkills",
+  "activeAgentProfileId",
+] as const;
+
+/**
+ * v0.14: a configured Gemini provider becomes the OpenAI-compatible provider pointed at
+ * Google's OpenAI endpoint, so nobody loses a working setup. Mirrored in electron/main.cjs.
+ */
+export function migrateLegacyAiSettings(raw: Record<string, any>): Record<string, any> {
+  const key = typeof raw.geminiApiKey === "string" ? raw.geminiApiKey.trim() : "";
+  const geminiActive = raw.activeAiProvider === "gemini";
+  const openaiKey = typeof raw.openaiApiKey === "string" ? raw.openaiApiKey.trim() : "";
+  if (!key || (!geminiActive && openaiKey)) {
+    return geminiActive ? { ...raw, activeAiProvider: undefined } : raw;
+  }
+  const model = typeof raw.geminiDefaultModel === "string" ? raw.geminiDefaultModel.trim() : "";
+  return {
+    ...raw,
+    openaiEnabled: true,
+    openaiApiKey: key,
+    openaiBaseUrl: GEMINI_OPENAI_BASE_URL,
+    openaiDefaultModel: !model || model.startsWith("gemini-1.") ? "gemini-2.5-flash" : model,
+    activeAiProvider: geminiActive ? "openai" : raw.activeAiProvider,
+  };
+}
+
 export function mergeAppSettings(
-  parsed: Partial<AppSettings> | null | undefined,
+  input: Partial<AppSettings> | null | undefined,
 ): AppSettings {
   const base = { ...DEFAULT_APP_SETTINGS };
-  if (!parsed || typeof parsed !== "object") return base;
+  if (!input || typeof input !== "object") return base;
+  const parsed = migrateLegacyAiSettings(input as Record<string, any>) as Partial<AppSettings>;
 
   const durationPresets = normalizePresets(parsed.durationPresets);
   let defaultFocusMinutes =
@@ -169,7 +181,7 @@ export function mergeAppSettings(
       ? parsed.colorScheme
       : base.colorScheme;
 
-  return {
+  const merged: AppSettings = {
     ...base,
     ...parsed,
     defaultFocusMinutes,
@@ -206,18 +218,6 @@ export function mergeAppSettings(
         : base.playSoundOnTimerEnd,
     colorScheme,
     workingHours: normalizeWorkingHours(parsed.workingHours),
-    typesafeEnabled:
-      typeof parsed.typesafeEnabled === "boolean"
-        ? parsed.typesafeEnabled
-        : base.typesafeEnabled,
-    typesafeApiKey:
-      typeof parsed.typesafeApiKey === "string"
-        ? parsed.typesafeApiKey.trim()
-        : base.typesafeApiKey,
-    typesafeBaseUrl:
-      typeof parsed.typesafeBaseUrl === "string" && parsed.typesafeBaseUrl.trim()
-        ? parsed.typesafeBaseUrl.trim().replace(/\/+$/, "")
-        : base.typesafeBaseUrl,
     ollamaEnabled:
       typeof parsed.ollamaEnabled === "boolean"
         ? parsed.ollamaEnabled
@@ -246,42 +246,21 @@ export function mergeAppSettings(
       typeof parsed.openaiDefaultModel === "string"
         ? parsed.openaiDefaultModel.trim()
         : base.openaiDefaultModel,
-    geminiEnabled:
-      typeof parsed.geminiEnabled === "boolean"
-        ? parsed.geminiEnabled
-        : base.geminiEnabled,
-    geminiApiKey:
-      typeof parsed.geminiApiKey === "string"
-        ? parsed.geminiApiKey.trim()
-        : base.geminiApiKey,
-    geminiDefaultModel:
-      typeof parsed.geminiDefaultModel === "string"
-        ? parsed.geminiDefaultModel.trim()
-        : base.geminiDefaultModel,
     githubToken:
       typeof parsed.githubToken === "string"
         ? parsed.githubToken.trim()
         : base.githubToken,
     activeAiProvider:
-      parsed.activeAiProvider === "openai" ||
-      parsed.activeAiProvider === "gemini" ||
-      parsed.activeAiProvider === "ollama"
+      parsed.activeAiProvider === "openai" || parsed.activeAiProvider === "ollama"
         ? parsed.activeAiProvider
         : base.activeAiProvider,
-    agentProfiles: Array.isArray(parsed.agentProfiles) && parsed.agentProfiles.length > 0
-      ? parsed.agentProfiles
-      : base.agentProfiles,
-    customSkills: Array.isArray(parsed.customSkills) && parsed.customSkills.length > 0
-      ? parsed.customSkills
-      : base.customSkills,
-    activeAgentProfileId: typeof parsed.activeAgentProfileId === "string"
-      ? parsed.activeAgentProfileId
-      : base.activeAgentProfileId,
   };
+  for (const key of REMOVED_SETTINGS_KEYS) delete (merged as Record<string, unknown>)[key];
+  return merged;
 }
 
 export interface ActiveAiConfig {
-  provider: "ollama" | "openai" | "gemini";
+  provider: "ollama" | "openai";
   model: string;
   apiKey?: string;
   baseUrl?: string;
@@ -308,15 +287,6 @@ export function resolveActiveAiConfig(
     };
   }
 
-  if (merged.activeAiProvider === "gemini") {
-    return {
-      provider: "gemini",
-      model: merged.geminiDefaultModel || "gemini-1.5-flash",
-      apiKey: merged.geminiApiKey || "",
-      isConfigured: Boolean(merged.geminiApiKey?.trim()),
-    };
-  }
-
   if (merged.activeAiProvider === "ollama") {
     return {
       provider: "ollama",
@@ -333,15 +303,6 @@ export function resolveActiveAiConfig(
       model: merged.openaiDefaultModel || "gpt-4o-mini",
       apiKey: merged.openaiApiKey,
       baseUrl: merged.openaiBaseUrl || "https://api.openai.com/v1",
-      isConfigured: true,
-    };
-  }
-
-  if (merged.geminiEnabled && merged.geminiApiKey?.trim()) {
-    return {
-      provider: "gemini",
-      model: merged.geminiDefaultModel || "gemini-1.5-flash",
-      apiKey: merged.geminiApiKey,
       isConfigured: true,
     };
   }

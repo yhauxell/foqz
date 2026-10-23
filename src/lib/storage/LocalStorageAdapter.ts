@@ -8,10 +8,13 @@ import {
   BOARD_NAME_KEY,
   DEFAULT_BOARD_ID,
   DEFAULT_BOARD_NAME,
+  GITHUB_TOKEN_KEY,
+  getBoardBackupKey,
   getBoardStorageKey,
   STORAGE_BOARDS_KEY,
 } from "@/lib/storage/keys";
 import { normalizeBoardSnapshot } from "@/lib/storage/snapshot";
+import { migrateBoardSnapshot } from "@/lib/storage/migrate";
 
 function resolveStorage(storage?: Storage | null): Storage | null {
   if (storage !== undefined) return storage;
@@ -138,11 +141,35 @@ export class LocalStorageAdapter implements CanvasStorageAdapter {
       const key = getBoardStorageKey(boardId);
       const raw = this.storage?.getItem(key);
       if (!raw) return null;
-      return normalizeBoardSnapshot(JSON.parse(raw));
+      const snapshot = normalizeBoardSnapshot(JSON.parse(raw), { migrate: false });
+      if (!snapshot) return null;
+      return this.migrateOnLoad(boardId, raw, snapshot);
     } catch (err) {
       console.warn("Failed to load board snapshot:", err);
       return null;
     }
+  }
+
+  /**
+   * Upgrade an older snapshot in place. The raw JSON is copied to a backup key
+   * first (never overwritten), so a bad migration can be recovered by hand.
+   */
+  private migrateOnLoad(boardId: string, raw: string, snapshot: BoardSnapshot): BoardSnapshot {
+    const result = migrateBoardSnapshot(snapshot);
+    if (!result.changed || !this.storage) return result.snapshot;
+    try {
+      const backupKey = getBoardBackupKey(boardId, snapshot.version);
+      if (this.storage.getItem(backupKey) === null) {
+        this.storage.setItem(backupKey, raw);
+      }
+      if (result.strippedGithubToken && !this.storage.getItem(GITHUB_TOKEN_KEY)) {
+        this.storage.setItem(GITHUB_TOKEN_KEY, result.strippedGithubToken);
+      }
+      this.storage.setItem(getBoardStorageKey(boardId), JSON.stringify(result.snapshot));
+    } catch (err) {
+      console.warn("Failed to persist migrated board snapshot:", err);
+    }
+    return result.snapshot;
   }
 
   saveBoardSync(boardId: string, snapshot: BoardSnapshot): void {

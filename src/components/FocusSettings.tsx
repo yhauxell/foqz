@@ -1,40 +1,28 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useFocusAppSettings } from "@/context/FocusAppSettingsContext";
-import { mergeAppSettings } from "@/lib/appSettings";
+import { GEMINI_OPENAI_BASE_URL, mergeAppSettings } from "@/lib/appSettings";
 import { ensureNotificationPermission } from "@/lib/focusSessionFeedback";
 import {
-  AlertCircle,
   Bot,
   Check,
-  CheckCircle2,
-  Database,
   Download,
   Eye,
   EyeOff,
   GitPullRequest,
-  ImageIcon,
-  Plus,
+  Plug,
   RefreshCw,
   Sliders,
   Sparkles,
-  Target,
-  Trash2,
-  Wrench,
   X,
-  Zap,
 } from "lucide-react";
 import { McpSettingsTab } from "@/components/McpSettingsTab";
 import { getSyncIntervalMinutes, setSyncIntervalMinutes } from "@/lib/githubTaskSync";
 import { McpHostSettings } from "./McpHostSettings";
-import { AgentsSettingsTab } from "@/components/AgentsSettingsTab";
 import {
   OPENAI_DEFAULT_MODELS,
-  GEMINI_DEFAULT_MODELS,
   testOllamaConnection,
   testOpenAiConnection,
-  testGeminiConnection,
-  testJevConnection,
 } from "@/lib/aiConnectors";
 import { discoverLocalServers, type DiscoveredLocalServer } from "@/lib/ollama";
 import { useCallback, useEffect, useState } from "react";
@@ -45,71 +33,13 @@ import {
   type BoardSnapshot,
 } from "@/types/storage";
 
-function AiConnectorCard({
-  icon: Icon,
-  title,
-  badge,
-  description,
-  enabled,
-  onToggle,
-  children,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  badge?: string;
-  description: string;
-  enabled: boolean;
-  onToggle: (enabled: boolean) => void;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div
-      className={`rounded-xl border transition-all duration-200 overflow-hidden ${
-        enabled
-          ? "border-border/90 bg-card/60 shadow-xs"
-          : "border-border/50 bg-muted/20 opacity-85"
-      }`}
-    >
-      <div className="flex items-center justify-between p-4 bg-muted/10 border-b border-border/40">
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className={`p-2 rounded-xl shrink-0 ${
-              enabled
-                ? "bg-primary/10 text-primary"
-                : "bg-muted text-muted-foreground"
-            }`}
-          >
-            <Icon className="size-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-sm text-foreground">{title}</span>
-              {badge && (
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border/50">
-                  {badge}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground truncate">{description}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2.5 shrink-0 ml-3">
-          <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
-            {enabled ? "Active" : "Disabled"}
-          </span>
-          <Toggle checked={enabled} onCheckedChange={onToggle} />
-        </div>
-      </div>
-      {enabled ? (
-        <div className="p-4 space-y-3.5 bg-background/50">{children}</div>
-      ) : (
-        <div className="px-4 py-3 text-xs text-muted-foreground italic bg-muted/5">
-          Connector disabled. Toggle switch to enable and configure.
-        </div>
-      )}
-    </div>
-  );
-}
+/** Endpoints that speak the OpenAI chat-completions API. */
+const OPENAI_COMPATIBLE_PRESETS = [
+  { label: "OpenAI", url: "https://api.openai.com/v1" },
+  { label: "OpenRouter", url: "https://openrouter.ai/api/v1" },
+  { label: "Google Gemini", url: GEMINI_OPENAI_BASE_URL },
+  { label: "LM Studio", url: "http://127.0.0.1:1234/v1" },
+];
 
 function Section({
   title,
@@ -218,7 +148,13 @@ function parsePresetsText(s: string): number[] {
     .filter((n) => Number.isFinite(n) && n >= 1 && n <= 480);
 }
 
-type SettingsTab = "general" | "ai" | "agents" | "data" | "workingHours" | "mcp";
+export type SettingsTab = "app" | "intelligence" | "integrations";
+
+const TABS: Array<{ id: SettingsTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { id: "app", label: "App", icon: Sliders },
+  { id: "intelligence", label: "Intelligence", icon: Sparkles },
+  { id: "integrations", label: "Integrations", icon: Plug },
+];
 
 function formatTime(min: number): string {
   const m = Math.min(24 * 60, Math.max(0, Math.round(min)));
@@ -242,12 +178,11 @@ function parseTimeToMinutes(v: string): number | null {
 export function FocusSettings({
   open,
   onClose,
-  initialTab = "general",
+  initialTab = "app",
 }: {
   open: boolean;
   onClose: () => void;
   initialTab?: SettingsTab;
-  editor?: any;
 }) {
   const { settings, update } = useFocusAppSettings();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
@@ -259,7 +194,7 @@ export function FocusSettings({
     formatTime(settings.workingHours.startMin),
   );
   const [workingEnd, setWorkingEnd] = useState(formatTime(settings.workingHours.endMin));
-  // Ollama & Local LLM Servers
+  // Ollama & local servers
   const [ollamaEnabled, setOllamaEnabled] = useState(settings.ollamaEnabled ?? true);
   const [ollamaUrlDraft, setOllamaUrlDraft] = useState(settings.ollamaBaseUrl || "http://127.0.0.1:11434");
   const [ollamaModelDraft, setOllamaModelDraft] = useState(settings.ollamaDefaultModel || "");
@@ -268,7 +203,7 @@ export function FocusSettings({
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredLocalServer[]>([]);
   const [probingLocal, setProbingLocal] = useState(false);
 
-  // OpenAI
+  // OpenAI-compatible
   const [openaiEnabled, setOpenaiEnabled] = useState(settings.openaiEnabled ?? false);
   const [openaiKeyDraft, setOpenaiKeyDraft] = useState(settings.openaiApiKey || "");
   const [openaiUrlDraft, setOpenaiUrlDraft] = useState(settings.openaiBaseUrl || "https://api.openai.com/v1");
@@ -277,23 +212,7 @@ export function FocusSettings({
   const [openaiStatus, setOpenaiStatus] = useState<string | null>(null);
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
 
-  // Gemini
-  const [geminiEnabled, setGeminiEnabled] = useState(settings.geminiEnabled ?? false);
-  const [geminiKeyDraft, setGeminiKeyDraft] = useState(settings.geminiApiKey || "");
-  const [geminiModelDraft, setGeminiModelDraft] = useState(settings.geminiDefaultModel || "gemini-1.5-flash");
-  const [testingGemini, setTestingGemini] = useState(false);
-  const [geminiStatus, setGeminiStatus] = useState<string | null>(null);
-  const [showGeminiKey, setShowGeminiKey] = useState(false);
-
-  // TypeSafe (Jev)
-  const [typesafeEnabled, setTypesafeEnabled] = useState(settings.typesafeEnabled ?? true);
-  const [typesafeKeyDraft, setTypesafeKeyDraft] = useState(settings.typesafeApiKey || "");
-  const [typesafeUrlDraft, setTypesafeUrlDraft] = useState(settings.typesafeBaseUrl || "https://api.typesafe.ai");
-  const [testingJev, setTestingJev] = useState(false);
-  const [jevStatus, setJevStatus] = useState<string | null>(null);
-  const [showTypesafeKey, setShowTypesafeKey] = useState(false);
-
-  // GitHub Integration (PAT)
+  // GitHub (one global token)
   const [githubTokenDraft, setGithubTokenDraft] = useState(() => {
     if (settings.githubToken) return settings.githubToken;
     if (typeof window !== "undefined" && window.localStorage) {
@@ -306,17 +225,6 @@ export function FocusSettings({
   const [showGithubToken, setShowGithubToken] = useState(false);
   const [githubTokenStatus, setGithubTokenStatus] = useState<string | null>(null);
   const [testingGithub, setTestingGithub] = useState(false);
-
-  // Image Generation
-  const [imageProviderDraft, setImageProviderDraft] = useState<"auto" | "openai" | "gemini" | "pollinations">(
-    settings.imageProvider || "auto"
-  );
-  const [imageModelDraft, setImageModelDraft] = useState(settings.imageModel || "dall-e-3");
-
-  // In-modal AI Provider Configuration Drawer / Panel
-  const [activeConfigProvider, setActiveConfigProvider] = useState<
-    "ollama" | "openai" | "gemini" | "typesafe" | "image" | null
-  >(null);
 
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -379,22 +287,8 @@ export function FocusSettings({
     setOpenaiUrlDraft(settings.openaiBaseUrl || "https://api.openai.com/v1");
     setOpenaiModelDraft(settings.openaiDefaultModel || "gpt-4o-mini");
 
-    setGeminiEnabled(settings.geminiEnabled ?? false);
-    setGeminiKeyDraft(settings.geminiApiKey || "");
-    setGeminiModelDraft(settings.geminiDefaultModel || "gemini-1.5-flash");
-
-    setTypesafeEnabled(settings.typesafeEnabled ?? true);
-    setTypesafeKeyDraft(settings.typesafeApiKey || "");
-    setTypesafeUrlDraft(settings.typesafeBaseUrl || "https://api.typesafe.ai");
-
     if (settings.githubToken !== undefined) {
       setGithubTokenDraft(settings.githubToken);
-    }
-    if (settings.imageProvider !== undefined) {
-      setImageProviderDraft(settings.imageProvider);
-    }
-    if (settings.imageModel !== undefined) {
-      setImageModelDraft(settings.imageModel);
     }
   }, [
     settings.globalToggleShortcut,
@@ -407,15 +301,7 @@ export function FocusSettings({
     settings.openaiApiKey,
     settings.openaiBaseUrl,
     settings.openaiDefaultModel,
-    settings.geminiEnabled,
-    settings.geminiApiKey,
-    settings.geminiDefaultModel,
-    settings.typesafeEnabled,
-    settings.typesafeApiKey,
-    settings.typesafeBaseUrl,
     settings.githubToken,
-    settings.imageProvider,
-    settings.imageModel,
   ]);
 
   useEffect(() => {
@@ -467,50 +353,6 @@ export function FocusSettings({
       if (!res.ok) setSaveError(res.error ?? "Could not save OpenAI configuration");
     },
     [update, openaiEnabled, openaiKeyDraft, openaiUrlDraft, openaiModelDraft],
-  );
-
-  const persistGeminiConfig = useCallback(
-    async (partial?: { enabled?: boolean; key?: string; model?: string }) => {
-      setSaveError(null);
-      const enabled = partial?.enabled ?? geminiEnabled;
-      const key = (partial?.key ?? geminiKeyDraft).trim();
-      const model = (partial?.model ?? geminiModelDraft).trim();
-      if (typeof window !== "undefined" && window.localStorage) {
-        try {
-          localStorage.setItem("foqz_gemini_api_key", key);
-          localStorage.setItem("foqz_gemini_model", model);
-        } catch {}
-      }
-      const res = await update({
-        geminiEnabled: enabled,
-        geminiApiKey: key,
-        geminiDefaultModel: model,
-      });
-      if (!res.ok) setSaveError(res.error ?? "Could not save Gemini configuration");
-    },
-    [update, geminiEnabled, geminiKeyDraft, geminiModelDraft],
-  );
-
-  const persistTypesafeConfig = useCallback(
-    async (partial?: { enabled?: boolean; key?: string; url?: string }) => {
-      setSaveError(null);
-      const enabled = partial?.enabled ?? typesafeEnabled;
-      const key = (partial?.key ?? typesafeKeyDraft).trim();
-      const url = (partial?.url ?? typesafeUrlDraft).trim();
-      if (typeof window !== "undefined" && window.localStorage) {
-        try {
-          localStorage.setItem("foqz_typesafe_api_key", key);
-          localStorage.setItem("foqz_typesafe_base_url", url);
-        } catch {}
-      }
-      const res = await update({
-        typesafeEnabled: enabled,
-        typesafeApiKey: key,
-        typesafeBaseUrl: url,
-      });
-      if (!res.ok) setSaveError(res.error ?? "Could not save TypeSafe configuration");
-    },
-    [update, typesafeEnabled, typesafeKeyDraft, typesafeUrlDraft],
   );
 
   const persistGithubToken = useCallback(
@@ -582,7 +424,7 @@ export function FocusSettings({
   }, [ollamaModelDraft, persistOllamaConfig]);
 
   useEffect(() => {
-    if (open && tab === "ai") {
+    if (open && tab === "intelligence") {
       void handleProbeLocalServers();
     }
   }, [open, tab, handleProbeLocalServers]);
@@ -604,24 +446,6 @@ export function FocusSettings({
     setOpenaiStatus(res.message);
     setTestingOpenai(false);
   }, [openaiKeyDraft, openaiUrlDraft, persistOpenAiConfig]);
-
-  const handleTestGemini = useCallback(async () => {
-    setTestingGemini(true);
-    setGeminiStatus(null);
-    void persistGeminiConfig();
-    const res = await testGeminiConnection(geminiKeyDraft);
-    setGeminiStatus(res.message);
-    setTestingGemini(false);
-  }, [geminiKeyDraft, persistGeminiConfig]);
-
-  const handleTestJev = useCallback(async () => {
-    setTestingJev(true);
-    setJevStatus(null);
-    void persistTypesafeConfig();
-    const res = await testJevConnection(typesafeKeyDraft, typesafeUrlDraft);
-    setJevStatus(res.message);
-    setTestingJev(false);
-  }, [typesafeKeyDraft, typesafeUrlDraft, persistTypesafeConfig]);
 
   const persistWorkingHours = useCallback(async () => {
     setSaveError(null);
@@ -671,19 +495,19 @@ export function FocusSettings({
     const startMin = parseTimeToMinutes(workingStart);
     const endMin = parseTimeToMinutes(workingEnd);
     if (startMin == null || endMin == null) {
-      setSaveError("Working hours must be valid times (HH:MM).");
+      setSaveError("Workday must be valid times (HH:MM).");
       setIsSaving(false);
       return;
     }
     if (startMin === endMin) {
-      setSaveError("Working hours range can’t be zero-length.");
+      setSaveError("Workday can’t be zero-length.");
       setIsSaving(false);
       return;
     }
 
     const nums = parsePresetsText(presetsDraft);
     if (nums.length === 0) {
-      setSaveError("Add at least one duration preset (minutes).");
+      setSaveError("Add at least one focus length (minutes).");
       setIsSaving(false);
       return;
     }
@@ -698,10 +522,6 @@ export function FocusSettings({
         localStorage.setItem("foqz_openai_api_key", openaiKeyDraft.trim());
         localStorage.setItem("foqz_openai_base_url", openaiUrlDraft.trim());
         localStorage.setItem("foqz_openai_model", openaiModelDraft.trim());
-        localStorage.setItem("foqz_gemini_api_key", geminiKeyDraft.trim());
-        localStorage.setItem("foqz_gemini_model", geminiModelDraft.trim());
-        localStorage.setItem("foqz_typesafe_api_key", typesafeKeyDraft.trim());
-        localStorage.setItem("foqz_typesafe_base_url", typesafeUrlDraft.trim());
         if (githubTokenDraft.trim()) {
           localStorage.setItem("foqz_github_token", githubTokenDraft.trim());
         } else {
@@ -722,15 +542,7 @@ export function FocusSettings({
       openaiApiKey: openaiKeyDraft.trim(),
       openaiBaseUrl: openaiUrlDraft.trim(),
       openaiDefaultModel: openaiModelDraft.trim(),
-      geminiEnabled,
-      geminiApiKey: geminiKeyDraft.trim(),
-      geminiDefaultModel: geminiModelDraft.trim(),
-      typesafeEnabled,
-      typesafeApiKey: typesafeKeyDraft.trim(),
-      typesafeBaseUrl: typesafeUrlDraft.trim(),
       githubToken: githubTokenDraft.trim(),
-      imageProvider: imageProviderDraft,
-      imageModel: imageModelDraft.trim(),
     });
 
     setIsSaving(false);
@@ -758,15 +570,7 @@ export function FocusSettings({
     openaiKeyDraft,
     openaiUrlDraft,
     openaiModelDraft,
-    geminiEnabled,
-    geminiKeyDraft,
-    geminiModelDraft,
-    typesafeEnabled,
-    typesafeKeyDraft,
-    typesafeUrlDraft,
     githubTokenDraft,
-    imageProviderDraft,
-    imageModelDraft,
     onClose,
   ]);
 
@@ -810,6 +614,9 @@ export function FocusSettings({
         const snapshot = normalizeBoardSnapshot(JSON.parse(text));
         if (!snapshot) {
           setSaveError("Invalid board JSON: expected nodes and edges arrays");
+          return;
+        }
+        if (!window.confirm("Replace everything on this board with the imported file? Undo can bring it back.")) {
           return;
         }
         const store = useFlowCanvasStore.getState();
@@ -871,79 +678,36 @@ export function FocusSettings({
         </div>
 
         <div className="border-b border-border/60 px-6 py-2.5 bg-muted/20">
-          <div className="flex w-full items-center gap-2 overflow-x-auto no-scrollbar rounded-xl border border-border/70 bg-muted/50 p-1 select-none">
-            <button
-              type="button"
-              className={[
-                "h-9 flex-1 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 text-xs sm:text-sm font-medium transition",
-                tab === "general" || tab === "workingHours"
-                  ? "bg-background text-foreground shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/40",
-              ].join(" ")}
-              onClick={() => {
-                setActiveConfigProvider(null);
-                setTab("general");
-              }}
-            >
-              <Sliders className="size-3.5 shrink-0" />
-              <span>General</span>
-            </button>
-            <button
-              type="button"
-              className={[
-                "h-9 flex-1 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 text-xs sm:text-sm font-medium transition",
-                tab === "ai"
-                  ? "bg-background text-foreground shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/40",
-              ].join(" ")}
-              onClick={() => setTab("ai")}
-            >
-              <Sparkles className="size-3.5 shrink-0 text-amber-500" />
-              <span>AI & Models</span>
-            </button>
-            <button
-              type="button"
-              className={[
-                "h-9 flex-1 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 text-xs sm:text-sm font-medium transition",
-                tab === "agents" || tab === "mcp"
-                  ? "bg-background text-foreground shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/40",
-              ].join(" ")}
-              onClick={() => {
-                setActiveConfigProvider(null);
-                setTab("agents");
-              }}
-            >
-              <Bot className="size-3.5 shrink-0 text-blue-500" />
-              <span>Agents & MCP</span>
-            </button>
-            <button
-              type="button"
-              className={[
-                "h-9 flex-1 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 text-xs sm:text-sm font-medium transition",
-                tab === "data"
-                  ? "bg-background text-foreground shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/40",
-              ].join(" ")}
-              onClick={() => {
-                setActiveConfigProvider(null);
-                setTab("data");
-              }}
-            >
-              <Database className="size-3.5 shrink-0 text-emerald-500" />
-              <span>Data</span>
-            </button>
+          <div className="flex w-full items-center gap-2 overflow-x-auto no-scrollbar rounded-xl border border-border/70 bg-muted/50 p-1 select-none" role="tablist">
+            {TABS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                className={[
+                  "h-9 flex-1 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 text-xs sm:text-sm font-medium transition",
+                  tab === id
+                    ? "bg-background text-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/40",
+                ].join(" ")}
+                onClick={() => setTab(id)}
+              >
+                <Icon className="size-3.5 shrink-0" />
+                <span>{label}</span>
+              </button>
+            ))}
           </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-5">
           <div className="flex flex-col gap-9 pb-2">
-            {tab === "general" || tab === "workingHours" ? (
+            {tab === "app" ? (
             <>
             <Section title="Focus timer">
               <Row
-                label="Default block length"
-                description="Used for new timer cards and task focus sessions."
+                label="Focus length"
+                description="Minutes on the timer when you focus on something (F)."
               >
                 <Input
                   type="number"
@@ -960,8 +724,8 @@ export function FocusSettings({
                 />
               </Row>
               <Row
-                label="Duration presets (minutes)"
-                description="Comma-separated list shown on timer shapes."
+                label="Allowed lengths (minutes)"
+                description="Comma-separated. The focus length snaps to one of these."
               >
                 <Input
                   inputSize="sm"
@@ -976,8 +740,8 @@ export function FocusSettings({
 
             <Section title="Working hours">
               <Row
-                label="Daily active hours"
-                description="Used for planning features and highlighting after-hours sessions. Overnight ranges are supported."
+                label="Workday"
+                description="Done items move to the Logbook after the workday ends. Overnight ranges are supported."
               >
                 <div className="flex w-full min-w-0 flex-col gap-2 sm:max-w-[320px]">
                   <div className="flex items-center gap-2">
@@ -1235,56 +999,67 @@ export function FocusSettings({
                 </div>
               </div>
             </Section>
+            <Section title="Board data">
+              <Row
+                label="Export board"
+                description="Save a JSON copy of your canvas."
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void exportBoard()}
+                >
+                  Export…
+                </Button>
+              </Row>
+              <Row
+                label="Import board"
+                description="Replace the current board with a JSON file. Older exports are upgraded on import."
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void importBoard()}
+                >
+                  Import…
+                </Button>
+              </Row>
+              <Row label="Erase board" description="Remove all shapes permanently.">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => void resetBoard()}
+                >
+                  Reset board…
+                </Button>
+              </Row>
+            </Section>
             </>
             ) : null}
 
+            {tab === "intelligence" ? (
+              <div className="flex flex-col gap-6">
+                <div className="p-3.5 rounded-xl border border-border bg-card/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                  <div>
+                    <div className="text-xs font-semibold text-foreground">Model used by Foqz</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">Chat, canvas tools and summaries.</div>
+                  </div>
+                  <select
+                    aria-label="Active AI provider"
+                    value={settings.activeAiProvider || "ollama"}
+                    onChange={(e) => void update({ activeAiProvider: e.target.value as "ollama" | "openai" })}
+                    className="h-8 px-2.5 rounded-lg border border-input bg-background text-xs font-medium text-foreground cursor-pointer shadow-2xs"
+                  >
+                    <option value="ollama">Ollama (local, private)</option>
+                    <option value="openai">OpenAI-compatible endpoint</option>
+                  </select>
+                </div>
 
-
-            {tab === "ai" ? (
-              <div className="flex flex-col gap-5">
-                {activeConfigProvider ? (
-                  /* ==============================================================
-                     IN-MODAL CONFIGURATION PANEL FOR SELECTED PROVIDER
-                     ============================================================== */
-                  <div className="rounded-2xl border border-border/80 bg-card/60 p-5 space-y-5 animate-in fade-in slide-in-from-right-4 duration-150 shadow-sm">
-                    <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setActiveConfigProvider(null)}
-                          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          ← Back to Providers
-                        </Button>
-                        <span className="text-muted-foreground/40">|</span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-foreground capitalize">
-                            {activeConfigProvider === "image"
-                              ? "AI Image Generation"
-                              : activeConfigProvider === "typesafe"
-                              ? "TypeSafe AI (Jev)"
-                              : activeConfigProvider}
-                          </span>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">
-                            Configuration
-                          </span>
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => setActiveConfigProvider(null)}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="size-3.5" />
-                      </Button>
-                    </div>
-
-                    {/* Ollama Config */}
-                    {activeConfigProvider === "ollama" && (
+                <Section title="Ollama (local)">
+                  <div className="rounded-2xl border border-border/80 bg-card/60 p-5 shadow-sm">
                       <div className="space-y-4">
                         <div className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-muted/20">
                           <div>
@@ -1349,7 +1124,7 @@ export function FocusSettings({
                               { kind: 'ollama', name: 'Ollama', url: 'http://127.0.0.1:11434', online: false, models: [] },
                               { kind: 'lmstudio', name: 'LM Studio', url: 'http://127.0.0.1:1234/v1', online: false, models: [] },
                               { kind: 'llamacpp', name: 'llama.cpp', url: 'http://127.0.0.1:8080/v1', online: false, models: [] },
-                            ]).map((srv) => (
+                            ] as DiscoveredLocalServer[]).map((srv) => (
                               <div
                                 key={srv.name}
                                 className={`p-2 rounded-lg border text-xs flex flex-col justify-between gap-1 transition-all ${
@@ -1406,15 +1181,16 @@ export function FocusSettings({
                           )}
                         </div>
                       </div>
-                    )}
+                  </div>
+                </Section>
 
-                    {/* OpenAI Config */}
-                    {activeConfigProvider === "openai" && (
+                <Section title="OpenAI-compatible">
+                  <div className="rounded-2xl border border-border/80 bg-card/60 p-5 shadow-sm">
                       <div className="space-y-4">
                         <div className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-muted/20">
                           <div>
-                            <div className="text-xs font-semibold text-foreground">Enable OpenAI</div>
-                            <div className="text-[11px] text-muted-foreground">GPT-4o, GPT-4o-mini, and compatible API gateways</div>
+                            <div className="text-xs font-semibold text-foreground">Enable OpenAI-compatible</div>
+                            <div className="text-[11px] text-muted-foreground">OpenAI, OpenRouter, Google Gemini, LM Studio, or any /v1 chat endpoint</div>
                           </div>
                           <Toggle
                             checked={openaiEnabled}
@@ -1462,6 +1238,25 @@ export function FocusSettings({
                               onChange={(e) => setOpenaiUrlDraft(e.target.value)}
                               onBlur={() => void persistOpenAiConfig()}
                             />
+                            <div className="flex flex-wrap gap-1 pt-1.5">
+                              {OPENAI_COMPATIBLE_PRESETS.map((preset) => (
+                                <button
+                                  key={preset.label}
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenaiUrlDraft(preset.url);
+                                    void persistOpenAiConfig({ url: preset.url });
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] border cursor-pointer transition-colors ${
+                                    openaiUrlDraft === preset.url
+                                      ? "border-primary/50 bg-primary/10 text-primary"
+                                      : "border-border/60 text-muted-foreground hover:text-foreground"
+                                  }`}
+                                >
+                                  {preset.label}
+                                </button>
+                              ))}
+                            </div>
                           </div>
                           <div>
                             <label className="text-xs font-medium text-foreground block mb-1">
@@ -1512,407 +1307,14 @@ export function FocusSettings({
                           )}
                         </div>
                       </div>
-                    )}
-
-                    {/* Gemini Config */}
-                    {activeConfigProvider === "gemini" && (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-muted/20">
-                          <div>
-                            <div className="text-xs font-semibold text-foreground">Enable Google Gemini</div>
-                            <div className="text-[11px] text-muted-foreground">Gemini 1.5 Flash, 2.0 Flash, and Pro models</div>
-                          </div>
-                          <Toggle
-                            checked={geminiEnabled}
-                            onCheckedChange={(v) => {
-                              setGeminiEnabled(v);
-                              void persistGeminiConfig({ enabled: v });
-                            }}
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-medium text-foreground block mb-1">
-                            Google AI Studio API Key
-                          </label>
-                          <div className="relative flex items-center">
-                            <Input
-                              type={showGeminiKey ? "text" : "password"}
-                              inputSize="sm"
-                              placeholder="AIzaSy..."
-                              value={geminiKeyDraft}
-                              onChange={(e) => setGeminiKeyDraft(e.target.value)}
-                              onBlur={() => void persistGeminiConfig()}
-                              className="pr-9 font-mono text-xs"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowGeminiKey((prev) => !prev)}
-                              className="absolute right-2 text-muted-foreground hover:text-foreground p-1 rounded"
-                              tabIndex={-1}
-                            >
-                              {showGeminiKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-medium text-foreground block mb-1">
-                            Default Model
-                          </label>
-                          <div className="flex gap-1.5">
-                            <select
-                              className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
-                              value={GEMINI_DEFAULT_MODELS.includes(geminiModelDraft) ? geminiModelDraft : "custom"}
-                              onChange={(e) => {
-                                if (e.target.value !== "custom") {
-                                  setGeminiModelDraft(e.target.value);
-                                  void persistGeminiConfig({ model: e.target.value });
-                                }
-                              }}
-                            >
-                              {GEMINI_DEFAULT_MODELS.map((m) => (
-                                <option key={m} value={m}>{m}</option>
-                              ))}
-                              <option value="custom">Custom...</option>
-                            </select>
-                            <Input
-                              inputSize="sm"
-                              placeholder="model name"
-                              value={geminiModelDraft}
-                              onChange={(e) => setGeminiModelDraft(e.target.value)}
-                              onBlur={() => void persistGeminiConfig()}
-                              className="flex-1"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-2 border-t border-border/40">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={testingGemini || !geminiKeyDraft.trim()}
-                            onClick={() => void handleTestGemini()}
-                          >
-                            {testingGemini ? "Testing..." : "Test Connection"}
-                          </Button>
-                          {geminiStatus && (
-                            <span className={`text-xs ${geminiStatus.startsWith("Connected") ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-destructive"}`}>
-                              {geminiStatus}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* TypeSafe Config */}
-                    {activeConfigProvider === "typesafe" && (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-muted/20">
-                          <div>
-                            <div className="text-xs font-semibold text-foreground">Enable TypeSafe AI</div>
-                            <div className="text-[11px] text-muted-foreground">Sub-150ms Jev evaluations for daily backlog and friction ranking</div>
-                          </div>
-                          <Toggle
-                            checked={typesafeEnabled}
-                            onCheckedChange={(v) => {
-                              setTypesafeEnabled(v);
-                              void persistTypesafeConfig({ enabled: v });
-                            }}
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                          <div>
-                            <label className="text-xs font-medium text-foreground block mb-1">
-                              API Key
-                            </label>
-                            <div className="relative flex items-center">
-                              <Input
-                                type={showTypesafeKey ? "text" : "password"}
-                                inputSize="sm"
-                                placeholder="apikey_... or sk-typesafe-..."
-                                value={typesafeKeyDraft}
-                                onChange={(e) => setTypesafeKeyDraft(e.target.value)}
-                                onBlur={() => void persistTypesafeConfig()}
-                                className="pr-9 font-mono text-xs"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setShowTypesafeKey((prev) => !prev)}
-                                className="absolute right-2 text-muted-foreground hover:text-foreground p-1 rounded"
-                                tabIndex={-1}
-                              >
-                                {showTypesafeKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                              </button>
-                            </div>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-foreground block mb-1">
-                              API Base URL
-                            </label>
-                            <Input
-                              inputSize="sm"
-                              placeholder="https://api.typesafe.ai"
-                              value={typesafeUrlDraft}
-                              onChange={(e) => setTypesafeUrlDraft(e.target.value)}
-                              onBlur={() => void persistTypesafeConfig()}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-2 border-t border-border/40">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={testingJev || !typesafeKeyDraft.trim()}
-                            onClick={() => void handleTestJev()}
-                          >
-                            {testingJev ? "Testing..." : "Test Connection"}
-                          </Button>
-                          {jevStatus && (
-                            <span className={`text-xs ${jevStatus.startsWith("Connected") ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-destructive"}`}>
-                              {jevStatus}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Image Generation Config */}
-                    {activeConfigProvider === "image" && (
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                          <div>
-                            <label className="text-xs font-medium text-foreground block mb-1">
-                              Image Generation Engine
-                            </label>
-                            <select
-                              className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs text-foreground cursor-pointer shadow-2xs"
-                              value={imageProviderDraft}
-                              onChange={(e) => setImageProviderDraft(e.target.value as any)}
-                            >
-                              <option value="auto">Auto (DALL-E 3 if key exists, else Pollinations)</option>
-                              <option value="openai">OpenAI DALL-E 3</option>
-                              <option value="pollinations">Pollinations AI (Free / Offline-safe)</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-foreground block mb-1">
-                              Model
-                            </label>
-                            <Input
-                              inputSize="sm"
-                              placeholder="dall-e-3"
-                              value={imageModelDraft}
-                              onChange={(e) => setImageModelDraft(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          Trigger from chat using <code className="px-1.5 py-0.5 rounded bg-muted font-mono text-[11px]">/image &lt;prompt&gt;</code> to place interactive image elements directly onto the board.
-                        </p>
-                      </div>
-                    )}
                   </div>
-                ) : (
-                  /* ==============================================================
-                     CLEAN PROVIDER OVERVIEW + "+ ADD / CONFIGURE" DRAWER TRIGGER
-                     ============================================================== */
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-sm font-semibold text-foreground">Configured AI Connectors</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Manage and fine-tune your local and cloud intelligence engines.
-                        </p>
-                      </div>
+                </Section>
+              </div>
+            ) : null}
 
-                      {/* Add / Setup Provider Dropdown Button */}
-                      <div className="flex items-center gap-2">
-                        <select
-                          className="h-8 rounded-lg border border-primary/40 bg-primary/10 hover:bg-primary/15 text-primary text-xs font-medium px-2.5 cursor-pointer transition shadow-xs"
-                          value=""
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              setActiveConfigProvider(e.target.value as any);
-                            }
-                          }}
-                        >
-                          <option value="" disabled>+ Add / Configure Provider...</option>
-                          <option value="ollama">Ollama (Local / Private)</option>
-                          <option value="openai">OpenAI (GPT-4o / DALL-E)</option>
-                          <option value="gemini">Google Gemini</option>
-                          <option value="typesafe">TypeSafe AI (Jev)</option>
-                          <option value="image">AI Image Generation</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Active Engine Card */}
-                    <div className="p-3.5 rounded-xl border border-border bg-card/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
-                      <div>
-                        <div className="text-xs font-semibold text-foreground">Active Default AI Engine</div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">Primary model used for assistant responses and canvas reasoning.</div>
-                      </div>
-                      <select
-                        value={settings.activeAiProvider || "ollama"}
-                        onChange={(e) => {
-                          const prov = e.target.value as "ollama" | "openai" | "gemini";
-                          void update({ activeAiProvider: prov });
-                        }}
-                        className="h-8 px-2.5 rounded-lg border border-input bg-background text-xs font-medium text-foreground cursor-pointer shadow-2xs"
-                      >
-                        <option value="ollama">Ollama (Local / Private)</option>
-                        <option value="openai">OpenAI (Cloud)</option>
-                        <option value="gemini">Google Gemini (Cloud)</option>
-                      </select>
-                    </div>
-
-                    {/* Provider Quick Cards Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* Ollama Card */}
-                      <div className="p-3.5 rounded-xl border border-border/80 bg-card/50 flex flex-col justify-between gap-3 shadow-2xs hover:border-border transition">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                              <Bot className="size-4" />
-                            </div>
-                            <div>
-                              <div className="font-semibold text-xs text-foreground flex items-center gap-1.5">
-                                <span>Ollama</span>
-                                <span className={`size-1.5 rounded-full ${ollamaEnabled ? "bg-emerald-500" : "bg-zinc-400"}`} />
-                              </div>
-                              <div className="text-[10px] text-muted-foreground mt-0.5">{ollamaModelDraft || "Local default"}</div>
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="xs"
-                            onClick={() => setActiveConfigProvider("ollama")}
-                            className="text-[11px] h-7 px-2"
-                          >
-                            Configure
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* OpenAI Card */}
-                      <div className="p-3.5 rounded-xl border border-border/80 bg-card/50 flex flex-col justify-between gap-3 shadow-2xs hover:border-border transition">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
-                              <Sparkles className="size-4" />
-                            </div>
-                            <div>
-                              <div className="font-semibold text-xs text-foreground flex items-center gap-1.5">
-                                <span>OpenAI</span>
-                                <span className={`size-1.5 rounded-full ${openaiEnabled ? "bg-emerald-500" : "bg-zinc-400"}`} />
-                              </div>
-                              <div className="text-[10px] text-muted-foreground mt-0.5">{openaiModelDraft || "gpt-4o-mini"}</div>
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="xs"
-                            onClick={() => setActiveConfigProvider("openai")}
-                            className="text-[11px] h-7 px-2"
-                          >
-                            Configure
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Gemini Card */}
-                      <div className="p-3.5 rounded-xl border border-border/80 bg-card/50 flex flex-col justify-between gap-3 shadow-2xs hover:border-border transition">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
-                              <Zap className="size-4" />
-                            </div>
-                            <div>
-                              <div className="font-semibold text-xs text-foreground flex items-center gap-1.5">
-                                <span>Google Gemini</span>
-                                <span className={`size-1.5 rounded-full ${geminiEnabled ? "bg-emerald-500" : "bg-zinc-400"}`} />
-                              </div>
-                              <div className="text-[10px] text-muted-foreground mt-0.5">{geminiModelDraft || "gemini-1.5-flash"}</div>
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="xs"
-                            onClick={() => setActiveConfigProvider("gemini")}
-                            className="text-[11px] h-7 px-2"
-                          >
-                            Configure
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* TypeSafe Card */}
-                      <div className="p-3.5 rounded-xl border border-border/80 bg-card/50 flex flex-col justify-between gap-3 shadow-2xs hover:border-border transition">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
-                              <Target className="size-4" />
-                            </div>
-                            <div>
-                              <div className="font-semibold text-xs text-foreground flex items-center gap-1.5">
-                                <span>TypeSafe AI</span>
-                                <span className={`size-1.5 rounded-full ${typesafeEnabled ? "bg-emerald-500" : "bg-zinc-400"}`} />
-                              </div>
-                              <div className="text-[10px] text-muted-foreground mt-0.5">System One Jev engine</div>
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="xs"
-                            onClick={() => setActiveConfigProvider("typesafe")}
-                            className="text-[11px] h-7 px-2"
-                          >
-                            Configure
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Image Generation Card */}
-                      <div className="p-3.5 rounded-xl border border-border/80 bg-card/50 flex flex-col justify-between gap-3 shadow-2xs hover:border-border transition sm:col-span-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="p-2 rounded-lg bg-pink-500/10 text-pink-500">
-                              <ImageIcon className="size-4" />
-                            </div>
-                            <div>
-                              <div className="font-semibold text-xs text-foreground flex items-center gap-1.5">
-                                <span>AI Image Generation</span>
-                                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-pink-500/10 text-pink-600 dark:text-pink-400 uppercase">
-                                  {imageProviderDraft}
-                                </span>
-                              </div>
-                              <div className="text-[10px] text-muted-foreground mt-0.5">
-                                Model: {imageModelDraft} · Spawns interactive ImageNode on canvas via /image
-                              </div>
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="xs"
-                            onClick={() => setActiveConfigProvider("image")}
-                            className="text-[11px] h-7 px-2"
-                          >
-                            Configure
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
+            {tab === "integrations" ? (
+              <div className="flex flex-col gap-8">
+                <Section title="GitHub">
                     {/* GitHub Source Sync Box */}
                     <div className="rounded-xl border border-border/80 bg-card/50 p-4 space-y-3 shadow-2xs mt-1">
                       <div className="flex items-center justify-between">
@@ -1921,8 +1323,8 @@ export function FocusSettings({
                             <GitPullRequest className="size-4" />
                           </div>
                           <div>
-                            <div className="font-semibold text-xs text-foreground">GitHub Integration</div>
-                            <div className="text-[10px] text-muted-foreground">Import issues and link PRs to spatial cards</div>
+                            <div className="font-semibold text-xs text-foreground">GitHub</div>
+                            <div className="text-[10px] text-muted-foreground">One token for every region: import issues, sync status and assignee</div>
                           </div>
                         </div>
                         <span className="text-[11px] text-muted-foreground font-medium">
@@ -1972,66 +1374,16 @@ export function FocusSettings({
                         <GitHubSyncIntervalSelect />
                       </div>
                     </div>
-                  </>
-                )}
-              </div>
-            ) : null}
-
-            {tab === "agents" || tab === "mcp" ? (
-              <div className="flex flex-col gap-8">
-                <Section title="Agent Profiles & Autonomous Skills">
-                  <AgentsSettingsTab />
                 </Section>
                 <div className="h-px w-full bg-border/60" />
-                <Section title="Model Context Protocol (MCP) Tool Servers">
+                <Section title="MCP tool servers">
                   <McpSettingsTab />
                 </Section>
                 <div className="h-px w-full bg-border/60" />
-                <Section title="Connect External Agents to Foqz (MCP Server)">
+                <Section title="Let external agents use Foqz (MCP server)">
                   <McpHostSettings />
                 </Section>
               </div>
-            ) : null}
-
-            {tab === "data" ? (
-            <Section title="Data">
-              <Row
-                label="Export board"
-                description="Save a JSON copy of your canvas."
-              >
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void exportBoard()}
-                >
-                  Export…
-                </Button>
-              </Row>
-              <Row
-                label="Import board"
-                description="Replace the current canvas from a JSON file."
-              >
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void importBoard()}
-                >
-                  Import…
-                </Button>
-              </Row>
-              <Row label="Erase board" description="Remove all shapes permanently.">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => void resetBoard()}
-                >
-                  Reset board…
-                </Button>
-              </Row>
-            </Section>
             ) : null}
 
             {!isElectron ? (
@@ -2056,7 +1408,7 @@ export function FocusSettings({
               </span>
             ) : (
               <span className="text-muted-foreground">
-                Click Update to save all configured parameters
+                Most changes save as you go
               </span>
             )}
           </div>

@@ -25,19 +25,12 @@ import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./edges";
 import { FlowZoomControls } from "./components/FlowZoomControls";
 import { FlowShapeMenu } from "./components/FlowShapeMenu";
-import {
-  ReparentConfirmModal,
-  type ReparentConfirmState,
-  SKIP_REPARENT_KEY,
-} from "./components/ReparentConfirmModal";
 import { useFlowCanvasShortcuts } from "./hooks/useFlowCanvasShortcuts";
 import {
   Pointer,
-  CheckSquare,
   Square,
   Circle,
   Type as TypeIcon,
-  StickyNote,
   MoveRight,
   Link2,
   Pencil,
@@ -57,6 +50,7 @@ import {
   findFrameAt,
 } from "./store/flowCanvasStore";
 import { getCanvasStorage, nextBoardSnapshot } from "@/lib/storage";
+import { isActionable, isTextNode, startFocus, stopFocus, toggleActionable } from "@/lib/nodeBehaviors";
 import {
   findAnnotationTargetAtFlowPos,
   getNodeAbsolutePosition,
@@ -84,7 +78,7 @@ const MULTI_SELECTION_KEY_CODE = ["Meta", "Control", "Shift"];
 const ZOOM_ACTIVATION_KEY_CODE = ["Meta", "Control"];
 const PAN_ON_DRAG: number[] = [1, 2];
 
-export type ActiveTool = "select" | "task" | "box" | "circle" | "text" | "note" | "connection" | "arrow" | "pencil" | "comment";
+export type ActiveTool = "select" | "box" | "circle" | "text" | "note" | "connection" | "arrow" | "pencil" | "comment";
 
 interface FlowCanvasAppProps {
   sidebarOpen?: boolean;
@@ -134,10 +128,6 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   const currentPencilFlowPoints = useRef<{ x: number; y: number }[]>([]);
   const currentPencilClientPoints = useRef<number[][]>([]);
   const [pencilPreviewSvgPath, setPencilPreviewSvgPath] = useState<string | null>(null);
-
-  // Reparent tracking: preserve exact original coordinates prior to drag
-  const dragStartPosRef = useRef<{ id: string; position: { x: number; y: number } } | null>(null);
-  const [reparentState, setReparentState] = useState<ReparentConfirmState | null>(null);
 
   const { screenToFlowPosition, fitView, getInternalNode, flowToScreenPosition } = useReactFlow();
 
@@ -195,12 +185,15 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       const id = e.detail?.id;
       if (!id) return;
       const fullSpace = Boolean(e.detail?.fullSpace);
+      const focus = Boolean(e.detail?.focus);
       setTimeout(() => {
         const currentNodes = useFlowCanvasStore.getState().nodes;
         const targetNode = currentNodes.find((n) => n.id === id);
         const isProject = targetNode?.type === "projectFrame";
-        const isRunway = targetNode?.type === "runwayFrame";
-        if (isProject) {
+        if (focus) {
+          // Focus in place: bring the node close, keep its neighborhood in view.
+          fitView({ nodes: [{ id }], duration: 450, padding: 0.6, minZoom: 0.5, maxZoom: 1.6 });
+        } else if (isProject) {
           fitView({
             nodes: [{ id }],
             duration: 400,
@@ -208,7 +201,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
             minZoom: 0.6,
             maxZoom: 1.15,
           });
-        } else if (fullSpace || isRunway) {
+        } else if (fullSpace) {
           fitView({
             nodes: [{ id }],
             duration: 400,
@@ -264,16 +257,11 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       const relatedTaskIds: string[] = Array.isArray(e.detail?.relatedTaskIds)
         ? e.detail.relatedTaskIds.filter((x: unknown) => typeof x === "string")
         : [];
-      const priorityRaw = Number(e.detail?.priority);
-      const priority =
-        priorityRaw === 1 || priorityRaw === 2 || priorityRaw === 3 || priorityRaw === 4
-          ? (priorityRaw as 1 | 2 | 3 | 4)
-          : 3;
       const center = screenToFlowPosition({
         x: window.innerWidth / 2,
         y: window.innerHeight / 2,
       });
-      // When nesting into a project/runway, let createTask place inside the frame.
+      // When nesting into a region, let createTask place inside the frame.
       const pos = parentId
         ? e.detail?.position
         : e.detail?.position || useFlowCanvasStore.getState().cursorPosition || center;
@@ -282,7 +270,6 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         title,
         notes,
         status: "open",
-        priority,
         parentId,
         position: pos,
       });
@@ -308,8 +295,27 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       setActiveTool("select");
     };
 
+    // Capture from the command bar: text lands where the user was.
+    const handleNewText = (e: any) => {
+      const text = typeof e.detail?.text === "string" ? e.detail.text : "";
+      const center = screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      });
+      const pos = e.detail?.position || useFlowCanvasStore.getState().cursorPosition || center;
+      const id = useFlowCanvasStore.getState().createText({
+        text,
+        style: e.detail?.style,
+        actionable: Boolean(e.detail?.actionable),
+        position: pos,
+        autoEdit: !text,
+      });
+      window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
+      setActiveTool("select");
+    };
+
     const handleNewProject = (e: any) => {
-      const title = e.detail?.title || "New Project";
+      const title = e.detail?.title || "New region";
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       const frameWidth = Math.min(1080, Math.max(760, Math.round(viewportWidth * 0.65)));
@@ -325,7 +331,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
       const id = useFlowCanvasStore.getState().createProject({
         title,
-        goal: "Milestone goal & focus direction",
+        goal: "",
         accent: "blue",
         position: pos,
         width: frameWidth,
@@ -514,6 +520,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     window.addEventListener("foqz:flow-zoom-reset", handleZoomReset);
     window.addEventListener("foqz:open-inline-chat", handleOpenInlineChat as EventListener);
     window.addEventListener("foqz:new-task", handleNewTask as EventListener);
+    window.addEventListener("foqz:new-text", handleNewText as EventListener);
     window.addEventListener("foqz:new-project", handleNewProject as EventListener);
     window.addEventListener(
       "foqz:open-annotation-composer",
@@ -528,6 +535,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       window.removeEventListener("foqz:flow-zoom-reset", handleZoomReset);
       window.removeEventListener("foqz:open-inline-chat", handleOpenInlineChat as EventListener);
       window.removeEventListener("foqz:new-task", handleNewTask as EventListener);
+      window.removeEventListener("foqz:new-text", handleNewText as EventListener);
       window.removeEventListener("foqz:new-project", handleNewProject as EventListener);
       window.removeEventListener(
         "foqz:open-annotation-composer",
@@ -607,33 +615,23 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     [setEdges, activeTool]
   );
 
-  // Track initial node position on drag start to restore on cancel
-  const handleNodeDragStart = useCallback((_event: MouseEvent | TouchEvent, node: Node) => {
-    dragStartPosRef.current = { id: node.id, position: { ...node.position } };
-  }, []);
-
-  // Reparenting & Detach Logic on Node Drag Stop
+  // Region membership follows the drop: dropping inside a region adopts the
+  // node, dropping outside releases it. No confirmation; undo reverts it.
   const handleNodeDragStop = useCallback(
     (_event: MouseEvent | TouchEvent, node: Node) => {
-      if (node.type === "projectFrame" || node.type === "runwayFrame") return;
+      if (node.type === "projectFrame") return;
 
       const currentNodes = useFlowCanvasStore.getState().nodes;
-      const frames = currentNodes.filter(
-        (n) => n.type === "projectFrame" || n.type === "runwayFrame"
-      );
+      const frames = currentNodes.filter((n) => n.type === "projectFrame" && n.id !== node.id);
       const currentParent = frames.find((f) => f.id === node.parentId);
 
-      // 1. Get exact absolute coordinates directly from React Flow's live internal state
       const nodeInternal = getInternalNode(node.id);
       const nodeAbs = nodeInternal?.internals?.positionAbsolute;
-
       const parentInternal = currentParent ? getInternalNode(currentParent.id) : undefined;
       const parentAbsX = parentInternal?.internals?.positionAbsolute?.x ?? currentParent?.position.x ?? 0;
       const parentAbsY = parentInternal?.internals?.positionAbsolute?.y ?? currentParent?.position.y ?? 0;
-
       const absX = nodeAbs?.x ?? (currentParent ? parentAbsX + node.position.x : node.position.x);
       const absY = nodeAbs?.y ?? (currentParent ? parentAbsY + node.position.y : node.position.y);
-
       const nodeW = nodeInternal?.measured?.width ?? Number(node.style?.width ?? (node.width ?? 260));
       const nodeH = nodeInternal?.measured?.height ?? Number(node.style?.height ?? (node.height ?? 90));
       const nodeCenterX = absX + nodeW / 2;
@@ -648,433 +646,50 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         return { fx, fy, fw, fh };
       };
 
-      // Find the best frame candidate for the drop.
-      // 1. Prioritize a frame containing the node's center point.
-      const frameContainingCenter = frames.find((f) => {
+      // The innermost region containing the node's center wins.
+      const targetFrame = [...frames].reverse().find((f) => {
         const { fx, fy, fw, fh } = getFrameMetrics(f);
-        return (
-          nodeCenterX >= fx &&
-          nodeCenterX <= fx + fw &&
-          nodeCenterY >= fy &&
-          nodeCenterY <= fy + fh
-        );
+        return nodeCenterX >= fx && nodeCenterX <= fx + fw && nodeCenterY >= fy && nodeCenterY <= fy + fh;
       });
 
-      // 2. If center is outside all frames, check bounding-box overlap (prioritizing another frame over currentParent)
-      const targetFrame =
-        frameContainingCenter ||
-        frames.find((f) => {
-          if (currentParent && f.id === currentParent.id) return false;
-          const { fx, fy, fw, fh } = getFrameMetrics(f);
-          return (
-            absX < fx + fw &&
-            absX + nodeW > fx &&
-            absY < fy + fh &&
-            absY + nodeH > fy
-          );
-        }) ||
-        (currentParent &&
-        (() => {
-          const { fx, fy, fw, fh } = getFrameMetrics(currentParent);
-          return absX < fx + fw && absX + nodeW > fx && absY < fy + fh && absY + nodeH > fy
-            ? currentParent
-            : undefined;
-        })());
+      if (targetFrame && targetFrame.id === currentParent?.id) return;
 
-      // 2. SAME FRAME DROP: If node already belongs to currentParent and was dropped in the same frame
-      if (currentParent && targetFrame?.id === currentParent.id) {
-        const { fx, fy, fw, fh } = getFrameMetrics(currentParent);
-        const isCurrentRunway =
-          currentParent.type === "runwayFrame" ||
-          String((currentParent.data as any)?.title || "").includes("Runway");
-
-        if (isCurrentRunway && node.type === "focusTask") {
-          const dropRelY = Math.round(absY - fy);
-          const targetSlotIdx = Math.max(0, Math.min(4, Math.round((dropRelY - 82) / 60)));
-          const snapX = 24;
-          const snapY = 82 + targetSlotIdx * 60;
-          const snapWidth = fw - 48;
-          const snapHeight = 50;
-
-          // Check if another task already occupies this target slot
-          const otherTaskInSlot = currentNodes.find(
-            (n) =>
-              n.id !== node.id &&
-              n.parentId === currentParent.id &&
-              n.type === "focusTask" &&
-              Math.abs(n.position.y - snapY) < 30
-          );
-
-          setNodes((nds) =>
-            nds.map((n) => {
-              if (n.id === node.id) {
-                return {
-                  ...n,
-                  parentId: currentParent.id,
-                  position: { x: snapX, y: snapY },
-                  style: { ...n.style, width: snapWidth, height: snapHeight },
-                  width: snapWidth,
-                  height: snapHeight,
-                  selected: true,
-                };
-              }
-              if (otherTaskInSlot && n.id === otherTaskInSlot.id) {
-                // Swap other task to previous slot of dragged node
-                const oldSlotIdx = Math.max(0, Math.min(4, Math.round((node.position.y - 82) / 60)));
-                return {
-                  ...n,
-                  position: { x: snapX, y: 82 + oldSlotIdx * 60 },
-                  style: { ...n.style, width: snapWidth, height: snapHeight },
-                  width: snapWidth,
-                  height: snapHeight,
-                };
-              }
-              return n;
-            })
-          );
-          return;
-        }
-
-        // Still inside the same regular project frame!
-        const relX = Math.max(16, Math.min(fw - nodeW - 16, Math.round(absX - fx)));
-        const relY = Math.max(55, Math.min(fh - nodeH - 16, Math.round(absY - fy)));
-
-        setNodes((nds) =>
-          nds.map((n) =>
-            n.id === node.id
-              ? {
-                  ...n,
-                  parentId: currentParent.id,
-                  position: { x: relX, y: relY },
-                  selected: true,
-                }
-              : n
-          )
-        );
-        return;
-      }
-
-      // 3. DIFFERENT FRAME DROP: Node was dropped into a different project frame or runway
-      if (targetFrame && (!currentParent || targetFrame.id !== currentParent.id)) {
-        const { fx, fy, fw, fh } = getFrameMetrics(targetFrame);
-        const isTargetRunway =
-          targetFrame.type === "runwayFrame" ||
-          String((targetFrame.data as any)?.title || "").includes("Runway");
-
-        let relX: number;
-        let relY: number;
-        let targetStyle = { ...node.style };
-        let updatedData = { ...node.data };
-
-        if (isTargetRunway && node.type === "focusTask") {
-          const dropRelY = Math.round(absY - fy);
-          const targetSlotIdx = Math.max(0, Math.min(4, Math.round((dropRelY - 82) / 60)));
-
-          const existingRunwayTasks = currentNodes.filter(
-            (n) => n.id !== node.id && n.parentId === targetFrame.id && n.type === "focusTask"
-          );
-          const occupiedSlotIndices = new Set(
-            existingRunwayTasks.map((t) => Math.round((t.position.y - 82) / 60))
-          );
-
-          let chosenSlot = targetSlotIdx;
-          if (occupiedSlotIndices.has(chosenSlot)) {
-            for (let offset = 1; offset <= 4; offset++) {
-              if (chosenSlot + offset <= 4 && !occupiedSlotIndices.has(chosenSlot + offset)) {
-                chosenSlot = chosenSlot + offset;
-                break;
-              }
-              if (chosenSlot - offset >= 0 && !occupiedSlotIndices.has(chosenSlot - offset)) {
-                chosenSlot = chosenSlot - offset;
-                break;
-              }
-            }
-          }
-
-          relX = 24;
-          relY = 82 + chosenSlot * 60;
-          targetStyle = { ...targetStyle, width: fw - 48, height: 50 };
-
-          // Stow connected edges into node data and remove them from canvas edges
-          const allCurrentEdges = useFlowCanvasStore.getState().edges;
-          const connectedEdges = allCurrentEdges.filter(
-            (e) => e.source === node.id || e.target === node.id
-          );
-          if (connectedEdges.length > 0) {
-            const existingStowed = ((node.data as any)?.stowedEdges as Edge[]) || [];
-            const mergedStowed = [
-              ...existingStowed,
-              ...connectedEdges.filter((ce) => !existingStowed.some((se) => se.id === ce.id)),
-            ];
-            updatedData = {
-              ...updatedData,
-              stowedEdges: mergedStowed,
-            };
-            const setEdges = useFlowCanvasStore.getState().setEdges;
-            setEdges((eds) => eds.filter((e) => e.source !== node.id && e.target !== node.id));
-          }
-
-          // If came from a projectFrame, record originProjectId
-          if (currentParent && currentParent.type === "projectFrame") {
-            updatedData = {
-              ...updatedData,
-              originProjectId: currentParent.id,
-              originProjectTitle: (currentParent.data as any)?.title || "Project",
-              originProjectAccent: (currentParent.data as any)?.accent || "blue",
-              originProjectPos: { x: node.position.x, y: node.position.y },
-              stagedAt: Date.now(),
-            };
-          }
-          // If already had originProjectId (e.g. hopped from Runway 1 to Runway 2), preserve it!
-        } else {
-          relX = Math.max(16, Math.min(fw - 280 - 16, Math.round(absX - fx)));
-          relY = Math.max(55, Math.min(fh - 82 - 16, Math.round(absY - fy)));
-          if (node.type === "focusTask") {
-            targetStyle = { ...targetStyle, width: 280, height: 82 };
-          }
-
-          // Dropped into another project frame: clear runway staging data and recreate stowed edges!
-          const stowedEdges = ((node.data as any)?.stowedEdges as Edge[]) || [];
-          if (stowedEdges.length > 0) {
-            const setEdges = useFlowCanvasStore.getState().setEdges;
-            setEdges((currentEdges) => [
-              ...currentEdges,
-              ...stowedEdges.filter((se) => !currentEdges.some((e) => e.id === se.id)),
-            ]);
-          }
-          delete (updatedData as any).originProjectId;
-          delete (updatedData as any).originProjectTitle;
-          delete (updatedData as any).originProjectAccent;
-          delete (updatedData as any).originProjectPos;
-          delete (updatedData as any).stagedAt;
-          delete (updatedData as any).stowedEdges;
-        }
-
+      if (targetFrame) {
+        const { fx, fy } = getFrameMetrics(targetFrame);
         setNodes((nds) => {
           const withoutNode = nds.filter((n) => n.id !== node.id);
-          const parentIdx = withoutNode.findIndex((n) => n.id === targetFrame.id);
-          const updatedNode = {
+          const adopted: Node = {
             ...node,
             parentId: targetFrame.id,
-            position: { x: relX, y: relY },
-            style: targetStyle,
-            width: isTargetRunway ? fw - 48 : 280,
-            height: isTargetRunway ? 50 : 82,
-            data: updatedData,
+            position: { x: Math.round(absX - fx), y: Math.round(absY - fy) },
             selected: true,
           };
-          delete (updatedNode as any).extent;
-
-          if (parentIdx !== -1) {
-            const result = [...withoutNode];
-            result.splice(parentIdx + 1, 0, updatedNode);
-            return result;
-          }
-          return [...withoutNode, updatedNode];
+          delete (adopted as any).extent;
+          const parentIdx = withoutNode.findIndex((n) => n.id === targetFrame.id);
+          if (parentIdx === -1) return [...withoutNode, adopted];
+          const result = [...withoutNode];
+          result.splice(parentIdx + 1, 0, adopted);
+          return result;
         });
         return;
       }
 
-      // 4. Node had a parent, but was dragged COMPLETELY OUTSIDE onto open canvas!
       if (currentParent) {
-        const nodeTitle =
-          (node.data?.title as string) ||
-          (node.data?.label as string) ||
-          (node.data?.text as string) ||
-          "Item";
-        const parentTitle =
-          (currentParent?.data?.title as string) || "Project Frame";
-
-        const skipConfirm =
-          typeof window !== "undefined" &&
-          localStorage.getItem(SKIP_REPARENT_KEY) === "true";
-
-        const isParentRunway =
-          currentParent.type === "runwayFrame" ||
-          String((currentParent.data as any)?.title || "").includes("Runway");
-        const stylePatch =
-          isParentRunway && node.type === "focusTask"
-            ? { width: 280, height: 82 }
-            : {};
-
-        if (skipConfirm) {
-          // Immediately detach without asking
-          const stowedEdges = ((node.data as any)?.stowedEdges as Edge[]) || [];
-          if (stowedEdges.length > 0) {
-            const setEdges = useFlowCanvasStore.getState().setEdges;
-            setEdges((currentEdges) => [
-              ...currentEdges,
-              ...stowedEdges.filter((se) => !currentEdges.some((e) => e.id === se.id)),
-            ]);
-          }
-
-          setNodes((nds) =>
-            nds.map((n) => {
-              if (n.id !== node.id) return n;
-              const cleanData = { ...n.data };
-              delete cleanData.stowedEdges;
-              const detached = { ...n, style: { ...n.style, ...stylePatch }, data: cleanData };
-              delete detached.parentId;
-              delete detached.extent;
-              return {
-                ...detached,
-                position: { x: Math.round(absX), y: Math.round(absY) },
-              };
-            })
-          );
-        } else {
-          // Open confirmation modal with preserved pre-drag coordinate
-          const origPos =
-            dragStartPosRef.current?.id === node.id
-              ? dragStartPosRef.current.position
-              : { x: node.position.x, y: node.position.y };
-
-          setReparentState({
-            isOpen: true,
-            nodeId: node.id,
-            nodeTitle,
-            parentTitle,
-            originalPosition: origPos,
-            targetAbsolutePosition: {
-              x: Math.round(absX),
-              y: Math.round(absY),
-            },
-          });
-        }
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id !== node.id) return n;
+            const released: Node = { ...n, position: { x: Math.round(absX), y: Math.round(absY) } };
+            delete released.parentId;
+            delete (released as any).extent;
+            return released;
+          })
+        );
       }
     },
     [getInternalNode, setNodes]
   );
 
-  const handleConfirmReparent = (rememberChoice: boolean) => {
-    if (!reparentState) return;
-    if (rememberChoice && typeof window !== "undefined") {
-      localStorage.setItem(SKIP_REPARENT_KEY, "true");
-    }
-
-    setNodes((nds) => {
-      const targetNode = nds.find((n) => n.id === reparentState.nodeId);
-      const parentNode = targetNode?.parentId
-        ? nds.find((p) => p.id === targetNode.parentId)
-        : null;
-      const isParentRunway =
-        parentNode &&
-        (parentNode.type === "runwayFrame" ||
-          String((parentNode.data as any)?.title || "").includes("Runway"));
-      const stylePatch =
-        isParentRunway && targetNode?.type === "focusTask"
-          ? { width: 280, height: 82 }
-          : {};
-
-      const stowedEdges = ((targetNode?.data as any)?.stowedEdges as Edge[]) || [];
-      if (stowedEdges.length > 0) {
-        const setEdges = useFlowCanvasStore.getState().setEdges;
-        setEdges((currentEdges) => [
-          ...currentEdges,
-          ...stowedEdges.filter((se) => !currentEdges.some((e) => e.id === se.id)),
-        ]);
-      }
-
-      return nds.map((n) => {
-        if (n.id !== reparentState.nodeId) return n;
-        const cleanData = { ...n.data };
-        delete cleanData.stowedEdges;
-        const detached = { ...n, style: { ...n.style, ...stylePatch }, data: cleanData };
-        delete detached.parentId;
-        delete detached.extent;
-        return {
-          ...detached,
-          position: reparentState.targetAbsolutePosition,
-        };
-      });
-    });
-    setReparentState(null);
-  };
-
-  const handleCancelReparent = () => {
-    // Revert position cleanly to its original pre-drag coordinates
-    if (reparentState) {
-      setNodes((nds) =>
-        nds.map((n) => {
-          if (n.id !== reparentState.nodeId) return n;
-          return {
-            ...n,
-            position: reparentState.originalPosition,
-          };
-        })
-      );
-    }
-    setReparentState(null);
-  };
-
   // Helper spawners
-  const handleCreateTaskAt = useCallback(
-    (pos: { x: number; y: number }) => {
-      const id = `task-${Date.now()}`;
-      const currentNodes = useFlowCanvasStore.getState().nodes;
-      const nextZ = Math.max(100, getMaxZIndex(currentNodes) + 1);
-      const frameMatch = findFrameAt(pos, currentNodes);
-
-      if (frameMatch) {
-        const isFrameRunway =
-          frameMatch.frame.type === "runwayFrame" ||
-          String((frameMatch.frame.data as any)?.title || "").includes("Runway");
-        const frameW = Number(
-          frameMatch.frame.style?.width ?? frameMatch.frame.width ?? 680
-        );
-        const taskStyle = isFrameRunway
-          ? { width: frameW - 48, height: 50, zIndex: nextZ }
-          : { width: 280, height: 160, zIndex: nextZ };
-
-        const newNode: Node = {
-          id,
-          type: "focusTask",
-          parentId: frameMatch.frame.id,
-          position: { x: frameMatch.relX, y: frameMatch.relY },
-          style: taskStyle,
-          data: {
-            title: "New Task Card",
-            status: "open",
-            priority: 3,
-            paper: "cream",
-            borderStyle: "solid",
-          },
-        };
-        setNodes((nds) => {
-          const parentIdx = nds.findIndex((n) => n.id === frameMatch.frame.id);
-          if (parentIdx !== -1) {
-            let insertIdx = parentIdx + 1;
-            while (insertIdx < nds.length && nds[insertIdx].parentId === frameMatch.frame.id) {
-              insertIdx++;
-            }
-            const copy = [...nds];
-            copy.splice(insertIdx, 0, newNode);
-            return copy;
-          }
-          return [...nds, newNode];
-        });
-      } else {
-        const newNode: Node = {
-          id,
-          type: "focusTask",
-          position: { x: pos.x - 130, y: pos.y - 80 },
-          style: { width: 280, height: 160, zIndex: nextZ },
-          data: {
-            title: "New Task Card",
-            status: "open",
-            priority: 3,
-            paper: "cream",
-            borderStyle: "solid",
-          },
-        };
-        setNodes((nds) => [...nds, newNode]);
-      }
-      setSelectedNodeId(id);
-      setActiveTool("select");
-    },
-    [setNodes, setSelectedNodeId]
-  );
-
   const handleCreateBoxAt = useCallback(
     (x: number, y: number, w: number, h: number) => {
       const id = `box-${Date.now()}`;
@@ -1389,25 +1004,13 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     );
   }, []);
 
-  const handleCreateTask = useCallback(() => {
+  const handleCreateText = useCallback(() => {
     const store = useFlowCanvasStore.getState();
-    let spawnPos = store.cursorPosition;
-    if (!spawnPos && typeof window !== "undefined") {
-      spawnPos = screenToFlowPosition({
-        x: window.innerWidth / 2,
-        y: window.innerHeight / 2,
-      });
-    }
-
-    const id = store.createTask({
-      title: "New Task",
-      status: "open",
-      priority: 3,
-      position: spawnPos || undefined,
-    });
-    window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id } }));
-    setActiveTool("select");
-  }, [screenToFlowPosition]);
+    const spawnPos =
+      store.cursorPosition ||
+      screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    handleCreateTextAt(spawnPos);
+  }, [screenToFlowPosition, handleCreateTextAt]);
 
   const handleDeleteSelected = useCallback(() => {
     const currentNodes = useFlowCanvasStore.getState().nodes;
@@ -1418,38 +1021,21 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
     if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
 
-    // 1. Collect all node IDs to delete (including child nodes if a parent projectFrame is deleted)
-    const allDeletedNodeIds = new Set<string>();
+    // Regions release their children instead of deleting them (see deleteNodes).
     if (selectedNodes.length > 0) {
-      const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
-      currentNodes.forEach((n) => {
-        if (selectedNodeIds.has(n.id) || (n.parentId && selectedNodeIds.has(n.parentId))) {
-          allDeletedNodeIds.add(n.id);
-        }
-      });
+      useFlowCanvasStore.getState().deleteNodes(selectedNodes.map((n) => n.id));
     }
-
-    // 2. Collect all edge IDs to delete (directly selected edges + edges attached to deleted nodes)
-    const allDeletedEdgeIds = new Set<string>(selectedEdges.map((e) => e.id));
-    if (allDeletedNodeIds.size > 0) {
-      currentEdges.forEach((e) => {
-        if (allDeletedNodeIds.has(e.source) || allDeletedNodeIds.has(e.target)) {
-          allDeletedEdgeIds.add(e.id);
-        }
-      });
-      setNodes((nds) => nds.filter((n) => !allDeletedNodeIds.has(n.id)));
-      if (allDeletedNodeIds.has(useFlowCanvasStore.getState().selectedNodeId || "")) {
-        setSelectedNodeId(null);
-      }
+    if (selectedEdges.length > 0) {
+      const edgeIds = new Set(selectedEdges.map((e) => e.id));
+      setEdges((eds) => eds.filter((e) => !edgeIds.has(e.id)));
     }
-
-    // 3. Delete matching edges
-    if (allDeletedEdgeIds.size > 0) {
-      setEdges((eds) => eds.filter((e) => !allDeletedEdgeIds.has(e.id)));
-    }
-  }, [setNodes, setEdges, setSelectedNodeId]);
+  }, [setEdges]);
 
   const handleEscape = useCallback(() => {
+    if (useFlowCanvasStore.getState().activeFocusNodeId) {
+      stopFocus();
+      return;
+    }
     setActiveTool("select");
     setInlineChatNodeId(null);
     boxDragStartRef.current = null;
@@ -1505,8 +1091,8 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
             return res;
           }
         }
-        if (target.type === "projectFrame" || target.type === "runwayFrame") {
-          // Keep project and runway frames at base container level so child tasks stay above it
+        if (target.type === "projectFrame") {
+          // Keep regions at base container level so their children stay above them
           return [target, ...without];
         }
         const maxZ = getMaxZIndex(nds);
@@ -1524,9 +1110,8 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     }
   }, [fitView, setNodes]);
 
-  // Unified Keyboard Shortcuts Hook (disabled during modal dialogs)
+  // Unified Keyboard Shortcuts Hook
   useFlowCanvasShortcuts({
-    enabled: !reparentState?.isOpen,
     onSelectTool: () => selectTool("select"),
     onBoxTool: () => selectTool("box"),
     onCircleTool: () => selectTool("circle"),
@@ -1536,101 +1121,47 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     onArrowTool: () => selectTool("arrow"),
     onPencilTool: () => selectTool("pencil"),
     onCommentTool: () => selectTool("comment"),
-    onCreateTask: handleCreateTask,
+    onCreateText: handleCreateText,
     onCreateProject: handleCreateProject,
-    onSendToRunway: () => {
-      const currentNodes = useFlowCanvasStore.getState().nodes;
-      const sel = currentNodes.find((n) => n.selected && n.type === "focusTask");
-      if (sel) {
-        useFlowCanvasStore.getState().sendTaskToRunway(sel.id);
-      }
+    onToggleActionable: () => {
+      const sel = useFlowCanvasStore.getState().nodes.filter((n) => n.selected && isTextNode(n));
+      sel.forEach((n) => toggleActionable(n.id));
     },
     onFocusMode: () => {
-      const currentNodes = useFlowCanvasStore.getState().nodes;
-      const currentActiveFocus = useFlowCanvasStore.getState().activeFocusNodeId;
+      const store = useFlowCanvasStore.getState();
+      const currentNodes = store.nodes;
       const sel = currentNodes.find((n) => n.selected);
-      let targetId: string | null = null;
+      const firstOpen = (candidates: Node[]) =>
+        candidates
+          .filter((n) => isActionable(n) && (n.data as any)?.status !== "done")
+          .sort((a, b) => a.position.y - b.position.y)[0];
 
-      if (sel) {
-        if (sel.type === "runwayFrame" || String((sel.data as any)?.title || "").includes("Runway")) {
-          // If runway is selected, find its active flight or first open task!
-          const runwayTasks = currentNodes
-            .filter((n) => n.parentId === sel.id && n.type === "focusTask")
-            .sort((a, b) => a.position.y - b.position.y);
-          const activeTask =
-            runwayTasks.find((t) => t.id === currentActiveFocus) ||
-            runwayTasks.find((t) => (t.data as any)?.status === "doing") ||
-            runwayTasks.find((t) => (t.data as any)?.status !== "done") ||
-            runwayTasks[0];
-          targetId = activeTask ? activeTask.id : sel.id;
-        } else if (sel.type === "projectFrame") {
-          const projectTasks = currentNodes
-            .filter((n) => n.parentId === sel.id && n.type === "focusTask")
-            .sort((a, b) => a.position.y - b.position.y);
-          const activeTask =
-            projectTasks.find((t) => (t.data as any)?.status === "doing") ||
-            projectTasks.find((t) => (t.data as any)?.status !== "done") ||
-            projectTasks[0];
-          targetId = activeTask ? activeTask.id : sel.id;
-        } else {
-          targetId = sel.id;
-        }
-      } else {
-        // No selection: check runway first, then doing, then open
-        const runway = currentNodes.find((n) => n.type === "runwayFrame");
-        if (runway) {
-          const runwayTasks = currentNodes
-            .filter((n) => n.parentId === runway.id && n.type === "focusTask")
-            .sort((a, b) => a.position.y - b.position.y);
-          const activeTask =
-            runwayTasks.find((t) => t.id === currentActiveFocus) ||
-            runwayTasks.find((t) => (t.data as any)?.status === "doing") ||
-            runwayTasks.find((t) => (t.data as any)?.status !== "done");
-          if (activeTask) targetId = activeTask.id;
-        }
-        if (!targetId) {
-          targetId =
-            currentNodes.find((n) => n.type === "focusTask" && (n.data as any)?.status === "doing")?.id ||
-            currentNodes.find((n) => n.type === "focusTask" && (n.data as any)?.status === "open")?.id ||
-            currentNodes.find((n) => n.type === "focusTask")?.id || null;
-        }
+      let targetId: string | null = null;
+      if (sel?.type === "projectFrame") {
+        targetId = firstOpen(currentNodes.filter((n) => n.parentId === sel.id))?.id ?? null;
+      } else if (sel && (isTextNode(sel) || isActionable(sel))) {
+        targetId = sel.id;
+      } else if (!sel) {
+        targetId = firstOpen(currentNodes)?.id ?? null;
       }
 
       if (targetId) {
-        useFlowCanvasStore.getState().setActiveFocusNodeId(targetId);
-        useFlowCanvasStore.getState().setIsTimerRunning(true);
-        window.dispatchEvent(
-          new CustomEvent("foqz:set-focus-target", { detail: { shapeId: targetId } })
-        );
-        window.dispatchEvent(
-          new CustomEvent("foqz:flow-center-on", { detail: { id: targetId } })
-        );
+        startFocus(targetId);
       } else {
         fitView({ duration: 300 });
       }
     },
     onCenterFront: handleCenterFront,
-    onInlineChat: () => {
-      const sel = nodes.find((n) => n.selected);
-      if (sel) {
-        setInlineChatNodeId((prev) => (prev === sel.id ? null : sel.id));
-      } else {
-        handleCenterFront();
-      }
-    },
     onDeleteSelected: handleDeleteSelected,
     onDuplicateSelected: () => useFlowCanvasStore.getState().duplicateSelected(),
     onGroupSelected: () => {
-      const groupId = useFlowCanvasStore.getState().groupSelectedNodes("Semantic Group", "Clustered concept");
+      const groupId = useFlowCanvasStore.getState().groupSelectedNodes();
       if (groupId) {
         window.dispatchEvent(new CustomEvent("foqz:flow-center-on", { detail: { id: groupId } }));
       }
     },
     onUngroupSelected: () => {
       useFlowCanvasStore.getState().ungroupSelectedNodes();
-    },
-    onArrangeLayout: () => {
-      useFlowCanvasStore.getState().arrangeLayout();
     },
     onUndo: () => useFlowCanvasStore.temporal.getState().undo(),
     onRedo: () => useFlowCanvasStore.temporal.getState().redo(),
@@ -1649,9 +1180,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       }
       const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
 
-      if (activeTool === "task") {
-        handleCreateTaskAt(pos);
-      } else if (activeTool === "text") {
+      if (activeTool === "text") {
         handleCreateTextAt(pos);
       } else if (activeTool === "note") {
         handleCreateNoteAt(pos);
@@ -1690,17 +1219,12 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         );
       }
     },
-    [activeTool, screenToFlowPosition, handleCreateTaskAt, handleCreateTextAt, handleCreateNoteAt, setEdges, setActiveTool]
+    [activeTool, screenToFlowPosition, handleCreateTextAt, handleCreateNoteAt, setEdges, setActiveTool]
   );
 
   // Node Click Handler (Places task/text/note/comment inside node if tool active, otherwise selects node)
   const handleNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
-      if (activeTool === "task") {
-        const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-        handleCreateTaskAt(pos);
-        return;
-      }
       if (activeTool === "text") {
         const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
         handleCreateTextAt(pos);
@@ -1746,7 +1270,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         setSelectedNodeId(node.id);
       }
     },
-    [activeTool, screenToFlowPosition, getInternalNode, handleCreateTaskAt, handleCreateTextAt, handleCreateNoteAt, setSelectedNodeId, setActiveTool]
+    [activeTool, screenToFlowPosition, getInternalNode, handleCreateTextAt, handleCreateNoteAt, setSelectedNodeId, setActiveTool]
   );
 
   // Edge Click Handler (Selects edge, deselects nodes)
@@ -1968,26 +1492,6 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         {/* Subtle separator */}
         <div className="w-5 h-[1px] bg-black/[0.08] dark:bg-white/[0.12] my-0.5 rounded-full" />
 
-        {/* 2. Task Card Tool */}
-        <button
-          type="button"
-          onClick={() => {
-            if (activeTool === "task") {
-              handleCreateTask();
-            } else {
-              selectTool("task");
-            }
-          }}
-          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-            activeTool === "task"
-              ? "bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-1 ring-white/25"
-              : "text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50/80 dark:hover:bg-blue-950/40 active:scale-95"
-          }`}
-          title="Task Card Tool (A) — Click canvas to place, or click again to spawn at center"
-        >
-          <CheckSquare className="size-5" />
-        </button>
-
         {/* 3. 2D Sketch Box Tool (Square) */}
         <button
           type="button"
@@ -2035,33 +1539,9 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
               ? "bg-amber-600 text-white shadow-md shadow-amber-500/30 ring-1 ring-white/25"
               : "text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/80 dark:hover:bg-amber-950/40 active:scale-95"
           }`}
-          title="Text Note Tool (T) — Click canvas to place, or click again to spawn at center"
+          title="Text (T) — Click to write anywhere. Style it plain, sticky or card; ⌘↵ makes it a to-do"
         >
           <TypeIcon className="size-5" />
-        </button>
-
-        {/* 5. Paper Sticky Note Tool */}
-        <button
-          type="button"
-          onClick={() => {
-            if (activeTool === "note") {
-              const center = screenToFlowPosition({
-                x: window.innerWidth / 2,
-                y: window.innerHeight / 2,
-              });
-              handleCreateNoteAt(center);
-            } else {
-              selectTool("note");
-            }
-          }}
-          className={`size-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-            activeTool === "note"
-              ? "bg-amber-500 text-white shadow-md shadow-amber-500/30 ring-1 ring-white/25"
-              : "text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/80 dark:hover:bg-amber-950/40 active:scale-95"
-          }`}
-          title="Paper Sticky Note Tool (N) — Click canvas to place, or click again to spawn at center"
-        >
-          <StickyNote className="size-5" />
         </button>
 
         {/* 6. Semantic Connection / Wire Tool */}
@@ -2087,7 +1567,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
               ? "bg-violet-600 text-white shadow-md shadow-violet-500/30 ring-1 ring-white/25"
               : "text-zinc-600 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50/80 dark:hover:bg-violet-950/40 active:scale-95"
           }`}
-          title="Semantic Arrow / Connector Tool (4) — Drag to connect"
+          title="Arrow (A) — Drag to draw"
         >
           <MoveRight className="size-5" />
         </button>
@@ -2137,7 +1617,6 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
@@ -2202,13 +1681,6 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           }}
         />
       )}
-
-      {/* Reparent Confirmation Modal */}
-      <ReparentConfirmModal
-        state={reparentState}
-        onConfirm={handleConfirmReparent}
-        onCancel={handleCancelReparent}
-      />
 
       {/* In-Canvas Element AI Chat */}
       {inlineChatNodeId && (

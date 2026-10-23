@@ -1,5 +1,4 @@
 import { getOllamaStatus } from './ollama'
-import { evaluateJev } from './jev'
 
 export interface ConnectorTestResult {
   ok: boolean
@@ -15,12 +14,6 @@ export const OPENAI_DEFAULT_MODELS = [
   'o1-mini',
 ]
 
-export const GEMINI_DEFAULT_MODELS = [
-  'gemini-1.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-pro',
-  'gemini-1.0-pro',
-]
 
 /**
  * Test connectivity and API key validity against OpenAI API or compatible endpoint.
@@ -74,54 +67,6 @@ export async function testOpenAiConnection(
 }
 
 /**
- * Test connectivity and API key validity against Google Gemini API.
- */
-export async function testGeminiConnection(
-  apiKey: string,
-): Promise<ConnectorTestResult> {
-  if (!apiKey.trim()) {
-    return { ok: false, message: 'API key is required.' }
-  }
-
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 6000)
-
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey.trim())}`,
-      {
-        method: 'GET',
-        signal: controller.signal,
-      },
-    )
-    clearTimeout(timer)
-
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => '')
-      let message = errorText
-      try {
-        const parsed = JSON.parse(errorText)
-        if (parsed?.error?.message) message = parsed.error.message
-      } catch {}
-      return { ok: false, message: `Gemini error (${res.status}): ${message || res.statusText}` }
-    }
-
-    const data = await res.json()
-    const models = Array.isArray(data?.models) ? data.models : []
-    return {
-      ok: true,
-      message: `Connected successfully! (${models.length > 0 ? `${models.length} models available` : 'Valid API key'})`,
-      details: { modelsCount: models.length },
-    }
-  } catch (err: any) {
-    if (err?.name === 'AbortError') {
-      return { ok: false, message: 'Connection timed out (6s). Check your internet connection.' }
-    }
-    return { ok: false, message: err.message || 'Connection failed' }
-  }
-}
-
-/**
  * Test connectivity to local Ollama server.
  */
 export async function testOllamaConnection(
@@ -142,38 +87,5 @@ export async function testOllamaConnection(
     }
   } catch (err: any) {
     return { ok: false, message: err.message || 'Connection failed' }
-  }
-}
-
-/**
- * Test TypeSafe System One (Jev).
- */
-export async function testJevConnection(
-  apiKey: string,
-  baseUrl: string = 'https://api.typesafe.ai',
-): Promise<ConnectorTestResult> {
-  if (!apiKey.trim()) {
-    return { ok: false, message: 'TypeSafe API key is required.' }
-  }
-
-  try {
-    const res = await evaluateJev(
-      {
-        state: 'Foqz System One sanity check',
-        questions: {
-          ping: {
-            type: 'noul',
-            instructions: 'Is the TypeSafe connection active?',
-          },
-        },
-      },
-      { apiKey: apiKey.trim(), baseUrl: baseUrl.trim() },
-    )
-    if (res?.model) {
-      return { ok: true, message: `Connected successfully! Model: ${res.model}` }
-    }
-    return { ok: true, message: 'Connection succeeded.' }
-  } catch (err: any) {
-    return { ok: false, message: `Connection failed: ${err.message || String(err)}` }
   }
 }

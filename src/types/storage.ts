@@ -1,8 +1,12 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { Annotation } from "@/types/annotations";
 
-/** Current on-disk / export schema version for board snapshots. */
-export const BOARD_SNAPSHOT_VERSION = 1;
+/**
+ * Current on-disk / export schema version for board snapshots.
+ * v2: canvas pruning (no runways, priority, `doing`, todo/constraint kinds,
+ * blocks/aggregates relations). See `src/lib/storage/migrate.ts`.
+ */
+export const BOARD_SNAPSHOT_VERSION = 2;
 
 export interface BoardMeta {
   id: string;

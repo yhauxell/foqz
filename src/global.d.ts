@@ -44,13 +44,6 @@ declare global {
       mcp?: McpStoreApi;
       /** Embedded Foqz MCP server for external agents */
       mcpHost?: McpHostApi;
-      /** TypeSafe Jev System One IPC bridge */
-      jev?: {
-        evaluate: (
-          req: unknown,
-          options?: { apiKey?: string; baseUrl?: string },
-        ) => Promise<unknown>;
-      };
       /** Auto-updater API */
       updater?: {
         check: () => Promise<{ ok: boolean; status?: string; error?: string; updateInfo?: any }>;

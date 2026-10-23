@@ -21,8 +21,9 @@ import {
   searchLogbookEntries,
   removeLogbookEntry,
 } from "@/lib/logbookService";
+import type { Node } from "@xyflow/react";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
-import { focusTaskShellColorForPriority } from "@/types/canvas";
+import { orderParentsFirst } from "@/lib/storage/migrate";
 
 export interface LogbookDrawerProps {
   open: boolean;
@@ -101,25 +102,34 @@ export function LogbookDrawer({ open, onClose }: LogbookDrawerProps) {
           ? { x: entry.lastPosition.x, y: entry.lastPosition.y }
           : fallbackPos;
 
-        const restoredNode = {
+        // Only rejoin the old region if it still exists; otherwise land on the canvas.
+        const parentId =
+          entry.lastPosition?.parentId &&
+          state.nodes.some((n) => n.id === entry.lastPosition?.parentId)
+            ? entry.lastPosition.parentId
+            : undefined;
+
+        // Entries swept before v0.14 have no node snapshot: restore them as cards.
+        const snapshotData = (entry.node?.data || {}) as Record<string, unknown>;
+        const restoredNode: Node = {
           id: entry.id,
-          type: "focusTask",
+          type: entry.node?.type || "focusTask",
           position,
-          parentId: entry.lastPosition?.parentId,
+          ...(parentId ? { parentId } : {}),
+          ...(entry.node?.style ? { style: entry.node.style as Node["style"] } : {}),
           data: {
-            title: entry.title,
-            notes: entry.notes || "",
-            priority: entry.priority || 3,
-            status: "open" as const,
-            completedVia: entry.completedVia,
+            ...(entry.node
+              ? snapshotData
+              : { title: entry.title, notes: entry.notes || "", borderStyle: "solid" }),
+            actionable: true,
+            status: "open",
+            completedAt: undefined,
+            completedVia: undefined,
             focusSecondsSpent: entry.focusSecondsSpent || 0,
-            originProjectId: entry.projectId,
-            originProjectTitle: entry.projectTitle,
-            borderStyle: "solid" as const,
           },
         };
 
-        state.setNodes((prev) => [...prev, restoredNode as any]);
+        state.setNodes((prev) => orderParentsFirst([...prev, restoredNode]));
       } else {
         // If node was somehow still on canvas, reopen it
         state.updateNodeData(entry.id, {
@@ -387,7 +397,6 @@ function LogbookEntryCard({
   isRestoring,
   formatSeconds,
 }: LogbookEntryCardProps) {
-  const priorityStyle = focusTaskShellColorForPriority(entry.priority || 3);
 
   return (
     <div className="p-3 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] hover:bg-black/[0.04] dark:hover:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.06] transition-all flex flex-col gap-2 group">
@@ -404,13 +413,6 @@ function LogbookEntryCard({
 
             {/* Badges / Chips */}
             <div className="flex flex-wrap items-center gap-1.5 mt-1">
-              {/* Priority Pill */}
-              <span
-                className={`px-1.5 py-0.5 rounded-md text-[9px] font-mono font-bold ${priorityStyle.badgeBg} ${priorityStyle.badgeText}`}
-              >
-                P{entry.priority || 3}
-              </span>
-
               {/* Project Tag */}
               {entry.projectTitle && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400">

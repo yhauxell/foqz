@@ -139,7 +139,6 @@ export function GitHubSyncIndicator({ nodeId }: { nodeId: string }) {
 
 const FIELD_LABELS: Record<SyncField, string> = {
   state: "status",
-  priority: "priority",
   assignee: "assignee",
 };
 

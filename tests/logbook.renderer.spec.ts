@@ -6,8 +6,8 @@ test.describe('Foqz Done Lifecycle & Logbook Test Suite', () => {
     await page.waitForLoadState('domcontentloaded');
   });
 
-  test('opens Logbook drawer from Waypoint Rail and verifies UI structure', async ({ page }) => {
-    // Locate Logbook button on Waypoint Rail
+  test('opens Logbook drawer from the topbar and verifies UI structure', async ({ page }) => {
+    // Logbook button lives in the topbar (the waypoint rail was removed)
     const logbookRailBtn = page.locator("button[aria-label='Open Logbook']");
     await expect(logbookRailBtn).toBeVisible();
 
@@ -40,7 +40,6 @@ test.describe('Foqz Done Lifecycle & Logbook Test Suite', () => {
       const store = (window as any).useFlowCanvasStore.getState();
       const taskId = store.createTask({
         title: 'Complete Lifecycle Test Task',
-        priority: 1,
         status: 'open',
         position: { x: 700, y: 150 },
       });
@@ -66,7 +65,7 @@ test.describe('Foqz Done Lifecycle & Logbook Test Suite', () => {
     await page.keyboard.press('Escape');
 
     // 4. Verify Undo Toast is visible on canvas HUD
-    const undoToast = page.getByText(/swept to Logbook/i);
+    const undoToast = page.getByText(/moved to the Logbook/i);
     await expect(undoToast).toBeVisible();
 
     const undoBtn = page.getByRole('button', { name: 'Undo', exact: true });
@@ -90,7 +89,6 @@ test.describe('Foqz Done Lifecycle & Logbook Test Suite', () => {
       const store = (window as any).useFlowCanvasStore.getState();
       const taskId = store.createTask({
         title: 'Restorable Project Task',
-        priority: 2,
         status: 'open',
       });
       store.updateNodeData(taskId, { status: 'done' });
@@ -123,12 +121,10 @@ test.describe('Foqz Done Lifecycle & Logbook Test Suite', () => {
       const store = (window as any).useFlowCanvasStore.getState();
       const taskAId = store.createTask({
         title: 'Prerequisite Database Migration',
-        priority: 1,
         status: 'done',
       });
       const taskBId = store.createTask({
         title: 'Dependant API Endpoint',
-        priority: 2,
         status: 'open',
         position: { x: 700, y: 150 },
       });

@@ -10,13 +10,11 @@ export interface LogbookEntry {
   id: string;
   title: string;
   notes?: string;
-  priority?: 1 | 2 | 3 | 4;
   completedAt: number;
-  completedVia?: "manual" | "focus" | "runway" | "agent" | "github";
+  completedVia?: "manual" | "focus" | "agent" | "github";
   focusSecondsSpent?: number;
   projectId?: string;
   projectTitle?: string;
-  runwayId?: string;
   githubRepo?: string;
   githubIssueNumber?: number;
   relations: {
@@ -29,5 +27,11 @@ export interface LogbookEntry {
     x: number;
     y: number;
     parentId?: string;
+  };
+  /** The node as it was swept (style, text, GitHub link), so restore brings back the same thing. */
+  node?: {
+    type?: string;
+    data?: Record<string, unknown>;
+    style?: Record<string, unknown>;
   };
 }

@@ -4,144 +4,33 @@ import {
   Sparkles,
   ArrowRight,
   Layers,
-  Lock,
+  Target,
   Folder,
-  CheckCircle2,
+  CheckSquare,
   StickyNote,
   Type,
   CornerDownLeft,
   Plus,
   FolderPlus,
-  PanelLeft,
-  Inbox,
-  PlaneTakeoff,
-  LayoutGrid,
   Group,
+  BookOpen,
+  Keyboard,
+  Settings,
 } from 'lucide-react'
-import { prioritizeDailyFocusSlot } from '@/lib/jev'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
+import { isActionable, isDone, nodeTitle, startFocus } from '@/lib/nodeBehaviors'
+import { CANVAS_SHORTCUTS } from '@/poc/shortcuts/shortcutsConfig'
+
+export type CommandBarView = 'search' | 'shortcuts'
 
 interface GlobalSpotlightProps {
-  editor?: any
   open: boolean
   onClose: () => void
-  onSelectFocusTarget: (shapeId: string) => void
+  /** "search" (default) or the "?" shortcuts list. */
+  initialView?: CommandBarView
+  /** Placeholder hint when opened for capture (⌘⇧N). */
+  captureMode?: boolean
 }
-
-function getShapeBadge(type: string) {
-  switch (type) {
-    case 'runway-frame':
-      return {
-        label: 'Runway',
-        icon: <PlaneTakeoff className="size-3 text-amber-500 shrink-0" />,
-        badgeClass:
-          'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/80',
-      }
-    case 'project-frame':
-      return {
-        label: 'Project',
-        icon: <Folder className="size-3 text-blue-500 shrink-0" />,
-        badgeClass:
-          'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/80',
-      }
-    case 'focus-task':
-      return {
-        label: 'Task',
-        icon: <CheckCircle2 className="size-3 text-emerald-500 shrink-0" />,
-        badgeClass:
-          'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/80',
-      }
-    case 'note':
-      return {
-        label: 'Note',
-        icon: <StickyNote className="size-3 text-amber-500 shrink-0" />,
-        badgeClass:
-          'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/80',
-      }
-    case 'text':
-      return {
-        label: 'Text',
-        icon: <Type className="size-3 text-zinc-500 dark:text-zinc-400 shrink-0" />,
-        badgeClass:
-          'bg-zinc-100 dark:bg-zinc-800/70 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700/80',
-      }
-    default:
-      return {
-        label: type.replace('-', ' '),
-        icon: <Layers className="size-3 text-zinc-500 dark:text-zinc-400 shrink-0" />,
-        badgeClass:
-          'bg-zinc-100 dark:bg-zinc-800/70 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700/80',
-      }
-  }
-}
-
-export function GlobalSpotlight({
-  editor,
-  open,
-  onClose,
-  onSelectFocusTarget,
-}: GlobalSpotlightProps) {
-  const [query, setQuery] = useState('')
-  const [mode, setMode] = useState<'search' | 'prioritize'>('search')
-  const [dailyGoal, setDailyGoal] = useState('')
-  const [isPrioritizing, setIsPrioritizing] = useState(false)
-  const [selectedIndex, setSelectedIndex] = useState(0)
-  const [rankedItems, setRankedItems] = useState<
-    Array<{
-      id: string
-      title: string
-      alignmentScore: number
-      blastRadius: string
-      isActionable: boolean
-    }>
-  >([])
-
-  const inputRef = useRef<HTMLInputElement>(null)
-  const listRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (open) {
-      setQuery('')
-      setMode('search')
-      setRankedItems([])
-      setSelectedIndex(0)
-      setTimeout(() => inputRef.current?.focus(), 50)
-    }
-  }, [open])
-
-  const flowNodes = useFlowCanvasStore((s) => s.nodes)
-
-  // Collect all searchable shapes and frames from the canvas
-  const searchableShapes = useMemo(() => {
-    const results: Array<{ id: string; text: string; type: string; shape: any }> = []
-    for (const n of flowNodes) {
-      const d = (n.data || {}) as Record<string, any>
-      let text = d.title || d.label || d.text || ''
-      if (!text.trim() && n.type === 'projectFrame') text = 'Untitled Project'
-      if (!text.trim() && n.type === 'runwayFrame') text = "Today's Runway"
-      if (text.trim()) {
-        results.push({
-          id: n.id,
-          text: text.trim(),
-          type:
-            (n.type === 'focusTask'
-              ? 'focus-task'
-              : n.type === 'projectFrame'
-              ? 'project-frame'
-              : n.type === 'runwayFrame'
-              ? 'runway-frame'
-              : n.type) || 'unknown',
-          shape: n,
-        })
-      }
-    }
-    results.sort((a, b) => {
-      const typeRank = (t: string) =>
-        t === 'runway-frame' ? 0 : t === 'project-frame' ? 1 : t === 'focus-task' ? 2 : 3
-      return typeRank(a.type) - typeRank(b.type)
-    })
-    return results
-  }, [open, flowNodes])
 
 type SpotlightEntry =
   | {
@@ -149,170 +38,154 @@ type SpotlightEntry =
       id: string
       title: string
       shortcut?: string
-      badgeClass: string
       icon: React.ReactNode
+      emphasis?: boolean
       perform: () => void
     }
   | {
-      kind: 'shape'
+      kind: 'node'
       id: string
       text: string
-      type: string
-      shape: any
+      nodeType: string
+      actionable: boolean
+      done: boolean
     }
 
-  const actions = useMemo<
-    Array<{
-      id: string
-      title: string
-      shortcut?: string
-      keywords: string[]
-      icon: React.ReactNode
-      perform: () => void
-    }>
-  >(
+function nodeBadge(nodeType: string, actionable: boolean) {
+  if (nodeType === 'projectFrame') {
+    return {
+      label: 'Region',
+      icon: <Folder className="size-3 text-blue-500 shrink-0" />,
+      badgeClass:
+        'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/80',
+    }
+  }
+  if (actionable) {
+    return {
+      label: 'To-do',
+      icon: <CheckSquare className="size-3 text-emerald-500 shrink-0" />,
+      badgeClass:
+        'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/80',
+    }
+  }
+  if (nodeType === 'note') {
+    return {
+      label: 'Sticky',
+      icon: <StickyNote className="size-3 text-amber-500 shrink-0" />,
+      badgeClass:
+        'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/80',
+    }
+  }
+  if (nodeType === 'text' || nodeType === 'focusTask') {
+    return {
+      label: 'Text',
+      icon: <Type className="size-3 text-zinc-500 dark:text-zinc-400 shrink-0" />,
+      badgeClass:
+        'bg-zinc-100 dark:bg-zinc-800/70 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700/80',
+    }
+  }
+  return {
+    label: nodeType,
+    icon: <Layers className="size-3 text-zinc-500 dark:text-zinc-400 shrink-0" />,
+    badgeClass:
+      'bg-zinc-100 dark:bg-zinc-800/70 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700/80',
+  }
+}
+
+/** Parse capture prefixes: "[] buy milk" or "/todo buy milk" → to-do, "/note x" → sticky. */
+function parseCapture(raw: string): { text: string; actionable: boolean; style: 'plain' | 'sticky' } {
+  let text = raw.trim()
+  let actionable = false
+  let style: 'plain' | 'sticky' = 'plain'
+  if (/^(\[\s?\]|\/todo\b|\/t\b)/i.test(text)) {
+    actionable = true
+    text = text.replace(/^(\[\s?\]|\/todo\b|\/t\b)\s*/i, '')
+  } else if (/^(\/note|\/sticky)\b/i.test(text)) {
+    style = 'sticky'
+    text = text.replace(/^(\/note|\/sticky)\s*/i, '')
+  }
+  return { text, actionable, style }
+}
+
+export function GlobalSpotlight({ open, onClose, initialView = 'search', captureMode = false }: GlobalSpotlightProps) {
+  const [query, setQuery] = useState('')
+  const [view, setView] = useState<CommandBarView>(initialView)
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (open) {
+      setQuery('')
+      setView(initialView)
+      setSelectedIndex(0)
+      setTimeout(() => inputRef.current?.focus(), 50)
+    }
+  }, [open, initialView])
+
+  const flowNodes = useFlowCanvasStore((s) => s.nodes)
+
+  const searchableNodes = useMemo(() => {
+    const results: Array<Extract<SpotlightEntry, { kind: 'node' }>> = []
+    for (const n of flowNodes) {
+      let text = nodeTitle(n)
+      if ((!text || text === n.id) && n.type === 'projectFrame') text = 'Untitled region'
+      if (!text || text === n.id) continue
+      results.push({
+        kind: 'node',
+        id: n.id,
+        text,
+        nodeType: n.type || 'unknown',
+        actionable: isActionable(n),
+        done: isDone(n),
+      })
+    }
+    const rank = (e: (typeof results)[number]) =>
+      e.nodeType === 'projectFrame' ? 0 : e.actionable && !e.done ? 1 : 2
+    results.sort((a, b) => rank(a) - rank(b))
+    return results
+  }, [open, flowNodes])
+
+  const capture = (raw: string, forceActionable = false) => {
+    const parsed = parseCapture(raw)
+    window.dispatchEvent(
+      new CustomEvent('foqz:new-text', {
+        detail: {
+          text: parsed.text,
+          actionable: forceActionable || parsed.actionable,
+          style: parsed.style,
+        },
+      }),
+    )
+    onClose()
+  }
+
+  const actions = useMemo(
     () => [
       {
-        id: 'action-new-task',
-        title: 'New Task Card',
+        id: 'action-new-text',
+        title: 'New text',
         shortcut: '⌘N',
-        keywords: ['task', 'new', 'create', 'card', 'todo', 'item'],
-        icon: <Plus className="size-3 text-blue-500 shrink-0" />,
-        perform: () => {
-          window.dispatchEvent(new CustomEvent('foqz:new-task'))
-          onClose()
-        },
+        keywords: ['text', 'write', 'new', 'note', 'idea', 'task', 'todo'],
+        icon: <Type className="size-3 text-zinc-500 shrink-0" />,
+        perform: () => capture(''),
       },
       {
-        id: 'action-quick-task',
-        title: 'Quick Task Capture',
-        shortcut: '⌘⇧N',
-        keywords: [
-          'quick',
-          'capture',
-          'task',
-          'idea',
-          'inbox',
-          'natural',
-          'language',
-          'mention',
-          'project',
-          'runway',
-          'cite',
-        ],
-        icon: <Plus className="size-3 text-emerald-500 shrink-0" />,
-        perform: () => {
-          window.dispatchEvent(new CustomEvent('foqz:open-quick-task'))
-          onClose()
-        },
-      },
-      {
-        id: 'action-new-project',
-        title: 'New Project Frame',
+        id: 'action-new-region',
+        title: 'New region',
         shortcut: '⌘⇧P',
-        keywords: ['project', 'frame', 'goal', 'new', 'container', 'group'],
-        icon: <FolderPlus className="size-3 text-indigo-500 shrink-0" />,
+        keywords: ['region', 'project', 'frame', 'area', 'group', 'container'],
+        icon: <FolderPlus className="size-3 text-blue-500 shrink-0" />,
         perform: () => {
           window.dispatchEvent(new CustomEvent('foqz:new-project'))
           onClose()
         },
       },
       {
-        id: 'action-toggle-copilot',
-        title: 'Toggle AI Assistant',
-        shortcut: '⌘J',
-        keywords: ['copilot', 'ai', 'chat', 'assistant', 'drawer', 'panel'],
-        icon: <Sparkles className="size-3 text-blue-500 shrink-0" />,
-        perform: () => {
-          window.dispatchEvent(new CustomEvent('foqz:toggle-copilot'))
-        },
-      },
-      {
-        id: 'action-toggle-sidebar',
-        title: 'Toggle Workspace Sidebar',
-        shortcut: '⌘B',
-        keywords: ['sidebar', 'workspace', 'queue', 'tasks', 'nav', 'left'],
-        icon: <PanelLeft className="size-3 text-zinc-500 shrink-0" />,
-        perform: () => {
-          window.dispatchEvent(new CustomEvent('foqz:toggle-sidebar'))
-        },
-      },
-      {
-        id: 'action-send-to-runway',
-        title: 'Send Selected Task to Runway',
-        shortcut: 'R',
-        keywords: ['runway', 'send', 'stage', 'flight', 'today', 'focus', 'task'],
-        icon: <PlaneTakeoff className="size-3 text-blue-500 shrink-0" />,
-        perform: () => {
-          const currentNodes = useFlowCanvasStore.getState().nodes
-          const sel = currentNodes.find((n) => n.selected && n.type === 'focusTask')
-          if (sel) {
-            useFlowCanvasStore.getState().sendTaskToRunway(sel.id)
-          } else {
-            useFlowCanvasStore.getState().stageRunway()
-          }
-          onClose()
-        },
-      },
-      {
-        id: 'action-stage-runway',
-        title: "Stage Today's Runway Frame",
-        shortcut: '/today',
-        keywords: ['today', 'runway', 'focus', 'sprint', 'daily', 'stage', 'flight', 'template'],
-        icon: <PlaneTakeoff className="size-3 text-amber-500 shrink-0" />,
-        perform: () => {
-          useFlowCanvasStore.getState().stageRunway()
-          onClose()
-        },
-      },
-      {
-        id: 'action-prioritize-ai',
-        title: 'Prioritize Backlog with AI',
-        keywords: ['prioritize', 'backlog', 'ai', 'slot', 'day', 'rank', 'goal'],
-        icon: <Sparkles className="size-3 text-violet-500 shrink-0" />,
-        perform: () => {
-          setMode('prioritize')
-        },
-      },
-      {
-        id: 'action-new-note',
-        title: 'New Sticky Note',
-        shortcut: '/note',
-        keywords: ['note', 'sticky', 'text', 'scratchpad', 'idea', 'thought'],
-        icon: <StickyNote className="size-3 text-amber-500 shrink-0" />,
-        perform: () => {
-          const newId = useFlowCanvasStore.getState().createNote({ text: '' })
-          window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
-          onClose()
-        },
-      },
-      {
-        id: 'action-sweep-inbox',
-        title: 'Sweep Free Items into Inbox Frame',
-        shortcut: '/sweep',
-        keywords: ['sweep', 'inbox', 'clean', 'tidy', 'collect', 'stickies', 'organize'],
-        icon: <Inbox className="size-3 text-zinc-500 shrink-0" />,
-        perform: () => {
-          useFlowCanvasStore.getState().sweepToInbox()
-          onClose()
-        },
-      },
-      {
-        id: 'action-arrange-layout',
-        title: 'Arrange Layout (Tidy Non-overlapping)',
-        shortcut: '⌘⇧A',
-        keywords: ['arrange', 'layout', 'tidy', 'align', 'organize', 'separate', 'clean', 'space'],
-        icon: <LayoutGrid className="size-3 text-emerald-500 shrink-0" />,
-        perform: () => {
-          useFlowCanvasStore.getState().arrangeLayout()
-          onClose()
-        },
-      },
-      {
         id: 'action-group-selected',
-        title: 'Group Selected Nodes (Semantic Cluster)',
+        title: 'Group selection into a region',
         shortcut: '⌘G',
-        keywords: ['group', 'cluster', 'semantic', 'container', 'frame'],
+        keywords: ['group', 'region', 'wrap', 'frame'],
         icon: <Group className="size-3 text-indigo-500 shrink-0" />,
         perform: () => {
           const groupId = useFlowCanvasStore.getState().groupSelectedNodes()
@@ -323,294 +196,158 @@ type SpotlightEntry =
         },
       },
       {
-        id: 'action-ungroup-selected',
-        title: 'Ungroup Selected Container',
-        shortcut: '⌃⌥G',
-        keywords: ['ungroup', 'release', 'break', 'remove', 'frame'],
-        icon: <Group className="size-3 text-zinc-400 shrink-0" />,
-        perform: () => {
-          useFlowCanvasStore.getState().ungroupSelectedNodes()
-          onClose()
-        },
-      },
-      {
-        id: 'action-board-strategist',
-        title: 'Open Board Strategist AI Copilot',
+        id: 'action-ask-ai',
+        title: 'Ask AI about the board',
         shortcut: '⌘J',
-        keywords: ['chat', 'copilot', 'ai', 'strategist', 'board', 'ask', 'assistant'],
+        keywords: ['ai', 'chat', 'ask', 'assistant', 'copilot'],
         icon: <Sparkles className="size-3 text-blue-500 shrink-0" />,
         perform: () => {
           window.dispatchEvent(
             new CustomEvent('foqz:open-inline-chat', {
-              detail: { nodeId: '__canvas__' },
-            })
+              detail: { nodeId: useFlowCanvasStore.getState().selectedNodeId || '__canvas__' },
+            }),
           )
           onClose()
         },
       },
+      {
+        id: 'action-logbook',
+        title: 'Open Logbook',
+        keywords: ['logbook', 'done', 'history', 'swept', 'archive'],
+        icon: <BookOpen className="size-3 text-amber-500 shrink-0" />,
+        perform: () => {
+          window.dispatchEvent(new CustomEvent('foqz:open-logbook'))
+          onClose()
+        },
+      },
+      {
+        id: 'action-shortcuts',
+        title: 'Keyboard shortcuts',
+        shortcut: '?',
+        keywords: ['shortcuts', 'keys', 'help', 'keyboard'],
+        icon: <Keyboard className="size-3 text-zinc-500 shrink-0" />,
+        perform: () => {
+          setView('shortcuts')
+          setQuery('')
+        },
+      },
+      {
+        id: 'action-settings',
+        title: 'Settings',
+        shortcut: '⌘,',
+        keywords: ['settings', 'preferences', 'ai', 'github', 'mcp'],
+        icon: <Settings className="size-3 text-zinc-500 shrink-0" />,
+        perform: () => {
+          window.dispatchEvent(new CustomEvent('foqz:open-settings'))
+          onClose()
+        },
+      },
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [onClose],
   )
 
-  // Unified fuzzy search for actions and canvas shapes
   const filteredEntries = useMemo<SpotlightEntry[]>(() => {
     const raw = query.trim()
     const q = raw.toLowerCase()
 
     if (!q) {
-      const actionEntries: SpotlightEntry[] = actions.map((a) => ({
-        kind: 'action',
-        id: a.id,
-        title: a.title,
-        shortcut: a.shortcut,
-        badgeClass:
-          'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700',
-        icon: a.icon,
-        perform: a.perform,
-      }))
-
-      const projects: SpotlightEntry[] = searchableShapes
-        .filter((s) => s.type === 'project-frame')
-        .map((s) => ({ kind: 'shape', ...s }))
-
-      const others: SpotlightEntry[] = searchableShapes
-        .filter((s) => s.type !== 'project-frame')
-        .slice(0, 15)
-        .map((s) => ({ kind: 'shape', ...s }))
-
-      return [...actionEntries, ...projects, ...others]
+      const actionEntries: SpotlightEntry[] = actions.map((a) => ({ kind: 'action', ...a }))
+      return [...actionEntries, ...searchableNodes.slice(0, 15)]
     }
 
-    // 1. Prefix command triggers
-    if (q.startsWith('/t ') || q.startsWith('/task ') || q.startsWith('todo ')) {
-      const title = raw.replace(/^(\/t|\/task|todo)\s*/i, '').trim() || 'New Focus Task'
-      return [
-        {
-          kind: 'action',
-          id: 'action-prefix-create-task',
-          title: `Create Focus Task: "${title}"`,
-          shortcut: '↵ Enter',
-          badgeClass: 'bg-blue-500/10 text-blue-500 border-blue-500/30 font-semibold',
-          icon: <Plus className="size-3.5 text-blue-500 shrink-0" />,
-          perform: () => {
-            window.dispatchEvent(new CustomEvent('foqz:new-task', { detail: { title } }))
-            onClose()
-          },
-        },
-      ]
+    if (q === '?') {
+      return []
     }
 
-    if (q.startsWith('/p ') || q.startsWith('/project ')) {
-      const title = raw.replace(/^(\/p|\/project)\s*/i, '').trim() || 'New Project Workspace'
-      return [
-        {
-          kind: 'action',
-          id: 'action-prefix-create-project',
-          title: `Create Project Frame: "${title}"`,
-          shortcut: '↵ Enter',
-          badgeClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 font-semibold',
-          icon: <FolderPlus className="size-3.5 text-emerald-500 shrink-0" />,
-          perform: () => {
-            window.dispatchEvent(new CustomEvent('foqz:new-project', { detail: { title } }))
-            onClose()
-          },
-        },
-      ]
-    }
-
-    if (q.startsWith('/b ') || q.startsWith('/box ')) {
-      const label = raw.replace(/^(\/b|\/box)\s*/i, '').trim() || 'Architecture Spec'
-      return [
-        {
-          kind: 'action',
-          id: 'action-prefix-create-box',
-          title: `Create Architecture Spec Box: "${label}"`,
-          shortcut: '↵ Enter',
-          badgeClass: 'bg-amber-500/10 text-amber-500 border-amber-500/30 font-semibold',
-          icon: <Layers className="size-3.5 text-amber-500 shrink-0" />,
-          perform: () => {
-            const newId = useFlowCanvasStore.getState().createBox({ label })
-            window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
-            onClose()
-          },
-        },
-      ]
-    }
-
-    if (q.startsWith('/note ') || q.startsWith('/sticky ') || q === '/note' || q === '/sticky') {
-      const text = raw.replace(/^(\/note|\/sticky)\s*/i, '').trim()
-      return [
-        {
-          kind: 'action',
-          id: 'action-prefix-create-note',
-          title: text ? `Create Sticky Note: "${text}"` : 'Create New Sticky Note',
-          shortcut: '↵ Enter',
-          badgeClass: 'bg-amber-500/10 text-amber-500 border-amber-500/30 font-semibold',
-          icon: <StickyNote className="size-3.5 text-amber-500 shrink-0" />,
-          perform: () => {
-            const newId = useFlowCanvasStore.getState().createNote({ text })
-            window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: newId } }))
-            onClose()
-          },
-        },
-      ]
-    }
-
-    if (q.startsWith('/sweep') || q === '/inbox' || q === '/tidy') {
-      return [
-        {
-          kind: 'action',
-          id: 'action-prefix-sweep',
-          title: 'Sweep Free-Floating Items into Inbox Frame',
-          shortcut: '↵ Enter',
-          badgeClass: 'bg-zinc-500/10 text-zinc-500 border-zinc-500/30 font-semibold',
-          icon: <Inbox className="size-3.5 text-zinc-500 shrink-0" />,
-          perform: () => {
-            useFlowCanvasStore.getState().sweepToInbox()
-            onClose()
-          },
-        },
-      ]
-    }
-
-    if (q.startsWith('/today') || q.startsWith('/runway')) {
-      return [
-        {
-          kind: 'action',
-          id: 'action-prefix-runway',
-          title: `Stage Today's Runway Frame (Focus Sprints)`,
-          shortcut: '↵ Enter',
-          badgeClass: 'bg-rose-500/10 text-rose-500 border-rose-500/30 font-semibold',
-          icon: <Sparkles className="size-3.5 text-rose-500 shrink-0" />,
-          perform: () => {
-            useFlowCanvasStore.getState().stageRunway()
-            onClose()
-          },
-        },
-      ]
-    }
-
-    if (q.startsWith('/prioritize')) {
-      return [
-        {
-          kind: 'action',
-          id: 'action-prefix-prioritize',
-          title: `Prioritize Backlog & Projects with Jev AI`,
-          shortcut: '↵ Enter',
-          badgeClass: 'bg-violet-500/10 text-violet-500 border-violet-500/30 font-semibold',
-          icon: <Sparkles className="size-3.5 text-violet-500 shrink-0" />,
-          perform: () => setMode('prioritize'),
-        },
-      ]
-    }
-
-    if (
-      q.startsWith('/chat') ||
-      q.startsWith('/ai') ||
-      q.startsWith('/copilot') ||
-      q.startsWith('/strategist')
-    ) {
-      return [
-        {
-          kind: 'action',
-          id: 'action-prefix-chat',
-          title: `Open Board Strategist AI Copilot`,
-          shortcut: '↵ Enter',
-          badgeClass: 'bg-blue-500/10 text-blue-500 border-blue-500/30 font-semibold',
-          icon: <Sparkles className="size-3.5 text-blue-500 shrink-0" />,
-          perform: () => {
-            window.dispatchEvent(
-              new CustomEvent('foqz:open-inline-chat', {
-                detail: { nodeId: '__canvas__' },
-              })
-            )
-            onClose()
-          },
-        },
-      ]
-    }
-
-    // 2. Standard Search + Instant Creation
-    const matchedShapes: SpotlightEntry[] = searchableShapes
-      .filter((s) => s.text.toLowerCase().includes(q) || s.type.toLowerCase().includes(q))
-      .slice(0, 20)
-      .map((s) => ({ kind: 'shape', ...s }))
-
-    const matchedActions: SpotlightEntry[] = actions
-      .filter(
-        (a) =>
-          a.title.toLowerCase().includes(q) ||
-          a.keywords.some((k) => k.toLowerCase().includes(q)),
-      )
-      .map((a) => ({
-        kind: 'action',
-        id: a.id,
-        title: a.title,
-        shortcut: a.shortcut,
-        badgeClass:
-          'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700',
-        icon: a.icon,
-        perform: a.perform,
-      }))
-
-    // Instant creation entries
-    const creationActions: SpotlightEntry[] = [
+    const parsed = parseCapture(raw)
+    const label = parsed.text || '…'
+    const captureEntries: SpotlightEntry[] = [
       {
         kind: 'action',
-        id: 'action-instant-create-task',
-        title: `Create Focus Task: "${raw}"`,
-        shortcut: '↵ Enter',
-        badgeClass: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30 font-semibold',
-        icon: <Plus className="size-3.5 text-blue-500 shrink-0" />,
-        perform: () => {
-          window.dispatchEvent(new CustomEvent('foqz:new-task', { detail: { title: raw } }))
-          onClose()
-        },
+        id: 'action-capture',
+        title:
+          parsed.style === 'sticky'
+            ? `Write sticky: "${label}"`
+            : parsed.actionable
+            ? `Write to-do: "${label}"`
+            : `Write: "${label}"`,
+        shortcut: '↵',
+        emphasis: true,
+        icon: parsed.actionable ? (
+          <CheckSquare className="size-3.5 text-emerald-500 shrink-0" />
+        ) : (
+          <Plus className="size-3.5 text-blue-500 shrink-0" />
+        ),
+        perform: () => capture(raw),
       },
     ]
+    if (!parsed.actionable && parsed.style === 'plain') {
+      captureEntries.push({
+        kind: 'action',
+        id: 'action-capture-todo',
+        title: `Write to-do: "${label}"`,
+        shortcut: '⌘↵',
+        icon: <CheckSquare className="size-3.5 text-emerald-500 shrink-0" />,
+        perform: () => capture(raw, true),
+      })
+    }
 
-    return [...creationActions, ...matchedShapes, ...matchedActions]
-  }, [actions, searchableShapes, query, onClose])
+    const matchedNodes = searchableNodes
+      .filter((s) => s.text.toLowerCase().includes(q))
+      .slice(0, 20)
+    const matchedActions: SpotlightEntry[] = actions
+      .filter((a) => a.title.toLowerCase().includes(q) || a.keywords.some((k) => k.includes(q)))
+      .map((a) => ({ kind: 'action', ...a }))
 
-  // Reset selected index when query or results change
+    return [...captureEntries, ...matchedNodes, ...matchedActions]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actions, searchableNodes, query])
+
   useEffect(() => {
     setSelectedIndex(0)
-  }, [query, mode])
+  }, [query, view])
 
-  // Auto-scroll the active keyboard selection into view
+  useEffect(() => {
+    if (query.trim() === '?') {
+      setView('shortcuts')
+      setQuery('')
+    }
+  }, [query])
+
   useEffect(() => {
     if (listRef.current) {
       const activeEl = listRef.current.children[selectedIndex] as HTMLElement | undefined
-      if (activeEl) {
-        activeEl.scrollIntoView({ block: 'nearest' })
-      }
+      activeEl?.scrollIntoView({ block: 'nearest' })
     }
   }, [selectedIndex])
 
-  // Global Escape key handler when modal is open
   useEffect(() => {
     if (!open) return
     const onGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
+        if (view === 'shortcuts' && initialView !== 'shortcuts') {
+          setView('search')
+          setTimeout(() => inputRef.current?.focus(), 0)
+          return
+        }
         onClose()
       }
     }
     window.addEventListener('keydown', onGlobalKeyDown)
     return () => window.removeEventListener('keydown', onGlobalKeyDown)
-  }, [open, onClose])
+  }, [open, onClose, view, initialView])
 
-  const handleSelectShape = (shapeId: string) => {
-    useFlowCanvasStore.getState().setSelectedNodeId(shapeId)
-    window.dispatchEvent(
-      new CustomEvent('foqz:flow-center-on', { detail: { id: shapeId } })
-    )
+  const handleSelectNode = (nodeId: string) => {
+    useFlowCanvasStore.getState().setSelectedNodeId(nodeId)
+    window.dispatchEvent(new CustomEvent('foqz:flow-center-on', { detail: { id: nodeId } }))
     onClose()
   }
 
-  const handleStartFocusSession = (shapeId: string) => {
-    handleSelectShape(shapeId)
-    onSelectFocusTarget(shapeId)
+  const handleFocusNode = (nodeId: string) => {
+    useFlowCanvasStore.getState().setSelectedNodeId(nodeId)
+    startFocus(nodeId)
     onClose()
   }
 
@@ -623,82 +360,38 @@ type SpotlightEntry =
       setSelectedIndex((prev) => Math.max(prev - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
+      if ((e.metaKey || e.ctrlKey) && query.trim()) {
+        capture(query, true)
+        return
+      }
       const selected = filteredEntries[selectedIndex]
       if (!selected) return
-      if (selected.kind === 'action') {
-        selected.perform()
-        if (selected.id !== 'action-prioritize-ai') {
-          onClose()
-        }
-      } else {
-        handleSelectShape(selected.id)
-      }
-    }
-  }
-
-  const handleRunPrioritize = async () => {
-    if (!dailyGoal.trim()) return
-    setIsPrioritizing(true)
-
-    try {
-      const candidates = searchableShapes.map((s) => ({
-        id: s.id as string,
-        title: s.text,
-      }))
-
-      const result = await prioritizeDailyFocusSlot(dailyGoal, candidates)
-      setRankedItems(result.rankings)
-    } catch (err: any) {
-      alert(`Prioritization failed: ${err.message || String(err)}`)
-    } finally {
-      setIsPrioritizing(false)
+      if (selected.kind === 'action') selected.perform()
+      else handleSelectNode(selected.id)
     }
   }
 
   if (!open) return null
 
+  const rowClass = (isSelected: boolean) =>
+    `flex items-center justify-between p-2.5 rounded-xl transition-all group cursor-pointer border ${
+      isSelected
+        ? 'bg-zinc-100 dark:bg-zinc-800/90 border-zinc-300 dark:border-zinc-700 shadow-2xs'
+        : 'border-transparent hover:bg-zinc-100/70 dark:hover:bg-zinc-800/50'
+    }`
+
   return (
     <div
       className="fixed inset-0 z-[7000] flex items-start justify-center pt-20 sm:pt-24 bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-150"
       onClick={onClose}
+      data-testid="command-bar"
     >
       <div
         className="w-full max-w-2xl rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden flex flex-col text-xs text-zinc-900 dark:text-zinc-100 animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Mode Switcher Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-100 dark:border-zinc-800/80 bg-zinc-50 dark:bg-zinc-950/40 select-none">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setMode('search')}
-              className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
-                mode === 'search'
-                  ? 'bg-white dark:bg-zinc-800 text-foreground shadow-xs'
-                  : 'text-zinc-500 hover:text-foreground'
-              }`}
-            >
-              Jump & Search
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('prioritize')}
-              className={`flex items-center gap-1 px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
-                mode === 'prioritize'
-                  ? 'bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 shadow-xs'
-                  : 'text-zinc-500 hover:text-foreground'
-              }`}
-            >
-              <Sparkles className="size-3" />
-              <span>Prioritize My Day</span>
-            </button>
-          </div>
-          <span className="text-[10px] text-zinc-400 font-mono">Esc to close</span>
-        </div>
-
-        {mode === 'search' ? (
+        {view === 'search' ? (
           <>
-            {/* Search Input Bar */}
             <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
               <Search className="size-4 text-zinc-400 shrink-0" />
               <input
@@ -707,77 +400,60 @@ type SpotlightEntry =
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Jump to project, task, or run an action (⌘N, ⌘⇧P, ⌘J)..."
+                placeholder={
+                  captureMode
+                    ? 'Write something, press Enter. Start with [] for a to-do.'
+                    : 'Find anything, run an action, or just type to write…'
+                }
                 className="w-full bg-transparent border-0 outline-none text-sm text-foreground placeholder:text-zinc-400"
               />
+              <span className="text-[10px] text-zinc-400 font-mono shrink-0">? shortcuts</span>
             </div>
 
-            {/* Results List */}
             <div ref={listRef} className="max-h-[380px] overflow-y-auto p-2 space-y-1">
               {filteredEntries.length === 0 ? (
-                <div className="py-12 text-center text-zinc-400">
-                  No matching actions, projects, or canvas items found.
-                </div>
+                <div className="py-12 text-center text-zinc-400">Nothing matches.</div>
               ) : (
                 filteredEntries.map((item, index) => {
                   const isSelected = index === selectedIndex
-
                   if (item.kind === 'action') {
                     return (
                       <div
                         key={item.id}
-                        className={`flex items-center justify-between p-2.5 rounded-xl transition-all group cursor-pointer border ${
-                          isSelected
-                            ? 'bg-zinc-100 dark:bg-zinc-800/90 border-zinc-300 dark:border-zinc-700 shadow-2xs'
-                            : 'border-transparent hover:bg-zinc-100/70 dark:hover:bg-zinc-800/50'
-                        }`}
-                        onClick={() => {
-                          item.perform()
-                          if (item.id !== 'action-prioritize-ai') onClose()
-                        }}
+                        className={rowClass(isSelected)}
+                        onClick={() => item.perform()}
                         onMouseEnter={() => setSelectedIndex(index)}
                       >
                         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium tracking-wide uppercase shrink-0 border ${item.badgeClass}`}
-                          >
+                          <span className="size-6 rounded-md flex items-center justify-center bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shrink-0">
                             {item.icon}
-                            <span>Action</span>
                           </span>
-                          <span className="font-medium text-foreground truncate text-xs">
+                          <span
+                            className={`truncate text-xs ${
+                              item.emphasis ? 'font-semibold text-foreground' : 'font-medium text-foreground'
+                            }`}
+                          >
                             {item.title}
                           </span>
                         </div>
-
                         <div className="flex items-center gap-1.5 shrink-0 ml-2">
                           {item.shortcut && (
                             <kbd className="font-mono text-[10px] text-zinc-400 dark:text-zinc-500 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/70 px-1.5 py-0.5 rounded">
                               {item.shortcut}
                             </kbd>
                           )}
-                          {isSelected && (
-                            <span className="text-zinc-400 dark:text-zinc-500 flex items-center">
-                              <CornerDownLeft className="size-3.5" />
-                            </span>
-                          )}
+                          {isSelected && <CornerDownLeft className="size-3.5 text-zinc-400" />}
                         </div>
                       </div>
                     )
                   }
 
-                  const badge = getShapeBadge(item.type)
-                  const isProject = item.type === 'project-frame'
-                  const isTask = item.type === 'focus-task'
-
+                  const badge = nodeBadge(item.nodeType, item.actionable)
                   return (
                     <div
                       key={item.id}
-                      className={`flex items-center justify-between p-2.5 rounded-xl transition-all group cursor-pointer border ${
-                        isSelected
-                          ? 'bg-zinc-100 dark:bg-zinc-800/90 border-zinc-300 dark:border-zinc-700 shadow-2xs'
-                          : 'border-transparent hover:bg-zinc-100/70 dark:hover:bg-zinc-800/50'
-                      }`}
-                      onClick={() => handleSelectShape(item.id)}
+                      className={rowClass(isSelected)}
+                      onClick={() => handleSelectNode(item.id)}
                       onMouseEnter={() => setSelectedIndex(index)}
                     >
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -787,160 +463,87 @@ type SpotlightEntry =
                           {badge.icon}
                           <span>{badge.label}</span>
                         </span>
-                        <span className="font-medium text-foreground truncate text-xs">
+                        <span
+                          className={`truncate text-xs font-medium ${
+                            item.done ? 'line-through text-zinc-400' : 'text-foreground'
+                          }`}
+                        >
                           {item.text}
                         </span>
                       </div>
-
                       <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                        {isTask && (
+                        {item.actionable && !item.done && (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleStartFocusSession(item.id)
+                              handleFocusNode(item.id)
                             }}
-                            className="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-medium hover:bg-emerald-200 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
-                            title="Start Focus Session"
+                            className="flex items-center gap-1 px-2 py-1 rounded-md bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-300 text-[10px] font-medium hover:bg-rose-100 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                            title="Focus here"
                           >
-                            <Lock className="size-2.5" />
+                            <Target className="size-2.5" />
                             <span>Focus</span>
                           </button>
                         )}
-
-                        {isProject && (
-                          <span className="text-[11px] text-zinc-400 dark:text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                        {item.nodeType === 'projectFrame' && (
+                          <span className="text-[11px] text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
                             Jump <ArrowRight className="size-3 ml-0.5 inline" />
                           </span>
                         )}
-
-                        {isSelected && (
-                          <span className="text-zinc-400 dark:text-zinc-500 flex items-center">
-                            <CornerDownLeft className="size-3.5" />
-                          </span>
-                        )}
+                        {isSelected && <CornerDownLeft className="size-3.5 text-zinc-400" />}
                       </div>
                     </div>
                   )
                 })
               )}
             </div>
-
-            {/* Footer with keyboard navigation hints */}
-            <div className="px-4 py-2 border-t border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/60 dark:bg-zinc-950/40 flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400 select-none">
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1">
-                  <kbd className="font-mono bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/70 px-1 py-0.2 rounded text-[10px]">
-                    ↑↓
-                  </kbd>{' '}
-                  navigate
-                </span>
-                <span className="flex items-center gap-1">
-                  <kbd className="font-mono bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/70 px-1 py-0.2 rounded text-[10px]">
-                    ↵
-                  </kbd>{' '}
-                  select
-                </span>
-                <span className="flex items-center gap-1">
-                  <kbd className="font-mono bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/70 px-1 py-0.2 rounded text-[10px]">
-                    esc
-                  </kbd>{' '}
-                  close
-                </span>
-              </div>
-              {filteredEntries.length > 0 && (
-                <span className="text-[10px] text-zinc-400 font-mono">
-                  {filteredEntries.length} {filteredEntries.length === 1 ? 'item' : 'items'}
-                </span>
-              )}
-            </div>
           </>
         ) : (
-          /* Daily Prioritization Mode */
-          <div className="p-4 flex flex-col gap-4">
-            <div>
-              <label className="block text-xs font-semibold mb-1 text-foreground">
-                What is your #1 outcome or goal for today?
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="e.g. Ship billing checkout v2 and resolve production crash"
-                  value={dailyGoal}
-                  onChange={(e) => setDailyGoal(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void handleRunPrioritize()
-                  }}
-                  className="flex-1 px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs outline-none focus:border-blue-500"
-                />
+          <div className="flex flex-col max-h-[520px]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Keyboard className="size-4 text-zinc-500" />
+                <span>Shortcuts</span>
+              </div>
+              {initialView !== 'shortcuts' && (
                 <button
                   type="button"
-                  disabled={!dailyGoal.trim() || isPrioritizing}
-                  onClick={() => void handleRunPrioritize()}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold text-xs transition-colors disabled:opacity-40 cursor-pointer"
+                  onClick={() => setView('search')}
+                  className="text-[11px] text-zinc-500 hover:text-foreground cursor-pointer"
                 >
-                  {isPrioritizing ? 'Evaluating priorities...' : 'Prioritize Backlog'}
+                  Back to search
                 </button>
-              </div>
+              )}
             </div>
-
-            {rankedItems.length > 0 && (
-              <div className="flex flex-col gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-                <div className="flex items-center justify-between text-zinc-500 font-medium text-[11px]">
-                  <span>Recommended Sequence:</span>
-                  <span>{rankedItems.length} candidate items evaluated</span>
-                </div>
-
-                <div className="max-h-96 overflow-y-auto space-y-1.5">
-                  {rankedItems.map((item, idx) => (
-                    <div
-                      key={item.id}
-                      className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                        idx === 0
-                          ? 'border-blue-500/40 bg-blue-50/40 dark:bg-blue-950/20 shadow-sm'
-                          : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <span
-                          className={`size-5 rounded-full flex items-center justify-center font-mono font-bold text-[10px] shrink-0 ${
-                            idx === 0
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
-                          }`}
-                        >
-                          {idx + 1}
-                        </span>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="font-semibold text-foreground truncate">{item.title}</div>
-                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-zinc-500">
-                            <span className="capitalize">{item.blastRadius.replace('_', ' ')}</span>
-                            <span>•</span>
-                            <span>{item.isActionable ? 'Actionable 1-slot' : 'Multi-step'}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleStartFocusSession(item.id)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0 cursor-pointer ${
-                          idx === 0
-                            ? 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-xs'
-                            : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-foreground'
-                        }`}
-                      >
-                        <Lock className="size-3" />
-                        <span>{idx === 0 ? 'Lock Into Focus' : 'Focus'}</span>
-                      </button>
+            <div className="overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+              {(['Text', 'Tools', 'Canvas', 'App'] as const).map((cat) => (
+                <div key={cat} className="space-y-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 pb-1">
+                    {cat}
+                  </div>
+                  {CANVAS_SHORTCUTS.filter((s) => s.category === cat).map((s) => (
+                    <div key={s.id} className="flex items-center justify-between gap-3 py-0.5" title={s.description}>
+                      <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">{s.name}</span>
+                      <kbd className="font-mono text-[10px] text-zinc-500 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded shrink-0">
+                        {s.keyDisplay}
+                      </kbd>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         )}
+
+        <div className="px-4 py-2 border-t border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/60 dark:bg-zinc-950/40 flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400 select-none">
+          <div className="flex items-center gap-3">
+            <span>↑↓ navigate</span>
+            <span>↵ select</span>
+            <span>⌘↵ write as to-do</span>
+            <span>esc close</span>
+          </div>
+        </div>
       </div>
     </div>
   )

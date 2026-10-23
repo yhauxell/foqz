@@ -9,8 +9,6 @@ import {
   Send,
   X,
   HelpCircle,
-  AlertCircle,
-  CheckCircle2,
   Bookmark,
   Sparkles,
 } from 'lucide-react';
@@ -42,16 +40,6 @@ const KIND_CONFIG: Record<
     label: 'Decision',
     icon: <Bookmark className="size-3" />,
     badgeClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60',
-  },
-  constraint: {
-    label: 'Constraint',
-    icon: <AlertCircle className="size-3" />,
-    badgeClass: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200 dark:border-rose-800/60',
-  },
-  todo: {
-    label: 'To-do',
-    icon: <CheckCircle2 className="size-3" />,
-    badgeClass: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border-blue-200 dark:border-blue-800/60',
   },
 };
 

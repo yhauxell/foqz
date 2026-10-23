@@ -152,7 +152,8 @@ describe("LocalStorageAdapter", () => {
       FLOW_STORAGE_KEY,
       JSON.stringify({
         nodes: [sampleNode],
-        edges: [{ id: "e1", source: "a", target: "b" }],
+        // Migration drops edges whose endpoints are missing, so point at a real node.
+        edges: [{ id: "e1", source: "task-1", target: "task-1" }],
         annotations: { "ann-1": { id: "ann-1" } },
         updatedAt: 42,
       })

@@ -1,7 +1,7 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 
 /**
- * Two-way task <-> GitHub issue sync (status, priority labels, assignee) against an in-memory
+ * Two-way to-do <-> GitHub issue sync (status, assignee; labels pulled for display) against an in-memory
  * fake of the GitHub REST API. No real network calls: api.github.com and avatar images are routed.
  */
 
@@ -31,7 +31,6 @@ function linkedTask(id: string, title: string, y: number) {
     data: {
       title,
       status: 'open',
-      priority: 3,
       githubIssueNumber: ISSUE,
       githubRepo: REPO,
       githubIssueUrl: `https://github.com/${REPO}/issues/${ISSUE}`,
@@ -139,7 +138,7 @@ async function pickAssignee(page: Page, login: string, id = 'task-gh') {
 }
 
 async function syncFrame(page: Page) {
-  await page.locator('button[title^="Sync status, priority labels"]').click();
+  await page.locator('button[title^="Sync status and assignees"]').click();
 }
 
 test.describe('GitHub two-way task sync', () => {

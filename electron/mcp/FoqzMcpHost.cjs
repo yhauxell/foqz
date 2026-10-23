@@ -11,16 +11,9 @@ const DEFAULT_PORT = 7337
 const MCP_PATH = '/mcp'
 const MAX_BODY_BYTES = 4 * 1024 * 1024
 const DEFAULT_CALL_TIMEOUT_MS = 30_000
-// AI-backed tools (image generation, Jev evaluations) can take much longer than canvas edits.
+// Tools that create many nodes or call GitHub can take longer than a single canvas edit.
 const SLOW_TOOL_TIMEOUT_MS = 180_000
-const SLOW_TOOLS = new Set([
-  'generate_image',
-  'expand_task',
-  'jev_audit_portfolio',
-  'jev_triage_items',
-  'jev_evaluate_task',
-  'jev_evaluate_project',
-])
+const SLOW_TOOLS = new Set(['expand_task', 'create_github_issue'])
 
 function generateToken() {
   return crypto.randomBytes(24).toString('base64url')

@@ -34,16 +34,6 @@ const KIND_COLORS: Record<AnnotationKind, { bg: string; text: string; ring: stri
     text: 'text-white',
     ring: 'ring-emerald-300',
   },
-  constraint: {
-    bg: 'bg-rose-500',
-    text: 'text-white',
-    ring: 'ring-rose-300',
-  },
-  todo: {
-    bg: 'bg-blue-600',
-    text: 'text-white',
-    ring: 'ring-blue-300',
-  },
 };
 
 export function AnnotationPinsOverlay({
