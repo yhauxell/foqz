@@ -18,3 +18,11 @@ export function getBoardStorageKey(boardId: string): string {
     ? FLOW_STORAGE_KEY
     : `foqz_board_snapshot_${boardId}`;
 }
+
+/** Raw pre-migration JSON, written once before a board is upgraded to v2. */
+export function getBoardBackupKey(boardId: string, version: number): string {
+  return `foqz_board_backup_v${version}:${boardId}`;
+}
+
+/** Global GitHub token fallback read by `getGithubToken`. */
+export const GITHUB_TOKEN_KEY = "foqz_github_token";

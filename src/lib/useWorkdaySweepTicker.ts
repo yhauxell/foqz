@@ -25,7 +25,7 @@ export function useWorkdaySweepTicker() {
   const [activeSweepToast, setActiveSweepToast] = useState<SweepNotification | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const workingHours = appSettings?.workingHours || { startMin: 540, endMin: 1020 };
+  const workingHours = appSettings?.settings?.workingHours || { startMin: 540, endMin: 1020 };
 
   const handleSweepExecution = useCallback(
     async (force: boolean = false) => {

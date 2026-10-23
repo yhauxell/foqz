@@ -1,36 +1,26 @@
-export const FOQZ_SYSTEM_PROMPT = `You are an AI assistant and autonomous agent embedded inside Foqz, an infinite-canvas desktop command center.
-You have FULL CAPABILITY to create and spawn cards, tasks, sketch boxes, and projects directly on the user's canvas.
+export const FOQZ_SYSTEM_PROMPT = `You are the assistant inside Foqz, a spatial canvas. Everything the user writes is text placed somewhere on the board; any text can be a to-do (it then has a checkbox and can be focused on), and regions group things by area. Where something sits matters, so add new things next to what they relate to.
 
-Whenever the user asks you to:
-- Break down a goal, plan, or project into subtasks
-- Create or spawn tasks/cards on the canvas
-- Add notes, checklists, tips, or documentation
-- Set up a workflow
+When the user asks you to break something down, plan, or add items, prefer calling the canvas tools. If you cannot call tools, include a \`\`\`canvas block with a JSON array the user can place with one click:
 
-You MUST explain your reasoning clearly AND include a \`\`\`canvas block with a JSON array of shapes to spawn on the board.
-
-Format:
 \`\`\`canvas
 [
-  { "type": "task", "title": "Design authentication database schema", "priority": 1 },
-  { "type": "task", "title": "Implement JWT middleware and refresh tokens", "priority": 2 },
-  { "type": "task", "title": "Create frontend login & register forms", "priority": 3 },
-  { "type": "note", "text": "Security tip: Use bcrypt with salt rounds >= 12 and secure httpOnly cookies.", "color": "yellow" }
+  { "type": "task", "title": "Design the auth database schema" },
+  { "type": "task", "title": "Add JWT middleware and refresh tokens" },
+  { "type": "note", "text": "Use bcrypt with at least 12 salt rounds." }
 ]
 \`\`\`
 
-Supported shape types:
-- "task": Executable task card. Properties: "title" (string, required), "priority" (number: 1=Urgent, 2=High, 3=Normal, 4=Low).
-- "note": Sticky note. Properties: "text" (string, required), "color" ("yellow" | "blue" | "green" | "pink").
-- "project": Project frame milestone. Properties: "title" (string, required), "notes" (goal string).
+Item types:
+- "task": a to-do. "title" (required), optional "notes".
+- "note": a sticky. "text" (required).
+- "project": a region. "title" (required), optional "notes" as its goal.
 
-Always output valid JSON inside the \`\`\`canvas block when creating items. Never tell the user you cannot create cards or canvas elements—you DO have this direct ability through the Foqz canvas engine!`;
+Keep answers short and concrete.`;
 
 export interface SpawnableShape {
   type: 'task' | 'note' | 'timer' | 'project' | 'image'
   title?: string
   text?: string
-  priority?: number
   color?: 'yellow' | 'blue' | 'green' | 'pink' | 'red' | 'black' | 'grey' | 'violet'
   minutes?: number
   notes?: string
@@ -43,9 +33,7 @@ export interface ProposedNodeUpdate {
   title?: string
   notes?: string
   appendNotes?: string
-  priority?: number
-  status?: 'open' | 'doing' | 'done'
-  paper?: 'cream' | 'fog' | 'bloom' | 'sage'
+  status?: 'open' | 'done'
   goal?: string
 }
 
@@ -77,7 +65,6 @@ export function normalizeShapeItem(item: any): SpawnableShape | null {
     return {
       type: 'task',
       title: String(item.title || item.task || item.name),
-      priority: typeof item.priority === 'number' ? item.priority : 3,
       text: item.notes || item.text || item.description,
       notes: item.notes || item.text || item.description,
       minutes: typeof item.minutes === 'number' ? item.minutes : undefined,
@@ -231,9 +218,7 @@ export function tryParseNodeUpdateJson(raw: string): ProposedNodeUpdate | null {
         parsed.title !== undefined ||
         parsed.notes !== undefined ||
         parsed.appendNotes !== undefined ||
-        parsed.priority !== undefined ||
         parsed.status !== undefined ||
-        parsed.paper !== undefined ||
         parsed.goal !== undefined
       ) {
         if (parsed.tasks || parsed.elements || parsed.shapes) return null
@@ -242,9 +227,7 @@ export function tryParseNodeUpdateJson(raw: string): ProposedNodeUpdate | null {
           title: parsed.title ? String(parsed.title) : undefined,
           notes: parsed.notes ? String(parsed.notes) : undefined,
           appendNotes: parsed.appendNotes ? String(parsed.appendNotes) : undefined,
-          priority: typeof parsed.priority === 'number' ? parsed.priority : undefined,
-          status: parsed.status,
-          paper: parsed.paper,
+          status: parsed.status === 'done' ? 'done' : parsed.status === 'open' || parsed.status === 'doing' ? 'open' : undefined,
           goal: parsed.goal ? String(parsed.goal) : undefined,
         }
       }

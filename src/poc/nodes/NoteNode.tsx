@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/note";
 import { renderMarkdownInline } from "@/lib/markdown";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import { TodoCheckbox } from "../components/TodoCheckbox";
 
 export interface NoteNodeData {
   title?: string;
@@ -28,6 +29,9 @@ export interface NoteNodeData {
   pin?: boolean;
   isNew?: boolean;
   autoEdit?: boolean;
+  /** To-do behavior: shows a checkbox, can be focused, swept to the Logbook when done. */
+  actionable?: boolean;
+  status?: "open" | "done";
   [key: string]: unknown;
 }
 
@@ -47,6 +51,9 @@ export const NoteNode = memo(function NoteNode({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const titleRef = useRef(titleDraft);
   const textRef = useRef(textDraft);
+  const isFocusTarget = useFlowCanvasStore((s) => s.activeFocusNodeId === id);
+  const actionable = data.actionable === true;
+  const done = actionable && data.status === "done";
 
   useEffect(() => {
     titleRef.current = titleDraft;
@@ -126,8 +133,14 @@ export const NoteNode = memo(function NoteNode({
     <div
       ref={containerRef}
       className={`relative w-full h-full select-none ${
-        selected ? "ring-2 ring-blue-500/80 rounded-xl" : ""
+        isFocusTarget
+          ? "ring-2 ring-rose-500 rounded-xl shadow-lg shadow-rose-500/10"
+          : selected
+          ? "ring-2 ring-blue-500/80 rounded-xl"
+          : ""
       }`}
+      data-actionable={actionable || undefined}
+      data-done={done || undefined}
       style={{
         width: Math.max(160, width),
         height: Math.max(120, height),
@@ -181,7 +194,8 @@ export const NoteNode = memo(function NoteNode({
       >
         <div className="flex flex-col h-full w-full">
           {/* Note Header / Title */}
-          <NoteHeader className="pb-1.5 shrink-0">
+          <NoteHeader className="pb-1.5 shrink-0 flex items-center gap-1.5">
+            {actionable && <TodoCheckbox nodeId={id} done={done} size={15} />}
             {isEditing ? (
               <input
                 type="text"
@@ -201,7 +215,7 @@ export const NoteNode = memo(function NoteNode({
                 }}
               />
             ) : (
-              <NoteTitle font="marker" className="text-sm select-none truncate">
+              <NoteTitle font="marker" className={`text-sm select-none truncate ${done ? "line-through opacity-50" : ""}`}>
                 {titleDraft || "Note"}
               </NoteTitle>
             )}
@@ -229,7 +243,7 @@ export const NoteNode = memo(function NoteNode({
               />
             ) : (
               <div
-                className="text-xs leading-relaxed break-words"
+                className={`text-xs leading-relaxed break-words ${done ? "line-through opacity-50" : ""}`}
                 style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
                 dangerouslySetInnerHTML={{
                   __html: textDraft

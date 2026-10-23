@@ -986,11 +986,6 @@ html.dark .canvas {
   color: var(--task-muted, #525252);
 }
 
-.focus-task-status-chip[data-status="doing"] {
-  background: rgb(37 99 235 / 16%);
-  color: rgb(29 78 216);
-}
-
 .focus-task-status-chip[data-status="done"] {
   background: rgb(22 163 74 / 14%);
   color: rgb(21 128 61);
@@ -1036,7 +1031,7 @@ html.dark .canvas {
   opacity: 0.55;
 }
 
-/* Task card — borderless shell, soft shadow, priority-tinted surface */
+/* Task card — borderless shell, soft shadow */
 .focus-task-shell {
   position: relative;
   box-sizing: border-box;
@@ -1740,12 +1735,10 @@ html.dark .canvas {
 /* React Flow canvas stacking fixes:
    1. Ensure project frames stay behind tasks, notes, and sketch boxes, even when selected.
    2. Ensure edge labels and interactive menus float above all nodes. */
-.react-flow__node-projectFrame,
-.react-flow__node-runwayFrame {
+.react-flow__node-projectFrame {
   z-index: 0 !important;
 }
-.react-flow__node-projectFrame.selected,
-.react-flow__node-runwayFrame.selected {
+.react-flow__node-projectFrame.selected {
   z-index: 1 !important;
 }
 .react-flow__node-focusTask,

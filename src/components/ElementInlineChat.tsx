@@ -1,14 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
-  Sparkles,
   ArrowUp,
   Square,
   X,
   Target,
   Zap,
-  Lock,
   GitBranch,
-  ImageIcon,
   Wrench,
   ChevronDown,
   ChevronRight,
@@ -22,7 +19,6 @@ import {
   CheckSquare,
   Check,
   Cpu,
-  Flag,
   Edit3,
 } from 'lucide-react'
 import { useReactFlow, type Node, type Edge } from '@xyflow/react'
@@ -32,7 +28,7 @@ import { getCachedAppSettings, patchCachedAppSettings } from '@/lib/appSettingsC
 import { resolveActiveAiConfig } from '@/lib/appSettings'
 import { runAgentLoop, type AgentToolCallEvent } from '@/lib/mcpAgentLoop'
 import { NATIVE_FOQZ_TOOLS, createFlowCanvasToolExecutor } from '@/lib/canvasTools'
-import { OPENAI_DEFAULT_MODELS, GEMINI_DEFAULT_MODELS } from '@/lib/aiConnectors'
+import { OPENAI_DEFAULT_MODELS } from '@/lib/aiConnectors'
 import type { AiProviderName } from '@/lib/aiProvider'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import {
@@ -46,6 +42,7 @@ import { CanvasActionList, type SpawnTreeOptions } from '@/components/CanvasActi
 import { ActiveNodeControlStrip } from '@/components/ActiveNodeControlStrip'
 import { ExecutedToolDiffCard, ProposedUpdateCard } from '@/components/NodeUpdateActionCard'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
+import { isActionable, isTextNode, nodeTitle, textStyleOf } from '@/lib/nodeBehaviors'
 
 export interface ElementAiMessage {
   id: string
@@ -78,203 +75,6 @@ function extractCheckpoints(text: string): string[] {
     }
   }
   return results
-}
-
-function JevEvaluationCard({
-  content,
-  onDeconstruct,
-  onFocus,
-}: {
-  content: string
-  onDeconstruct: () => void
-  onFocus: () => void
-}) {
-  const isProjectVerdict =
-    content.includes('Project Readiness Verdict') || content.includes('Execution Path')
-
-  if (isProjectVerdict) {
-    const isReady =
-      content.includes('Ready for Execution') ||
-      content.includes('✅ This project has a concrete') ||
-      content.includes('isReady: true')
-
-    const scoreMatch = content.match(/(\d+)%\s*\(/) || content.match(/Readiness Score\*?\*?:\s*(\d+)%/)
-    const readinessScore = scoreMatch ? parseInt(scoreMatch[1], 10) : (isReady ? 80 : 35)
-
-    const pathMatch = content.match(/Execution Path\*?\*?:\s*`([^`]+)`/i)
-    const execPath = pathMatch ? pathMatch[1] : (isReady ? 'unbroken' : 'ambiguous')
-
-    const urgencyMatch = content.match(/Urgency State\*?\*?:\s*`([^`]+)`/i)
-    const urgency = urgencyMatch ? urgencyMatch[1].replace(/_/g, ' ') : 'active momentum'
-
-    return (
-      <div className="w-full rounded-2xl border border-emerald-500/25 bg-emerald-50/40 dark:bg-emerald-950/20 p-3.5 space-y-3 text-xs shadow-xs">
-        <div className="flex items-center justify-between border-b border-emerald-200/50 dark:border-emerald-800/40 pb-2">
-          <div className="flex items-center gap-1.5 font-semibold text-emerald-900 dark:text-emerald-300">
-            <Target className="size-4 text-emerald-600 dark:text-emerald-400" />
-            <span>Project Readiness Verdict</span>
-          </div>
-          <span
-            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
-              isReady
-                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-            }`}
-          >
-            {isReady ? 'Unbroken Path' : 'Needs Planning'}
-          </span>
-        </div>
-
-        <div className="space-y-2">
-          <div>
-            <div className="flex justify-between text-[11px] mb-1">
-              <span className="text-zinc-600 dark:text-zinc-400 font-medium">
-                Milestone Execution Readiness
-              </span>
-              <span className="font-semibold text-foreground">{readinessScore}%</span>
-            </div>
-            <div className="h-2 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  readinessScore >= 70
-                    ? 'bg-emerald-500'
-                    : readinessScore >= 45
-                      ? 'bg-amber-500'
-                      : 'bg-rose-500'
-                }`}
-                style={{ width: `${Math.max(8, readinessScore)}%` }}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-emerald-100 dark:border-emerald-900/30">
-            <span className="text-zinc-600 dark:text-zinc-400">Execution Path:</span>
-            <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 rounded bg-zinc-200/70 dark:bg-zinc-800 text-foreground font-medium">
-              {execPath}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-zinc-600 dark:text-zinc-400">Urgency:</span>
-            <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 rounded bg-zinc-200/70 dark:bg-zinc-800 text-foreground font-medium">
-              {urgency}
-            </span>
-          </div>
-        </div>
-
-        <div className="pt-2 border-t border-emerald-200/50 dark:border-emerald-800/40">
-          <button
-            type="button"
-            onClick={onDeconstruct}
-            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
-          >
-            <Zap className="size-3.5" />
-            <span>Generate Sequential Milestone Tasks</span>
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  const isActionable =
-    content.includes('Actionable**: Yes') ||
-    content.includes('Actionable: Yes') ||
-    content.includes('✅ Yes') ||
-    content.includes('✅ This task is concrete')
-
-  const probMatch = content.match(/(\d+)%\s*probability/)
-  const probability = probMatch ? parseInt(probMatch[1], 10) : (isActionable ? 85 : 15)
-
-  const riskMatch = content.match(/Blast Radius\*?\*?:\s*`([^`]+)`/i) || content.match(/`([^`]+)`/)
-  const risk = riskMatch ? riskMatch[1].replace(/_/g, ' ') : 'medium risk'
-
-  return (
-    <div className="w-full rounded-2xl border border-blue-500/25 bg-blue-50/40 dark:bg-blue-950/20 p-3.5 space-y-3 text-xs shadow-xs">
-      <div className="flex items-center justify-between border-b border-blue-200/50 dark:border-blue-800/40 pb-2">
-        <div className="flex items-center gap-1.5 font-semibold text-blue-900 dark:text-blue-300">
-          <Target className="size-4 text-blue-600 dark:text-blue-400" />
-          <span>Evaluation Verdict</span>
-        </div>
-        <span
-          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
-            isActionable
-              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-              : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-          }`}
-        >
-          {isActionable ? 'Ready to Build' : 'Ambiguous — Needs Breakdown'}
-        </span>
-      </div>
-
-      <div className="space-y-2">
-        <div>
-          <div className="flex justify-between text-[11px] mb-1">
-            <span className="text-zinc-600 dark:text-zinc-400 font-medium">
-              Actionability (Concrete Next Step)
-            </span>
-            <span className="font-semibold text-foreground">{probability}%</span>
-          </div>
-          <div className="h-2 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                probability >= 70
-                  ? 'bg-emerald-500'
-                  : probability >= 40
-                    ? 'bg-amber-500'
-                    : 'bg-rose-500'
-              }`}
-              style={{ width: `${Math.max(8, probability)}%` }}
-            />
-          </div>
-          <div className="flex items-center gap-1.5 mt-1.5">
-            {probability < 50 ? (
-              <>
-                <AlertTriangle className="size-3.5 text-amber-500 shrink-0" />
-                <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                  Broad or vague. If you start now, you risk wandering or context-debt. Break it down first!
-                </p>
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
-                <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                  Concrete and self-contained. Ready to execute in a single focus session.
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-blue-100 dark:border-blue-900/30">
-          <span className="text-zinc-600 dark:text-zinc-400">Blast Radius:</span>
-          <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 rounded bg-zinc-200/70 dark:bg-zinc-800 text-foreground font-medium">
-            {risk}
-          </span>
-        </div>
-      </div>
-
-      <div className="pt-2 border-t border-blue-200/50 dark:border-blue-800/40">
-        {!isActionable ? (
-          <button
-            type="button"
-            onClick={onDeconstruct}
-            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
-          >
-            <Zap className="size-3.5" />
-            <span>Break into 3 Concrete Steps</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onFocus}
-            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
-          >
-            <Lock className="size-3.5" />
-            <span>Lock Into Focus Session (F)</span>
-          </button>
-        )}
-      </div>
-    </div>
-  )
 }
 
 interface ElementInlineChatProps {
@@ -317,16 +117,12 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     if (activeConfig.provider === 'openai') {
       return settings.openaiDefaultModel || 'gpt-4o-mini'
     }
-    if (activeConfig.provider === 'gemini') {
-      return settings.geminiDefaultModel || 'gemini-2.0-flash'
-    }
     return activeConfig.model
   }, [activeConfig, selectedModel, settings])
 
   const isAiReady = useMemo(() => {
     if (activeConfig.provider === 'ollama') return online
     if (activeConfig.provider === 'openai') return Boolean(settings.openaiApiKey?.trim())
-    if (activeConfig.provider === 'gemini') return Boolean(settings.geminiApiKey?.trim())
     return Boolean(activeConfig.apiKey)
   }, [activeConfig, online, settings])
 
@@ -349,14 +145,6 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
         patchCachedAppSettings({ activeAiProvider: 'openai', openaiDefaultModel: modelName })
         try {
           localStorage.setItem('foqz_openai_model', modelName)
-        } catch {}
-      } else if (prov === 'gemini') {
-        if (appSettingsCtx?.update) {
-          appSettingsCtx.update({ activeAiProvider: 'gemini', geminiDefaultModel: modelName })
-        }
-        patchCachedAppSettings({ activeAiProvider: 'gemini', geminiDefaultModel: modelName })
-        try {
-          localStorage.setItem('foqz_gemini_model', modelName)
         } catch {}
       } else if (prov === 'ollama') {
         setSelectedModel(modelName)
@@ -445,7 +233,6 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   const node = useFlowCanvasStore((s) => (isCanvasScope ? null : s.nodes.find((n) => n.id === nodeId)))
   const allNodes = useFlowCanvasStore((s) => s.nodes)
   const allEdges = useFlowCanvasStore((s) => s.edges)
-  const activeFocusNodeId = useFlowCanvasStore((s) => s.activeFocusNodeId)
 
   // Fetch MCP tools
   useEffect(() => {
@@ -729,7 +516,6 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
       if (!actions.length) return
       const store = useFlowCanvasStore.getState()
       let count = 0
-      const isTaskActive = !isCanvasScope && node?.type === 'focusTask'
       const parentId = isCanvasScope ? undefined : (containingProject?.id || node?.parentId)
       const linkMode = options?.linkMode || 'chain'
       const selectedSet = options?.selectedIndices ? new Set(options.selectedIndices) : null
@@ -744,51 +530,33 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
         })
         .filter((_, i) => selectedSet === null || selectedSet.has(i))
 
-      const isParentActive = !isCanvasScope && (node?.type === 'focusTask' || node?.type === 'note')
-      const parentH = Number(node?.style?.height ?? node?.height ?? (node?.type === 'note' ? 180 : 82))
+      const isParentActive = !isCanvasScope && isTextNode(node)
+      const parentH = Number(node?.measured?.height ?? node?.style?.height ?? node?.height ?? 90)
 
       for (const act of targetActions) {
-        if (act.type === 'task') {
-          const taskPos =
-            isParentActive && node
-              ? {
-                  x: Math.round(node.position.x + (node.type === 'note' ? 0 : 28)),
-                  y: Math.round(node.position.y + parentH + 24 + 95 * count),
-                }
-              : undefined
-
-          const newId = store.createTask({
-            title: act.title || 'Untitled Task',
-            priority: (act.priority as any) ?? 3,
-            notes: act.notes,
+        const pos =
+          isParentActive && node
+            ? {
+                x: Math.round(node.position.x + 28),
+                y: Math.round(node.position.y + parentH + 24 + 100 * count),
+              }
+            : undefined
+        if (act.type === 'task' || act.type === 'note') {
+          const body = act.type === 'note' ? act.text || act.notes || act.title || '' : act.title || 'Untitled'
+          const extra = act.type === 'task' && act.notes ? `\n${act.notes}` : ''
+          const newId = store.createText({
+            text: `${body}${extra}`,
+            style: act.type === 'note' ? 'sticky' : 'plain',
+            actionable: act.type === 'task',
             parentId,
-            position: taskPos,
+            position: pos,
+            autoEdit: false,
           })
-
-          createdTaskIds.push(newId)
-          count++
-        } else if (act.type === 'note') {
-          const notePos =
-            isParentActive && node
-              ? {
-                  x: Math.round(node.position.x + (node.type === 'note' ? 0 : 28)),
-                  y: Math.round(node.position.y + parentH + 24 + 195 * count),
-                }
-              : undefined
-
-          const newId = store.createNote({
-            title: act.title || 'Note',
-            text: act.text || act.notes || '',
-            variant: (act.color as any) || 'yellow',
-            parentId,
-            position: notePos,
-          })
-
           createdTaskIds.push(newId)
           count++
         } else if (act.type === 'project') {
           store.createProject({
-            title: act.title || 'Untitled Project',
+            title: act.title || 'Untitled region',
             goal: act.notes,
           })
           count++
@@ -840,128 +608,11 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   )
 
   const handleSpawnSingle = useCallback(
-    (action: SpawnableShape, _index: number) => {
-      const store = useFlowCanvasStore.getState()
-      const isParentActive = !isCanvasScope && (node?.type === 'focusTask' || node?.type === 'note')
-      const parentH = Number(node?.style?.height ?? node?.height ?? (node?.type === 'note' ? 180 : 82))
-      const parentId = isCanvasScope ? undefined : (containingProject?.id || node?.parentId)
-
-      if (action.type === 'task') {
-        const existingChildren =
-          isParentActive && node
-            ? store.nodes.filter(
-                (n) => n.parentId === (node.parentId || parentId) && (n.type === 'focusTask' || n.type === 'note')
-              ).length
-            : 0
-
-        const taskPos =
-          isParentActive && node
-            ? {
-                x: Math.round(node.position.x + (node.type === 'note' ? 0 : 28)),
-                y: Math.round(node.position.y + parentH + 24 + 95 * existingChildren),
-              }
-            : undefined
-
-        const newId = store.createTask({
-          title: action.title || 'Untitled Task',
-          priority: (action.priority as any) ?? 3,
-          notes: action.notes,
-          parentId,
-          position: taskPos,
-        })
-
-        if (isParentActive && node) {
-          store.setEdges((prev) => [
-            ...prev,
-            {
-              id: `e-${node.id}-${newId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              type: 'semantic',
-              source: node.id,
-              sourceHandle: 'bottom',
-              target: newId,
-              targetHandle: 'top',
-              animated: false,
-              data: { relation: 'depends' },
-            },
-          ])
-        }
-      } else if (action.type === 'note') {
-        const existingChildren =
-          isParentActive && node
-            ? store.nodes.filter(
-                (n) => n.parentId === (node.parentId || parentId) && (n.type === 'focusTask' || n.type === 'note')
-              ).length
-            : 0
-
-        const notePos =
-          isParentActive && node
-            ? {
-                x: Math.round(node.position.x + (node.type === 'note' ? 0 : 28)),
-                y: Math.round(node.position.y + parentH + 24 + 195 * existingChildren),
-              }
-            : undefined
-
-        const newId = store.createNote({
-          title: action.title || 'Note',
-          text: action.text || action.notes || '',
-          variant: (action.color as any) || 'yellow',
-          parentId,
-          position: notePos,
-        })
-
-        if (isParentActive && node) {
-          store.setEdges((prev) => [
-            ...prev,
-            {
-              id: `e-${node.id}-${newId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              type: 'semantic',
-              source: node.id,
-              sourceHandle: 'bottom',
-              target: newId,
-              targetHandle: 'top',
-              animated: false,
-              data: { relation: 'depends' },
-            },
-          ])
-        }
-      } else if (action.type === 'project') {
-        store.createProject({
-          title: action.title || 'Untitled Project',
-          goal: action.notes,
-        })
-      } else if (action.type === 'image' && action.src) {
-        const imgId = store.createImage({
-          src: action.src,
-          alt: action.alt || action.title || 'AI Image',
-          parentId,
-          position: isParentActive && node
-            ? {
-                x: Math.round(node.position.x + 320),
-                y: Math.round(node.position.y),
-              }
-            : undefined,
-        })
-        window.dispatchEvent(
-          new CustomEvent('foqz:flow-center-on', { detail: { id: imgId } })
-        )
-      } else if (action.type === 'image' && action.src) {
-        const imgId = store.createImage({
-          src: action.src,
-          alt: action.alt || action.title || 'AI Image',
-          parentId,
-          position: isParentActive && node
-            ? {
-                x: Math.round(node.position.x + 320),
-                y: Math.round(node.position.y),
-              }
-            : undefined,
-        })
-        window.dispatchEvent(
-          new CustomEvent('foqz:flow-center-on', { detail: { id: imgId } })
-        )
-      }
+    (action: SpawnableShape, index: number) => {
+      handleSpawn([action], { selectedIndices: [0], linkMode: 'fanout' })
+      void index
     },
-    [isCanvasScope, containingProject, node]
+    [handleSpawn]
   )
 
   const [appliedMsgIds, setAppliedMsgIds] = useState<Record<string, boolean>>({})
@@ -970,12 +621,13 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     (msgId: string, checkpoints: string[]) => {
       if (!node) return
       const store = useFlowCanvasStore.getState()
-      const existingNotes = ((node.data as any)?.notes as string) || ''
+      const field = node.type === 'focusTask' ? 'notes' : 'text'
+      const existingNotes = ((node.data as any)?.[field] as string) || ''
       const newItems = checkpoints.join('\n')
       const mergedNotes = existingNotes ? `${existingNotes}\n\n${newItems}` : newItems
 
       store.updateNodeData(node.id, {
-        notes: mergedNotes,
+        [field]: mergedNotes,
       })
 
       const lineCount = mergedNotes.split('\n').filter(Boolean).length
@@ -1008,50 +660,25 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     // Stop any existing stream
     handleStop()
 
-    if (text === '/eval' || text === '/evaluate' || text.startsWith('/eval ') || text.startsWith('/evaluate ')) {
-      if (node?.type === 'projectFrame') {
-        text = `Evaluate this project frame's milestone execution readiness and unbroken path using the jev_evaluate_project tool. Present the verdict clearly.`
-      } else {
-        text = `Evaluate this task actionability, clarity score, and blast radius using the jev_evaluate_task tool. Present the verdict clearly.`
-      }
-    } else if (text === '/expand' || text.startsWith('/expand ')) {
+    if (text === '/todo') {
+      text = `Make this a to-do using update_node(nodeId: "${node?.id}", actionable: true).`    } else if (text === '/expand' || text.startsWith('/expand ')) {
       const extra = text.replace(/^\/expand\s*/, '').trim()
-      if (node?.type === 'note') {
-        text = extra
-          ? `Deconstruct this note into concrete linked subtasks on the canvas using expand_task: ${extra}`
-          : 'Deconstruct this note into 3 concrete linked subtasks on the canvas using expand_task.'
-      } else {
-        text = extra
-          ? `Break this task down into subtasks and link them using expand_task: ${extra}`
-          : 'Break this task down into 3 concrete subtasks and link them using expand_task.'
-      }
+      text = extra
+        ? `Break this down into linked to-dos using expand_task: ${extra}`
+        : 'Break this down into 3 concrete linked to-dos using expand_task.'
     } else if (text === '/done' || text.startsWith('/done ')) {
-      text = 'Mark this task as done using update_node.'
-    } else if (text.startsWith('/prio')) {
-      const match = text.match(/^\/prio\s*([1-4])?/)
-      const prioNum = match?.[1] || '1'
-      text = `Set priority of this task to P${prioNum} using update_node.`
+      text = 'Mark this done using update_node(status: "done").'
     } else if (text === '/focus' || text.startsWith('/focus ')) {
-      text = 'Start a 25-minute focus session on this task using start_focus_session.'
+      text = 'Start a focus session on this using start_focus_session.'
     } else if (text === '/stop' || text === '/unfocus' || text === '/exitfocus') {
-      text = 'Stop the active focus session and unlock canvas using stop_focus_session.'
+      text = 'Leave the active focus session using stop_focus_session.'
     } else if (text === '/criteria' || text.startsWith('/criteria ')) {
-      text = `Use update_node(nodeId: "${node?.id}", appendNotes: "...") to directly append 3 concrete acceptance criteria checkpoints ("- [ ] ...") to this task's notes.`
-    } else if (text === '/image' || text.startsWith('/image ')) {
-      const imgPrompt = text.replace(/^\/image\s*/, '').trim()
-      text = imgPrompt
-        ? `Generate an image and place it on the canvas using generate_image: ${imgPrompt}`
-        : 'Generate a creative image mockup or visual asset using generate_image.'
-    } else if (text === '/image' || text.startsWith('/image ')) {
-      const imgPrompt = text.replace(/^\/image\s*/, '').trim()
-      text = imgPrompt
-        ? `Generate an image and place it on the canvas using generate_image: ${imgPrompt}`
-        : 'Generate a creative image mockup or visual asset using generate_image.'
+      text = `Use update_node(nodeId: "${node?.id}", appendText: "...") to append 3 concrete acceptance criteria ("- [ ] ...") to this.`
     } else if (text.startsWith('/rename')) {
       const newTitle = text.replace(/^\/rename\s*/, '').trim()
       text = newTitle
-        ? `Update this ${node?.type === 'note' ? 'note' : node?.type === 'projectFrame' ? 'project' : 'task'} title to "${newTitle}" using update_node.`
-        : `Update this ${node?.type || 'card'} title using update_node.`
+        ? `Rename this to "${newTitle}" using update_node(title: ...).`
+        : 'Suggest a clearer title and apply it using update_node(title: ...).'
     }
 
     const userMsg: ElementAiMessage = {
@@ -1091,20 +718,16 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
       ? {
           id: node.id,
           type: node.type,
-          title: nodeData.title || currentShapeText,
-          text: nodeData.text || '',
-          notes: nodeData.notes || nodeData.text || '',
-          content: nodeData.text || nodeData.notes || '',
-          status: nodeData.status || 'open',
-          priority: nodeData.priority ?? 3,
-          paper: nodeData.paper || nodeData.variant || 'cream',
-          variant: nodeData.variant || 'yellow',
-          corner: nodeData.corner || 'folded',
+          style: textStyleOf(node),
+          title: nodeTitle(node) || currentShapeText,
+          text: nodeData.text || nodeData.notes || '',
+          actionable: isActionable(node),
+          status: isActionable(node) ? nodeData.status || 'open' : undefined,
           parentId: node.parentId || null,
           parentProject: containingProject
             ? {
                 id: containingProject.id,
-                title: (containingProject.data as any)?.title || 'Untitled Project',
+                title: (containingProject.data as any)?.title || 'Untitled region',
                 goal: (containingProject.data as any)?.goal || '',
               }
             : null,
@@ -1116,120 +739,67 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
               relation: (e.data as any)?.relation || 'depends',
             })),
           resolvedDependencies: nodeData.resolvedDependencies || [],
+          // Only annotations the user shared with AI, and still open.
+          annotations: Object.values(useFlowCanvasStore.getState().annotations || {})
+            .filter((a) => a.anchor?.nodeId === node.id && a.aiVisible && a.status === 'open')
+            .map((a) => ({ kind: a.kind, thread: a.messages.map((m) => m.body) })),
         }
       : null
 
+    const TOOL_GUIDE = `Canvas tools:
+- \`get_canvas_summary\`: read the board.
+- \`spawn_text(items: [{ text, actionable?, style? }])\`: write text next to the selection; actionable makes a to-do.
+- \`update_node(nodeId, text | title | appendText | status | actionable | style | goal)\`: change something.
+- \`expand_task(nodeId, subtasks: [{ text }])\`: break something into linked to-dos right below it.
+- \`start_focus_session(nodeId)\` / \`stop_focus_session\`: focus in place.
+- \`delete_node(nodeId)\`: remove (a region keeps its contents).
+- \`create_github_issue(nodeId)\`: file and link an issue.
+When the user asks you to change, break down or start something, call the tool instead of describing it.`
+
     let systemPrompt = ''
     if (isCanvasScope) {
-      const projects = allNodes.filter((n) => n.type === 'projectFrame')
-      const allTasks = allNodes.filter((n) => n.type === 'focusTask')
-      const doneTasks = allTasks.filter((n) => (n.data as any)?.status === 'done')
-      const doingTasks = allTasks.filter((n) => (n.data as any)?.status === 'doing')
-      const openTasks = allTasks.filter((n) => (n.data as any)?.status === 'open')
-      const unlinked = allNodes.filter((n) => !n.parentId && n.type !== 'projectFrame')
+      const regions = allNodes.filter((n) => n.type === 'projectFrame')
+      const todos = allNodes.filter((n) => isActionable(n))
+      const doneCount = todos.filter((n) => (n.data as any)?.status === 'done').length
+      const loose = allNodes.filter((n) => !n.parentId && n.type !== 'projectFrame')
 
       systemPrompt = `${FOQZ_SYSTEM_PROMPT}
 
-You are the Chief Technical Strategist in Foqz. You have a bird's-eye view of the entire workspace.
-Macro Workspace Context:
-- Active Projects: ${projects.length} (${projects.map((p) => (p.data as any)?.title || 'Untitled').join(', ') || 'None'})
-- Tasks Overview: ${allTasks.length} total (${doneTasks.length} done, ${doingTasks.length} in-progress, ${openTasks.length} open)
-- Loose / Scratchpad items: ${unlinked.length}
+You see the whole board.
+- Regions: ${regions.length} (${regions.map((p) => (p.data as any)?.title || 'Untitled').join(', ') || 'none'})
+- To-dos: ${todos.length} (${doneCount} done, ${todos.length - doneCount} open)
+- Loose items outside regions: ${loose.length}
 
-You have native spatial canvas tools:
-- \`spawn_tasks\`: Create tasks or stage items.
-- \`update_node\`: Mutate any project or task.
-- \`connect_nodes\`: Create dependency edges between nodes.
-- \`start_focus_session\`: Launch a focus session countdown timer.
-- \`delete_node\`: Remove nodes from the board.
-- \`jev_audit_portfolio\` / \`jev_triage_items\`: Evaluate and prioritize.
+${TOOL_GUIDE}
 
-Your job is macro-level direction, prioritization, and sprint staging:
-1. Help the founder identify the single highest-leverage focus for today without context switching.
-2. Recommend unblocking critical path dependencies before starting peripheral tasks.
-3. When asked to stage priorities or plan the day, invoke canvas tools or output \`\`\`canvas blocks.`
+Help the user pick the single most useful thing to focus on next, point out unresolved "depends on" chains, and keep answers short.`
     } else if (node?.type === 'projectFrame') {
-      const childTasks = allNodes.filter((n) => n.parentId === node.id && n.type === 'focusTask')
-      const allChildren = allNodes.filter((n) => n.parentId === node.id)
+      const children = allNodes.filter((n) => n.parentId === node.id)
       const projectData = (node.data || {}) as Record<string, any>
       systemPrompt = `${FOQZ_SYSTEM_PROMPT}
 
-You are the Technical Project Architect & Conceptual Subsystem Lead for "${currentShapeText}" (id: ${node.id}).
-Type: Project Frame / Semantic Group Container
-Goal / Objective: "${projectData.goal || 'No goal specified'}"
-${projectData.description ? `Semantic Description & Intent: "${projectData.description}"` : ''}
-Elements inside this semantic group: ${allChildren.length} (${childTasks.length} tasks: ${childTasks.map((t) => (t.data as any)?.title).join(', ') || 'none'})
-${connectedRepo ? `Connected GitHub Repository: "${connectedRepo}"` : ''}
+You are helping with the region "${currentShapeText}" (id: ${node.id}).
+Goal: "${projectData.goal || 'none'}"
+Inside: ${children.length} items (${children.map((c) => nodeTitle(c)).filter(Boolean).join(', ') || 'empty'})
+${connectedRepo ? `Linked GitHub repository: "${connectedRepo}"` : ''}
 
-You operate over all elements contained within this group container as a coherent conceptual subsystem.
-You have ACTIVE MUTATION TOOLS to directly manipulate this project and its tasks:
-- To evaluate milestone execution readiness and unbroken paths using Jev AI, invoke \`jev_evaluate_project(projectId: "${node.id}")\`.
-- To update this frame's title, goal, description, or notes, invoke \`update_node(nodeId: "${node.id}", ...)\`.
-- To create tasks inside this group, invoke \`spawn_tasks\` or output \`\`\`canvas blocks.
-- To group additional elements into a semantic cluster, invoke \`group_nodes(nodeIds: [...], title: "...")\`.
-- To connect tasks and projects with dependencies, invoke \`connect_nodes\`.
-- To delete obsolete nodes, invoke \`delete_node\`.
+${TOOL_GUIDE}
 
-Your job is subsystem planning and execution:
-1. Deconstruct milestone goals into concrete, bite-sized focus tasks with clear acceptance criteria.
-2. Prompts directed at this group operate over all elements contained within it.
-3. Maintain clean causality and dependencies between tasks.
-4. Directly apply group updates or create connected tasks using your tools rather than just describing them.`
-    } else if (node?.type === 'note') {
-      const noteData = (node.data || {}) as Record<string, any>
-      const noteContent = noteData.text || noteData.notes || ''
-      const noteTitle = noteData.title || 'Note'
-      systemPrompt = `${FOQZ_SYSTEM_PROMPT}
-
-You are an expert AI Thought Partner and Creative Collaborator chatting directly with this Paper Sticky Note (id: ${node.id}).
-Note Title: "${noteTitle}"
-Current Note Content:
-"""
-${noteContent || '(This note is currently empty / blank)'}
-"""
-Note Styling: Background Theme: ${noteData.variant || 'yellow'} | Corner: ${noteData.corner || 'folded'}
-${containingProject ? `Parent Project: "${(containingProject.data as any)?.title}" (id: ${containingProject.id})` : 'No parent project.'}
-
-You have ACTIVE MUTATION TOOLS to directly manipulate this note and expand ideas onto the canvas:
-- To expand or deconstruct this note into concrete connected task cards on the canvas, invoke \`expand_task(taskId: "${node.id}", subtasks: [...])\` or output a \`\`\`canvas block. This will automatically position the subtasks directly below the note and wire dependency edges.
-- To convert this note into focus tasks, invoke \`expand_task\` or \`spawn_tasks\`.
-- To create new sticky notes on the canvas, invoke \`spawn_notes(notes: [...])\` or output a \`\`\`canvas block.
-- To update, rewrite, or set the note text and title, invoke \`update_node(nodeId: "${node.id}", text: "...", title: "...")\`.
-- To append thoughts, checklists, or summaries to this note, invoke \`update_node(nodeId: "${node.id}", appendNotes: "...")\`.
-- To change the background color/theme of this note, invoke \`update_node(nodeId: "${node.id}", paper: "cream" | "fog" | "bloom" | "sage")\`.
-- To connect this note to other items, invoke \`connect_nodes\`.
-- To remove this note, invoke \`delete_node(nodeId: "${node.id}")\`.
-
-CRITICAL INSTRUCTIONS FOR EXPANDING ONTO CANVAS:
-1. When asked to "expand", "deconstruct", "turn into tasks", or "expand note into the canvas", ALWAYS invoke \`expand_task\` or output a \`\`\`canvas block to place the subtask cards on the canvas directly below this note.
-2. Only use \`update_node\` when specifically asked to edit, append, rewrite, or re-theme the note text itself.
-3. Ground your subtasks and suggestions in the note content above.`
-    } else if (node?.type === 'text') {
-      const textData = (node.data || {}) as Record<string, any>
-      systemPrompt = `${FOQZ_SYSTEM_PROMPT}
-
-You are an AI Collaborator focused on this text element: "${textData.text || 'Untitled'}" (id: ${node.id}).
-Content: "${textData.text || '(empty)'}"
-To update this text, invoke \`update_node(nodeId: "${node.id}", title: "...")\` or \`update_node(nodeId: "${node.id}", text: "...")\`.`
+Prompts here are about everything inside this region. Break goals into concrete to-dos with clear "done" criteria.`
     } else {
-      const taskData = (node?.data || {}) as Record<string, any>
+      const d = (node?.data || {}) as Record<string, any>
+      const body = node?.type === 'focusTask' ? [d.title, d.notes].filter(Boolean).join('\n') : d.text || ''
       systemPrompt = `${FOQZ_SYSTEM_PROMPT}
 
-You are a Senior Pair Programmer focused on the active card: "${currentShapeText}" (id: ${node?.id}, type: ${node?.type || 'task'}).
-Status: ${taskData.status || 'open'} | Priority: P${taskData.priority ?? 3} | Paper: ${taskData.paper || 'cream'}
-${taskData.notes ? `Task Notes / Checkpoints:\n${taskData.notes}` : 'No notes/checkpoints yet.'}
-${containingProject ? `Parent Project: "${(containingProject.data as any)?.title}" (id: ${containingProject.id}, Goal: "${(containingProject.data as any)?.goal}")` : 'No parent project.'}
+You are helping with one piece of text on the canvas (id: ${node?.id}, style: ${textStyleOf(node) || node?.type}).
+${isActionable(node) ? `It is a to-do, status: ${d.status || 'open'}.` : 'It is not a to-do yet; update_node(actionable: true) makes it one.'}
+Content:
+"""
+${body || '(empty)'}
+"""
+${containingProject ? `Inside region "${(containingProject.data as any)?.title}" (id: ${containingProject.id}, goal: "${(containingProject.data as any)?.goal || 'none'}").` : 'Not inside a region.'}
 
-You have ACTIVE MUTATION TOOLS to directly manipulate the spatial canvas:
-- To change this task's title, checklist, priority, paper theme, or status, invoke the \`update_node\` tool directly (e.g. \`update_node(nodeId: "${node?.id}", status: "done")\`).
-- To append acceptance criteria or markdown checklists to this task's notes, invoke \`update_node(nodeId: "${node?.id}", appendNotes: "...")\`.
-- To break this task down into subtasks, invoke the \`expand_task\` tool with concrete steps (e.g. \`expand_task(taskId: "${node?.id}", subtasks: [...])\`). This automatically creates child cards positioned below this task and connects them with dependency edges.
-- To connect this task to other nodes, invoke the \`connect_nodes\` tool.
-- To launch a focused work session on this task, invoke \`start_focus_session(taskId: "${node?.id}", durationMinutes: 25)\`.
-- To evaluate whether this task is concrete and ready for execution or too broad, invoke \`jev_evaluate_task(taskId: "${node?.id}")\`.
-- To remove this task or any node, invoke \`delete_node(nodeId: "${node?.id}")\`.
-
-Do NOT just passively describe what could be done — when the user asks to modify, decompose, prioritize, or start the task, directly invoke your native tools!`
+${TOOL_GUIDE}`
     }
 
     let assistantText = ''
@@ -1247,7 +817,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
         userPrompt: text,
         systemPrompt,
         canvasContext: isCanvasScope
-          ? `Macro Board Overview: ${allNodes.length} items total on canvas (${allNodes.filter((n) => n.type === 'projectFrame').length} projects, ${allNodes.filter((n) => n.type === 'focusTask').length} tasks)`
+          ? `Board overview: ${allNodes.length} items (${allNodes.filter((n) => n.type === 'projectFrame').length} regions, ${allNodes.filter((n) => isActionable(n)).length} to-dos)`
           : `Active Selected Node Context:\n${JSON.stringify(selectedNodeContext, null, 2)}`,
         conversationHistory: updated.slice(-10).map((m) => ({
           role: m.role,
@@ -1324,199 +894,50 @@ Do NOT just passively describe what could be done — when the user asks to modi
     }
   }, [messages, streamingContent])
 
-  if (!node && !isCanvasScope) return null
-
-  const isTask = node?.type === 'focusTask'
   const isProject = node?.type === 'projectFrame'
-  const isNote = node?.type === 'note'
 
   const slashCommands = useMemo(() => {
+    const cmd = (
+      name: string,
+      desc: string,
+      icon: React.ReactNode,
+      promptText: string,
+      autoExecute = true,
+      label = name,
+    ) => ({ cmd: name, label, desc, icon, prompt: promptText, autoExecute })
+
     if (isCanvasScope) {
       return [
-        {
-          cmd: '/image',
-          label: '/image <prompt>',
-          desc: 'Generate an AI visual and place on canvas',
-          icon: <ImageIcon className="size-3 text-pink-500" />,
-          prompt: '/image ',
-          autoExecute: false,
-        },
-        {
-          cmd: '/image',
-          label: '/image <prompt>',
-          desc: 'Generate an AI visual and place on canvas',
-          icon: <ImageIcon className="size-3 text-pink-500" />,
-          prompt: '/image ',
-          autoExecute: false,
-        },
-        {
-          cmd: '/runway',
-          label: '/runway',
-          desc: "Stage Today's Runway with top focus tasks",
-          icon: <Sparkles className="size-3 text-rose-500" />,
-          prompt: "Stage Today's Runway frame with the top 2-3 critical path focus tasks.",
-          autoExecute: true,
-        },
-        {
-          cmd: '/audit',
-          label: '/audit',
-          desc: 'Audit highest-leverage task across all projects',
-          icon: <Target className="size-3 text-violet-500" />,
-          prompt: 'Audit my projects and backlog: what is my single highest-leverage task today?',
-          autoExecute: true,
-        },
-        {
-          cmd: '/focus',
-          label: '/focus',
-          desc: 'Start 25-minute Pomodoro focus session',
-          icon: <Lock className="size-3 text-blue-500" />,
-          prompt: '/focus',
-          autoExecute: true,
-        },
+        cmd('/next', 'What should I focus on next?', <Target className="size-3 text-violet-500" />,
+          'Looking at the whole board, what is the single most useful thing to focus on next, and why?'),
+        cmd('/blocked', 'Find unresolved "depends on" chains', <AlertTriangle className="size-3 text-amber-500" />,
+          'Which to-dos are waiting on something unfinished? List the chains.'),
       ]
     }
 
-    if (isNote) {
+    if (isProject) {
       return [
-        {
-          cmd: '/summarize',
-          label: '/summarize',
-          desc: 'Summarize and polish this note into bullet points',
-          icon: <Sparkles className="size-3 text-amber-500" />,
-          prompt: 'Summarize and polish this note into clean bullet points.',
-          autoExecute: true,
-        },
-        {
-          cmd: '/expand',
-          label: '/expand',
-          desc: 'Break down into 3 concrete linked subtasks on canvas',
-          icon: <Zap className="size-3 text-amber-500" />,
-          prompt: '/expand',
-          autoExecute: true,
-        },
-        {
-          cmd: '/convert',
-          label: '/convert',
-          desc: 'Convert this note into actionable focus task cards on canvas',
-          icon: <CheckSquare className="size-3 text-emerald-500" />,
-          prompt: 'Deconstruct this note into 3 concrete linked subtasks on the canvas using expand_task.',
-          autoExecute: true,
-        },
-        {
-          cmd: '/rename',
-          label: '/rename <title>',
-          desc: 'Update this note title',
-          icon: <Edit3 className="size-3 text-zinc-500" />,
-          prompt: '/rename ',
-          autoExecute: false,
-        },
+        cmd('/expand', 'Break the goal into linked to-dos', <Zap className="size-3 text-amber-500" />,
+          'Break this region goal into 4 sequential to-dos using expand_task.'),
+        cmd('/criteria', 'List deliverables and success criteria', <CheckSquare className="size-3 text-emerald-500" />,
+          'List the key deliverables and success criteria for this region.'),
+        cmd('/rename', 'Rename this region', <Edit3 className="size-3 text-zinc-500" />, '/rename ', false, '/rename <title>'),
       ]
     }
 
-    if (isTask) {
-      return [
-        {
-          cmd: '/eval',
-          label: '/eval',
-          desc: 'Evaluate task actionability & blast radius (Jev)',
-          icon: <Target className="size-3 text-blue-500" />,
-          prompt: '/eval',
-          autoExecute: true,
-        },
-        {
-          cmd: '/expand',
-          label: '/expand',
-          desc: 'Break down into 3 concrete linked subtasks',
-          icon: <Zap className="size-3 text-amber-500" />,
-          prompt: '/expand',
-          autoExecute: true,
-        },
-        {
-          cmd: '/criteria',
-          label: '/criteria',
-          desc: 'Append 3 acceptance criteria checkpoints',
-          icon: <CheckSquare className="size-3 text-emerald-500" />,
-          prompt: '/criteria',
-          autoExecute: true,
-        },
-        {
-          cmd: '/prio',
-          label: '/prio <1-4>',
-          desc: 'Set priority level (1=Urgent to 4=Low)',
-          icon: <Flag className="size-3 text-rose-500" />,
-          prompt: '/prio 1',
-          autoExecute: false,
-        },
-        {
-          cmd: '/focus',
-          label: '/focus',
-          desc: 'Lock into 25-minute focus session timer',
-          icon: <Lock className="size-3 text-blue-500" />,
-          prompt: '/focus',
-          autoExecute: true,
-        },
-        {
-          cmd: '/stop',
-          label: '/stop',
-          desc: 'Exit active focus session and unlock canvas',
-          icon: <X className="size-3 text-rose-500" />,
-          prompt: '/stop',
-          autoExecute: true,
-        },
-        {
-          cmd: '/rename',
-          label: '/rename <title>',
-          desc: 'Update this task card title',
-          icon: <Edit3 className="size-3 text-zinc-500" />,
-          prompt: '/rename ',
-          autoExecute: false,
-        },
-        {
-          cmd: '/done',
-          label: '/done',
-          desc: 'Mark this task as completed',
-          icon: <CheckCircle2 className="size-3 text-emerald-500" />,
-          prompt: '/done',
-          autoExecute: true,
-        },
-      ]
-    }
-
+    const actionable = isActionable(node)
     return [
-      {
-        cmd: '/eval',
-        label: '/eval',
-        desc: 'Evaluate project milestone execution readiness (Jev)',
-        icon: <Target className="size-3 text-emerald-500" />,
-        prompt: '/eval',
-        autoExecute: true,
-      },
-      {
-        cmd: '/expand',
-        label: '/expand',
-        desc: 'Generate sequential 4-step task workflow',
-        icon: <Zap className="size-3 text-amber-500" />,
-        prompt: 'Generate a sequential 4-step task workflow to launch this project milestone.',
-        autoExecute: true,
-      },
-      {
-        cmd: '/criteria',
-        label: '/criteria',
-        desc: 'List key deliverables and success metrics',
-        icon: <CheckSquare className="size-3 text-emerald-500" />,
-        prompt: 'List the key deliverables and success metrics for this project.',
-        autoExecute: true,
-      },
-      {
-        cmd: '/rename',
-        label: '/rename <title>',
-        desc: 'Update project frame title',
-        icon: <Edit3 className="size-3 text-zinc-500" />,
-        prompt: '/rename ',
-        autoExecute: false,
-      },
+      ...(actionable
+        ? []
+        : [cmd('/todo', 'Make this a to-do', <CheckSquare className="size-3 text-emerald-500" />, '/todo')]),
+      cmd('/expand', 'Break into 3 linked to-dos', <Zap className="size-3 text-amber-500" />, '/expand'),
+      cmd('/criteria', 'Append 3 acceptance criteria', <CheckSquare className="size-3 text-emerald-500" />, '/criteria'),
+      cmd('/focus', 'Focus here', <Target className="size-3 text-rose-500" />, '/focus'),
+      cmd('/stop', 'Leave focus', <X className="size-3 text-rose-500" />, '/stop'),
+      ...(actionable ? [cmd('/done', 'Mark done', <CheckCircle2 className="size-3 text-emerald-500" />, '/done')] : []),
+      cmd('/rename', 'Rename', <Edit3 className="size-3 text-zinc-500" />, '/rename ', false, '/rename <title>'),
     ]
-  }, [isCanvasScope, isTask, isNote])
+  }, [isCanvasScope, isProject, node])
 
   const showSlashMenu = prompt.startsWith('/') && !prompt.includes(' ') && !prompt.includes('\n')
   const matchingCommands = useMemo(() => {
@@ -1540,6 +961,8 @@ Do NOT just passively describe what could be done — when the user asks to modi
     },
     [handleSend]
   )
+
+  if (!node && !isCanvasScope) return null
 
   return (
     <div
@@ -1616,11 +1039,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
                 }`}
               />
               <span className="truncate max-w-[85px] font-mono text-[10px]">
-                {activeConfig.provider === 'openai'
-                  ? 'OpenAI'
-                  : activeConfig.provider === 'gemini'
-                  ? 'Gemini'
-                  : 'Ollama'}
+                {activeConfig.provider === 'openai' ? 'OpenAI' : 'Ollama'}
                 : {activeModelLabel}
               </span>
               <ChevronDown className="size-2.5 text-zinc-400 shrink-0" />
@@ -1641,7 +1060,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 gap-1 bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-0.5 rounded-full text-xs">
+              <div className="grid grid-cols-2 gap-1 bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-0.5 rounded-full text-xs">
                 <button
                   type="button"
                   onClick={() => handleSelectProvider('ollama')}
@@ -1664,17 +1083,6 @@ Do NOT just passively describe what could be done — when the user asks to modi
                 >
                   OpenAI
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectProvider('gemini')}
-                  className={`py-1 px-1.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer text-center ${
-                    activeConfig.provider === 'gemini'
-                      ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs'
-                      : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
-                  }`}
-                >
-                  Gemini
-                </button>
               </div>
 
               {activeConfig.provider === 'openai' && (
@@ -1683,7 +1091,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
                     <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-[11px] text-amber-800 dark:text-amber-300">
                       <p className="font-semibold">OpenAI API Key Missing</p>
                       <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
-                        Configure in Foqz Settings &rarr; AI to use OpenAI models.
+                        Add a key in Settings → Intelligence.
                       </p>
                     </div>
                   ) : (
@@ -1696,43 +1104,6 @@ Do NOT just passively describe what could be done — when the user asks to modi
                             type="button"
                             onClick={() => {
                               handleSelectModel('openai', m)
-                              setModelMenuOpen(false)
-                            }}
-                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
-                              isSelected
-                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-100 font-medium'
-                                : 'hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300'
-                            }`}
-                          >
-                            <span className="font-mono text-[11px]">{m}</span>
-                            {isSelected && <Check className="size-3 text-blue-600 dark:text-blue-400" />}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeConfig.provider === 'gemini' && (
-                <div className="space-y-1.5 pt-0.5">
-                  {!settings.geminiApiKey?.trim() ? (
-                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-[11px] text-amber-800 dark:text-amber-300">
-                      <p className="font-semibold">Gemini API Key Missing</p>
-                      <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
-                        Configure in Foqz Settings &rarr; AI to use Gemini models.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
-                      {GEMINI_DEFAULT_MODELS.map((m) => {
-                        const isSelected = activeConfig.model === m
-                        return (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => {
-                              handleSelectModel('gemini', m)
                               setModelMenuOpen(false)
                             }}
                             className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
@@ -1848,161 +1219,30 @@ Do NOT just passively describe what could be done — when the user asks to modi
             </div>
             <div>
               <p className="font-semibold text-xs text-zinc-800 dark:text-zinc-200">
-                {isCanvasScope
-                  ? 'Board Strategist • Macro Flight Control'
-                  : `Chat with this ${node?.type}`}
+                {isCanvasScope ? 'Ask about the whole board' : isProject ? 'Ask about this region' : 'Ask about this text'}
               </p>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 max-w-[280px]">
                 {isCanvasScope
-                  ? "Plan your day, stage Today's Runway, triage projects, or evaluate macro priorities."
-                  : 'Ask questions, decompose into subtasks, evaluate execution readiness, or brainstorm.'}
+                  ? 'What to focus on next, what is blocked, what is missing.'
+                  : 'Break it down, add criteria, rewrite it, or start focusing.'}
               </p>
             </div>
 
-            {/* Quick Action Pills */}
+            {/* Quick Action Pills: the same commands as the / menu */}
             <div className="flex flex-wrap gap-1.5 justify-center pt-2 max-w-[340px]">
-              {isCanvasScope && (
-                <>
+              {slashCommands
+                .filter((c) => c.autoExecute)
+                .map((c) => (
                   <button
+                    key={c.cmd}
                     type="button"
-                    onClick={() => handleSend("Stage Today's Runway frame with the top 2-3 critical path focus tasks.")}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    ⚡ Stage Today's Runway
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend("Audit my projects and backlog: what is my single highest-leverage task today?")}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    📊 Audit Highest Leverage
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend("Identify any blocking tasks or dependencies across all projects.")}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    🔍 Find Blockers
-                  </button>
-                </>
-              )}
-              {isTask && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('/eval')}
+                    onClick={() => handleSend(c.prompt)}
                     className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer flex items-center gap-1.5"
                   >
-                    <Target className="size-3 text-blue-500" />
-                    <span>🎯 Evaluate Actionability</span>
+                    {c.icon}
+                    <span>{c.desc}</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('Break this task down into 3 concrete subtasks and link them using expand_task.')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    ⚡ Break down and link subtasks
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('Add acceptance criteria and checkpoint checklist to this task notes using update_node appendNotes.')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    📝 Add acceptance criteria
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('Set priority of this task to P1 Urgent using update_node.')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    🎯 Set priority to P1 Urgent
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('Start a 25-minute focus session on this task using start_focus_session.')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    ▶ Lock into 25m Focus Session
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('What are the main edge cases and technical risks for this task?')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    🛡 Identify technical risks
-                  </button>
-                </>
-              )}
-              {isProject && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('/eval')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Target className="size-3 text-emerald-500" />
-                    <span>🎯 Evaluate Readiness</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('Generate a sequential 4-step task workflow to launch this project milestone.')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    ✨ Generate milestone tasks
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('List the key deliverables and success metrics for this project.')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    🎯 List deliverables
-                  </button>
-                </>
-              )}
-              {isNote && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('/summarize')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Sparkles className="size-3 text-amber-500" />
-                    <span>✨ Summarize & Polish</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('Expand on the ideas in this note with deep brainstorming and concrete next steps.')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    💡 Brainstorm & Expand
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('Convert the main points in this note into 3 actionable focus tasks using spawn_tasks.')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    ⚡ Convert to Tasks
-                  </button>
-                </>
-              )}
-              {!isTask && !isProject && !isNote && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('Turn this note or shape into structured actionable task cards.')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    📝 Convert to Task Cards
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSend('Summarize the main idea and suggest improvements.')}
-                    className="px-2.5 py-1 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-900/60 hover:bg-white dark:hover:bg-zinc-800 text-[11px] transition-colors cursor-pointer"
-                  >
-                    💡 Summarize & Expand
-                  </button>
-                </>
-              )}
+                ))}
             </div>
           </div>
         )}
@@ -2025,26 +1265,6 @@ Do NOT just passively describe what could be done — when the user asks to modi
                 <div className="space-y-2">
                   {parseOutputSegments(m.content).map((seg, sIdx) => {
                     if (seg.type === 'text') {
-                      const hasJevInTools = m.executedTools?.some(
-                        (evt) => evt.toolName === 'jev_evaluate_task'
-                      )
-                      const isJevEval =
-                        !hasJevInTools &&
-                        isTask &&
-                        (seg.content.includes('Evaluation Verdict') ||
-                          (seg.content.includes('Actionable') && seg.content.includes('Blast Radius')))
-                      if (isJevEval) {
-                        return (
-                          <div key={sIdx} className="space-y-2">
-                            <JevEvaluationCard
-                              content={seg.content}
-                              onDeconstruct={() => handleSend('/expand')}
-                              onFocus={() => handleSend('/focus')}
-                            />
-                            <MarkdownView content={seg.content} />
-                          </div>
-                        )
-                      }
                       return <MarkdownView key={sIdx} content={seg.content} />
                     }
                     if (seg.type === 'canvas') {
@@ -2052,7 +1272,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
                         <CanvasActionList
                           key={sIdx}
                           actions={seg.actions}
-                          parentTask={isTask && node ? { id: node.id, title: currentShapeText } : null}
+                          parentTask={isTextNode(node) && node ? { id: node.id, title: currentShapeText } : null}
                           onSpawnAll={(options) => handleSpawn(seg.actions, options)}
                           onSpawnSingle={handleSpawnSingle}
                           spawnedCount={spawnedCount}
@@ -2071,7 +1291,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
                     return null
                   })}
 
-                  {/* Executed Tools Diffs & Jev Evaluations */}
+                  {/* Executed tool diffs */}
                   {m.executedTools && m.executedTools.length > 0 && (
                     <div className="space-y-1.5 pt-1">
                       {m.executedTools
@@ -2084,25 +1304,11 @@ Do NOT just passively describe what could be done — when the user asks to modi
                           />
                         ))}
 
-                      {m.executedTools
-                        .filter((evt) => evt.toolName === 'jev_evaluate_task' || evt.toolName === 'jev_evaluate_project')
-                        .map((evt, eIdx) => {
-                          const evalText =
-                            evt.result?.content?.find((c) => c.type === 'text')?.text || ''
-                          return (
-                            <JevEvaluationCard
-                              key={eIdx}
-                              content={evalText}
-                              onDeconstruct={() => handleSend('/expand')}
-                              onFocus={() => handleSend('/focus')}
-                            />
-                          )
-                        })}
                     </div>
                   )}
 
-                  {/* 1-Click Checkpoints Ingestion for Focus Task */}
-                  {isTask && (() => {
+                  {/* 1-Click Checkpoints Ingestion for text */}
+                  {isTextNode(node) && (() => {
                     const checkpoints = extractCheckpoints(m.content)
                     if (checkpoints.length === 0) return null
                     return (
@@ -2110,7 +1316,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
                         {appliedMsgIds[m.id] ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/60 select-none">
                             <Check className="size-3" />
-                            <span>Checkpoints applied to card</span>
+                            <span>Checklist added</span>
                           </span>
                         ) : (
                           <button
@@ -2119,7 +1325,7 @@ Do NOT just passively describe what could be done — when the user asks to modi
                             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-100 transition-colors shadow-2xs cursor-pointer select-none"
                           >
                             <CheckSquare className="size-3 text-emerald-400 dark:text-emerald-600" />
-                            <span>Apply {checkpoints.length} Checkpoints to Card</span>
+                            <span>Add {checkpoints.length} checklist items</span>
                           </button>
                         )}
                       </div>
@@ -2212,80 +1418,6 @@ Do NOT just passively describe what could be done — when the user asks to modi
           </div>
         )}
 
-        {isTask && !isStreaming && (
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-            <button
-              type="button"
-              onClick={() => handleSend('/eval')}
-              className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
-            >
-              <Target className="size-2.5 text-blue-500" />
-              <span>Evaluate</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSend('/expand')}
-              className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
-            >
-              <Zap className="size-2.5 text-amber-500" />
-              <span>Break down</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSend('/criteria')}
-              className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer"
-            >
-              📝 Criteria
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSend('Set priority of this task to P1 Urgent using update_node.')}
-              className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
-            >
-              <Target className="size-2.5 text-rose-500" />
-              <span>P1 Urgent</span>
-            </button>
-            {activeFocusNodeId === node?.id ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.dispatchEvent(
-                      new CustomEvent('foqz:set-focus-target', {
-                        detail: { shapeId: node.id },
-                      })
-                    )
-                  }}
-                  className="px-2 py-0.5 rounded-full border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900 text-[10px] text-blue-700 dark:text-blue-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
-                >
-                  <Lock className="size-2.5 text-blue-600" />
-                  <span>Locked Focus</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSend('/stop')}
-                  className="px-2 py-0.5 rounded-full border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900 text-[10px] text-rose-700 dark:text-rose-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
-                >
-                  <X className="size-2.5 text-rose-600" />
-                  <span>Exit Focus</span>
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() =>
-                  handleSend(
-                    'Start a 25-minute focus session on this task using start_focus_session.'
-                  )
-                }
-                className="px-2 py-0.5 rounded-full border border-black/10 dark:border-white/10 bg-white/60 dark:bg-zinc-800/60 hover:bg-white dark:hover:bg-zinc-700 text-[10px] text-zinc-700 dark:text-zinc-300 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1"
-              >
-                <Lock className="size-2.5 text-blue-500" />
-                <span>Focus 25m</span>
-              </button>
-            )}
-          </div>
-        )}
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white/80 dark:bg-zinc-900/80 border border-black/[0.08] dark:border-white/[0.1] shadow-2xs">
           <textarea
             ref={textareaRef}

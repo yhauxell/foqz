@@ -20,9 +20,24 @@ import {
   RemoveFormatting,
   Minus,
   Plus,
+  CheckSquare,
 } from "lucide-react";
 import { type ProjectAccent, type TaskPaperTheme } from "@/types/canvas";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import {
+  isActionable,
+  isTextNode,
+  setTextStyle,
+  textStyleOf,
+  toggleActionable,
+  type TextStyle,
+} from "@/lib/nodeBehaviors";
+
+const TEXT_STYLES: Array<{ id: TextStyle; label: string; hint: string }> = [
+  { id: "plain", label: "Plain", hint: "Text on the canvas" },
+  { id: "sticky", label: "Sticky", hint: "Text on a sticky note" },
+  { id: "card", label: "Card", hint: "Text on a card (always a to-do)" },
+];
 import {
   HIGHLIGHT_COLORS,
   type HighlightColor,
@@ -86,7 +101,7 @@ function useOutsideClick(ref: React.RefObject<HTMLDivElement | null>, onClose: (
 }
 
 export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowShapeMenuProps) {
-  const { setNodes, getInternalNode, deleteElements, fitView } = useReactFlow();
+  const { setNodes, getInternalNode, fitView } = useReactFlow();
   const [colorOpen, setColorOpen] = useState(false);
   const [borderOpen, setBorderOpen] = useState(false);
   const [highlightOpen, setHighlightOpen] = useState(false);
@@ -129,11 +144,10 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
         e.preventDefault();
       }
       if (!selectedNode?.id) return;
-      const idToDelete = selectedNode.id;
-      useFlowCanvasStore.getState().deleteNode(idToDelete);
-      deleteElements({ nodes: [{ id: idToDelete }] }).catch(() => {});
+      // The store releases a region's children; React Flow's deleteElements would delete them.
+      useFlowCanvasStore.getState().deleteNode(selectedNode.id);
     },
-    [selectedNode, deleteElements]
+    [selectedNode]
   );
 
   const handleFormatAction = useCallback(
@@ -354,6 +368,63 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* One text concept: pick a style, switch the to-do behavior on or off */}
+        {isTextNode(selectedNode) && (
+          <>
+            <div
+              className="flex items-center gap-0.5 bg-black/5 dark:bg-white/5 rounded-full p-0.5"
+              role="radiogroup"
+              aria-label="Text style"
+            >
+              {TEXT_STYLES.map((style) => {
+                const active = textStyleOf(selectedNode) === style.id;
+                return (
+                  <button
+                    key={style.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    title={style.hint}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!active) setTextStyle(selectedNode.id, style.id);
+                    }}
+                    className={`px-2 h-5 rounded-full text-[10px] font-medium transition-colors cursor-pointer ${
+                      active
+                        ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+                        : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                    }`}
+                  >
+                    {style.label}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedNode.type !== "focusTask" && (
+              <button
+                type="button"
+                aria-pressed={isActionable(selectedNode)}
+                title="To-do: adds a checkbox, focus and the Logbook (⌘↵)"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleActionable(selectedNode.id);
+                }}
+                className={`px-1.5 h-5 rounded-full flex items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${
+                  isActionable(selectedNode)
+                    ? "bg-emerald-600 text-white"
+                    : "text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                }`}
+              >
+                <CheckSquare className="size-3" />
+                <span>To-do</span>
+              </button>
+            )}
+            <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
+          </>
+        )}
+
         {/* TEXT SPECIFIC CONTROLS */}
         {isText && (
           <>
@@ -826,7 +897,7 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
           <span>Annotate</span>
         </button>
 
-        {selectedNode.type === "focusTask" && (
+        {isActionable(selectedNode) && (
           <button
             type="button"
             title={(selectedNode.data as any)?.githubIssueNumber ? `GitHub #${(selectedNode.data as any).githubIssueNumber}` : "Create GitHub Issue"}

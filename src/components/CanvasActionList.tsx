@@ -32,35 +32,6 @@ interface CanvasActionListProps {
   } | null
 }
 
-const PRIORITY_BADGES: Record<
-  number,
-  { label: string; bg: string; text: string; border: string }
-> = {
-  1: {
-    label: 'P1 • Urgent',
-    bg: 'bg-red-500/10 dark:bg-red-500/20',
-    text: 'text-red-700 dark:text-red-300',
-    border: 'border-red-200 dark:border-red-900/60',
-  },
-  2: {
-    label: 'P2 • High',
-    bg: 'bg-amber-500/10 dark:bg-amber-500/20',
-    text: 'text-amber-700 dark:text-amber-300',
-    border: 'border-amber-200 dark:border-amber-900/60',
-  },
-  3: {
-    label: 'P3 • Normal',
-    bg: 'bg-blue-500/10 dark:bg-blue-500/20',
-    text: 'text-blue-700 dark:text-blue-300',
-    border: 'border-blue-200 dark:border-blue-900/60',
-  },
-  4: {
-    label: 'P4 • Low',
-    bg: 'bg-zinc-500/10 dark:bg-zinc-500/20',
-    text: 'text-zinc-600 dark:text-zinc-400',
-    border: 'border-zinc-200 dark:border-zinc-800',
-  },
-}
 
 const NOTE_COLORS: Record<string, { dot: string; label: string }> = {
   yellow: { dot: 'bg-amber-400', label: 'Yellow' },
@@ -200,11 +171,6 @@ export function CanvasActionList({
           const currentTitle = editedTitles[index] !== undefined ? editedTitles[index] : (action.title || action.text || '')
 
           if (action.type === 'task') {
-            const prio =
-              typeof action.priority === 'number' && action.priority in PRIORITY_BADGES
-                ? PRIORITY_BADGES[action.priority]
-                : PRIORITY_BADGES[3]
-
             return (
               <div
                 key={index}
@@ -227,10 +193,8 @@ export function CanvasActionList({
                     #{index + 1}
                   </span>
 
-                  <span
-                    className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded-full border shrink-0 ${prio.bg} ${prio.text} ${prio.border}`}
-                  >
-                    {prio.label}
+                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full border shrink-0 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/60">
+                    To-do
                   </span>
 
                   {/* Editable or formatted title */}

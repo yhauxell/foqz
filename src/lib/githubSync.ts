@@ -1,7 +1,4 @@
-import { normalizeGithubRepoInput } from './githubAgentSync'
-import { mapLabelsToPriority } from './githubLabels'
-
-export { mapLabelsToPriority }
+import { normalizeGithubRepoInput } from './githubRepo'
 
 export interface GitHubUser {
   login: string
@@ -30,39 +27,15 @@ export interface GitHubIssue {
   closed_at?: string | null
 }
 
-import { useFlowCanvasStore } from '../poc/store/flowCanvasStore'
-
 /**
-  Retrieve configured GitHub personal access token:
+  Retrieve the configured GitHub personal access token:
   1. If an explicit token argument is provided, return it.
-  2. If a repoInput is provided, check if any projectFrame node in the canvas is configured for that repo and has a project-level token.
-  3. Fall back to global appSettings / localStorage / process.env.
+  2. Otherwise use the global token from app settings / localStorage / process.env.
  */
 export function getGithubToken(repoInputOrToken?: string): string {
   // If caller explicitly passed a token (e.g. starting with ghp_ or github_pat_ or non-repo string without slash)
   if (repoInputOrToken && !repoInputOrToken.includes('/') && !repoInputOrToken.startsWith('http')) {
     return repoInputOrToken.trim()
-  }
-
-  // If repoInput was supplied (e.g. "owner/repo"), check project frames in canvas store for project-level token
-  if (repoInputOrToken && typeof window !== 'undefined') {
-    try {
-      const normalizedTarget = normalizeGithubRepoInput(repoInputOrToken)
-      if (normalizedTarget) {
-        const nodes = useFlowCanvasStore.getState().nodes
-        for (const node of nodes) {
-          if (node.type === 'projectFrame') {
-            const connectors = (node.data as any)?.connectors
-            if (connectors?.githubRepo) {
-              const nodeRepo = normalizeGithubRepoInput(connectors.githubRepo)
-              if (nodeRepo === normalizedTarget && connectors?.githubToken?.trim()) {
-                return connectors.githubToken.trim()
-              }
-            }
-          }
-        }
-      }
-    } catch {}
   }
 
   // Global settings fallback:
@@ -511,30 +484,6 @@ export async function listIssuesUpdatedSince(repoInput: string, sinceIso?: strin
     if (!Array.isArray(data) || data.length < 100) break
   }
   return issues
-}
-
-/** Add labels to an issue (GitHub creates missing labels). Returns the issue's resulting label names. */
-export async function addIssueLabels(repoInput: string, issueNumber: number, labels: string[]): Promise<string[]> {
-  const { repo, headers } = requireRepoAndToken(repoInput)
-  const resp = await fetch(`https://api.github.com/repos/${repo}/issues/${issueNumber}/labels`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ labels }),
-  })
-  if (!resp.ok) throw await githubError(resp, `add labels to #${issueNumber}`)
-  return ((await resp.json()) || []).map((l: any) => l.name)
-}
-
-/** Remove one label from an issue. Returns the remaining label names, or null if it wasn't applied. */
-export async function removeIssueLabel(repoInput: string, issueNumber: number, label: string): Promise<string[] | null> {
-  const { repo, headers } = requireRepoAndToken(repoInput)
-  const resp = await fetch(
-    `https://api.github.com/repos/${repo}/issues/${issueNumber}/labels/${encodeURIComponent(label)}`,
-    { method: 'DELETE', headers },
-  )
-  if (resp.status === 404) return null
-  if (!resp.ok) throw await githubError(resp, `remove label "${label}" from #${issueNumber}`)
-  return ((await resp.json()) || []).map((l: any) => l.name)
 }
 
 /** Add or remove assignees without touching the issue's other assignees. */

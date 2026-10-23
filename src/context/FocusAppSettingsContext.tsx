@@ -27,6 +27,17 @@ const FocusAppSettingsContext = createContext<FocusAppSettingsContextValue | nul
   null,
 );
 
+/** Keys of providers removed in v0.14; purged so their secrets don't linger in localStorage. */
+const REMOVED_LOCAL_KEYS = ["foqz_typesafe_api_key", "foqz_typesafe_base_url", "foqz_gemini_api_key"];
+
+function mirrorSettingsToLocalStorage(next: AppSettings) {
+  localStorage.setItem("foqz_app_settings", JSON.stringify(next));
+  if (next.openaiApiKey) {
+    localStorage.setItem("foqz_openai_api_key", next.openaiApiKey);
+  }
+  for (const key of REMOVED_LOCAL_KEYS) localStorage.removeItem(key);
+}
+
 export function FocusAppSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(() => {
     if (typeof window !== "undefined" && window.localStorage) {
@@ -58,19 +69,7 @@ export function FocusAppSettingsProvider({ children }: { children: ReactNode }) 
       const next = await api();
       if (typeof window !== "undefined" && window.localStorage) {
         try {
-          localStorage.setItem("foqz_app_settings", JSON.stringify(next));
-          if (next.typesafeApiKey) {
-            localStorage.setItem("foqz_typesafe_api_key", next.typesafeApiKey);
-          }
-          if (next.typesafeBaseUrl) {
-            localStorage.setItem("foqz_typesafe_base_url", next.typesafeBaseUrl);
-          }
-          if (next.openaiApiKey) {
-            localStorage.setItem("foqz_openai_api_key", next.openaiApiKey);
-          }
-          if (next.geminiApiKey) {
-            localStorage.setItem("foqz_gemini_api_key", next.geminiApiKey);
-          }
+          mirrorSettingsToLocalStorage(next);
         } catch {}
       }
       replaceCachedAppSettings(next);
@@ -101,19 +100,7 @@ export function FocusAppSettingsProvider({ children }: { children: ReactNode }) 
         const merged = mergeAppSettings({ ...settings, ...partial });
         if (typeof window !== "undefined" && window.localStorage) {
           try {
-            localStorage.setItem("foqz_app_settings", JSON.stringify(merged));
-            if (merged.typesafeApiKey) {
-              localStorage.setItem("foqz_typesafe_api_key", merged.typesafeApiKey);
-            }
-            if (merged.typesafeBaseUrl) {
-              localStorage.setItem("foqz_typesafe_base_url", merged.typesafeBaseUrl);
-            }
-            if (merged.openaiApiKey) {
-              localStorage.setItem("foqz_openai_api_key", merged.openaiApiKey);
-            }
-            if (merged.geminiApiKey) {
-              localStorage.setItem("foqz_gemini_api_key", merged.geminiApiKey);
-            }
+            mirrorSettingsToLocalStorage(merged);
           } catch {}
         }
         replaceCachedAppSettings(merged);
@@ -124,19 +111,7 @@ export function FocusAppSettingsProvider({ children }: { children: ReactNode }) 
       if ("settings" in res && res.settings) {
         if (typeof window !== "undefined" && window.localStorage) {
           try {
-            localStorage.setItem("foqz_app_settings", JSON.stringify(res.settings));
-            if (res.settings.typesafeApiKey) {
-              localStorage.setItem("foqz_typesafe_api_key", res.settings.typesafeApiKey);
-            }
-            if (res.settings.typesafeBaseUrl) {
-              localStorage.setItem("foqz_typesafe_base_url", res.settings.typesafeBaseUrl);
-            }
-            if (res.settings.openaiApiKey) {
-              localStorage.setItem("foqz_openai_api_key", res.settings.openaiApiKey);
-            }
-            if (res.settings.geminiApiKey) {
-              localStorage.setItem("foqz_gemini_api_key", res.settings.geminiApiKey);
-            }
+            mirrorSettingsToLocalStorage(res.settings);
           } catch {}
         }
         replaceCachedAppSettings(res.settings);

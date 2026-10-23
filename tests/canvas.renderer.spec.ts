@@ -19,80 +19,58 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await page.screenshot({ path: 'test-results/canvas-home.png', fullPage: true });
   });
 
-  test('opens settings modal, navigates tabs, and verifies visual state', async ({ page }) => {
-    // Click Settings button
-    const settingsBtn = page.locator("button[aria-label='Settings']");
-    await settingsBtn.click();
+  test('opens settings modal with three tabs and navigates them', async ({ page }) => {
+    await page.locator("button[aria-label='Settings']").click();
 
-    // Verify Settings dialog is visible using exact accessible role
     const dialog = page.getByRole('dialog', { name: 'Settings' });
     await expect(dialog).toBeVisible();
 
-    // Verify tabs exist
-    await expect(page.getByRole('button', { name: 'General' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Agents & MCP' })).toBeVisible();
+    const tabs = dialog.getByRole('tab');
+    await expect(tabs).toHaveText(['App', 'Intelligence', 'Integrations']);
 
-    // Switch tab to 'Agents & MCP'
-    await page.getByRole('button', { name: 'Agents & MCP' }).click();
-
-    // Verify MCP tab loaded and take screenshot
-    await page.screenshot({ path: 'test-results/settings-mcp-tab.png' });
+    await dialog.getByRole('tab', { name: 'Integrations' }).click();
+    await expect(dialog.getByText('MCP tool servers')).toBeVisible();
+    await page.screenshot({ path: 'test-results/settings-integrations-tab.png' });
   });
 
-  test('opens command spotlight, types a query, and captures visual state', async ({ page }) => {
-    // Click omni-spotlight trigger in the topbar
-    const spotlightTrigger = page.locator("button[title*='Create task, jump to project, or command canvas']");
-    await spotlightTrigger.click();
+  test('command bar finds nodes and captures typed text onto the canvas', async ({ page }) => {
+    await page.locator("button[title='Find, run, or write (⌘K)']").click();
 
-    // Wait for spotlight input
-    const searchInput = page.getByPlaceholder(/Jump to project, task, or run an action/);
+    const searchInput = page.getByPlaceholder(/just type to write/);
     await expect(searchInput).toBeVisible();
 
-    // Type a query
-    await searchInput.fill('Architecture');
-
-    // Take screenshot of filtered spotlight
+    // Finding: an existing node shows up as a match
+    await searchInput.fill('Connect task cards');
+    await expect(page.getByTestId('command-bar').getByText('Connect task cards to sketch boxes')).toBeVisible();
     await page.screenshot({ path: 'test-results/spotlight-search.png' });
+
+    // Capturing: Enter on the first row writes the text where the user was
+    await searchInput.fill('Call the venue about the projector');
+    await expect(page.getByText('Write: "Call the venue about the projector"')).toBeVisible();
+    await searchInput.press('Enter');
+
+    await expect(page.getByTestId('command-bar')).toBeHidden();
+    const created = page.locator('.react-flow__node-text').filter({ hasText: 'Call the venue about the projector' });
+    await expect(created).toBeVisible();
+    await expect(created.locator('[role="checkbox"]')).toHaveCount(0);
   });
 
-  test('opens quick task capture via global shortcut and creates a task', async ({ page }) => {
-    // Prefer the topbar affordance in Chromium — Ctrl+Shift+N opens Incognito there.
-    await page.getByRole('button', { name: 'Quick Task Capture' }).click();
+  test('command bar captures a to-do with the [] prefix and shows shortcuts with ?', async ({ page }) => {
+    await page.locator("button[title='Find, run, or write (⌘K)']").click();
+    const searchInput = page.getByPlaceholder(/just type to write/);
 
-    const dialog = page.getByRole('dialog', { name: 'Quick Task' });
-    await expect(dialog).toBeVisible();
-    const capture = page.getByLabel('Capture note');
-    await expect(capture).toBeVisible();
+    await searchInput.fill('[] Book flights');
+    await expect(page.getByText('Write to-do: "Book flights"')).toBeVisible();
+    await searchInput.press('Enter');
 
-    await capture.fill('Ship natural-language quick capture with slash filing');
-    await dialog.getByRole('button', { name: 'Capture', exact: true }).click();
+    const todo = page.locator('.react-flow__node-text').filter({ hasText: 'Book flights' });
+    await expect(todo.locator('[role="checkbox"]')).toBeVisible();
 
-    await expect(dialog).not.toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(/Ship natural-language quick capture/i).first()).toBeVisible();
-    await page.screenshot({ path: 'test-results/quick-task-created.png' });
-  });
-
-  test('quick task slash autocomplete lists destinations', async ({ page }) => {
-    await page.getByRole('button', { name: 'Quick Task Capture' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Quick Task' });
-    await expect(dialog).toBeVisible();
-
-    const capture = page.getByLabel('Capture note');
-    await capture.click();
-    await capture.fill('Polish landing ');
-    await capture.press('/');
-    await expect(dialog.getByText('Project or runway', { exact: true })).toBeVisible();
-    await page.screenshot({ path: 'test-results/quick-task-slash-autocomplete.png' });
-
-    // Selecting a destination renders it as a chip (not inline /text)
-    await capture.press('Enter');
-    await expect(dialog.getByLabel(/Destination /)).toBeVisible();
-    await expect(capture).toHaveValue('Polish landing ');
-
-    // Backspace at start of note removes the destination chip
-    await capture.press('Home');
-    await capture.press('Backspace');
-    await expect(dialog.getByLabel(/Destination /)).toHaveCount(0);
+    await page.locator("button[title='Find, run, or write (⌘K)']").click();
+    await page.getByPlaceholder(/just type to write/).fill('?');
+    const bar = page.getByTestId('command-bar');
+    await expect(bar.getByText('Shortcuts', { exact: true }).first()).toBeVisible();
+    await expect(bar.getByText('Make it a to-do')).toBeVisible();
   });
 
   test('opens clear board confirmation modal and can cancel or clear', async ({ page }) => {
@@ -117,44 +95,24 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await expect(page.getByText('Clear entire board?')).not.toBeVisible();
   });
 
-  test('verifies big focus modal appears when focusing task', async ({ page }) => {
-    // Trigger focus session via custom event
+  test('focus happens in place: the board dims and a timer pill appears', async ({ page }) => {
     await page.evaluate(() => {
       window.dispatchEvent(new CustomEvent('foqz:set-focus-target', { detail: { shapeId: 'task-2' } }));
     });
 
-    // Check prominent timer and exit focus button
-    await expect(page.getByText('Remaining Time')).toBeVisible();
-    await expect(page.getByText('Exit Focus (Esc)')).toBeVisible();
+    const pill = page.getByTestId('focus-pill');
+    await expect(pill).toBeVisible();
+    await expect(page.getByTestId('focus-timer')).toHaveText(/^\d+:\d{2}$/);
 
-    // Capture visual screenshot of the expanded focus modal
-    await page.screenshot({ path: 'test-results/focus-modal-big.png' });
-  });
+    // Everything except the focused node is dimmed, nothing covers the canvas
+    const other = page.locator('.react-flow__node[data-id="task-1"]');
+    await expect.poll(async () => Number(await other.evaluate((el) => getComputedStyle(el).opacity))).toBeLessThan(0.5);
+    const focused = page.locator('.react-flow__node[data-id="task-2"]');
+    await expect.poll(async () => Number(await focused.evaluate((el) => getComputedStyle(el).opacity))).toBe(1);
+    await page.screenshot({ path: 'test-results/focus-in-place.png' });
 
-  test('verifies runway frame selection preserves task visibility on top', async ({ page }) => {
-    // Open template selector and stage runway via UI
-    const stageRunwayBtn = page.locator("button[title='Stage New Runway from Templates...']");
-    await expect(stageRunwayBtn).toBeVisible();
-    await stageRunwayBtn.click();
-
-    // Select the first framework (Rule of 3)
-    const ruleOf3Btn = page.locator("button:has-text('Rule of 3')").first();
-    await expect(ruleOf3Btn).toBeVisible();
-    await ruleOf3Btn.click();
-
-    // Verify runway is staged on canvas
-    const runwayFrame = page.locator('.react-flow__node-runwayFrame').first();
-    await expect(runwayFrame).toBeVisible();
-
-    // Select runway frame
-    await runwayFrame.click();
-
-    // Ensure task cards on canvas remain visible and not buried
-    const anyTask = page.locator('.react-flow__node-focusTask').first();
-    await expect(anyTask).toBeVisible();
-
-    // Capture visual screenshot of runway selection layering
-    await page.screenshot({ path: 'test-results/runway-selection-layering.png' });
+    await page.keyboard.press('Escape');
+    await expect(pill).toBeHidden();
   });
 
   test('verifies multiboard creation, switching, and renaming menu', async ({ page }) => {
@@ -214,50 +172,12 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await expect(page.getByText('Connect task cards to sketch boxes')).toBeVisible();
   });
 
-  test('stages Eisenhower Matrix runway template with 4 quadrants', async ({ page }) => {
-    // Open template selector
-    const stageRunwayBtn = page.locator("button[title='Stage New Runway from Templates...']");
-    await expect(stageRunwayBtn).toBeVisible();
-    await stageRunwayBtn.click();
+  test('region exposes its AI chat button and command bar has no layout tidy command', async ({ page }) => {
+    await expect(page.locator("button[aria-label='Ask AI about this region']").first()).toBeVisible();
 
-    // Select Eisenhower Matrix framework
-    const eisenhowerBtn = page.locator("button:has-text('Eisenhower Matrix')").first();
-    await expect(eisenhowerBtn).toBeVisible();
-    await eisenhowerBtn.click();
-
-    // Verify runway is staged with Eisenhower quadrant watermark guidelines
-    await expect(page.getByText('Q1: URGENT & IMPORTANT (DO NOW)')).toBeVisible();
-    await expect(page.getByText('Q2: NOT URGENT & IMPORTANT (SCHEDULE)')).toBeVisible();
-
-    // Capture visual screenshot of Eisenhower matrix runway
-    await page.screenshot({ path: 'test-results/eisenhower-runway.png' });
-  });
-
-  test('verifies arrange layout command in spotlight and project frame chat button', async ({ page }) => {
-    // 1. Verify project frame chat button exists and is accessible
-    const projectChatBtn = page.locator("button[aria-label='Chat with project or group']").first();
-    await expect(projectChatBtn).toBeVisible();
-
-    // 2. Open spotlight and search for arrange layout
-    const spotlightTrigger = page.locator("button[title*='Create task, jump to project, or command canvas']");
-    await spotlightTrigger.click();
-
-    const searchInput = page.getByPlaceholder(/Jump to project, task, or run an action/);
-    await expect(searchInput).toBeVisible();
-    await searchInput.fill('Arrange Layout');
-
-    // Verify Arrange Layout command option appears
-    const arrangeOption = page.getByText(/Arrange Layout \(Tidy Non-overlapping\)/);
-    await expect(arrangeOption).toBeVisible();
-
-    // Take screenshot of spotlight with Arrange Layout
-    await page.screenshot({ path: 'test-results/spotlight-arrange-layout.png' });
-
-    // Execute arrange layout
-    await arrangeOption.click();
-
-    // Take visual screenshot of arranged canvas
-    await page.screenshot({ path: 'test-results/canvas-after-arrange.png' });
+    await page.locator("button[title='Find, run, or write (⌘K)']").click();
+    await page.getByPlaceholder(/just type to write/).fill('Arrange');
+    await expect(page.getByTestId('command-bar').getByText(/Arrange Layout/)).toHaveCount(0);
   });
 
   test('verifies connection and arrow tools in dock toolbar and creates curved arrow', async ({ page }) => {
@@ -300,85 +220,62 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await expect(arrowNode).not.toBeVisible();
   });
 
-  test('verifies local AI engine auto-discovery HUD in Settings', async ({ page }) => {
-    // 1. Open Focus Settings modal
-    const settingsBtn = page.locator("button[aria-label='Settings']");
-    await expect(settingsBtn).toBeVisible();
-    await settingsBtn.click();
-
-    // 2. Switch to AI tab
-    const aiTabBtn = page.getByRole('button', { name: 'AI & Models', exact: true });
-    await expect(aiTabBtn).toBeVisible();
-    await aiTabBtn.click();
-
-    // 2b. Open Ollama / Local Engines drawer
-    const ollamaConfigureBtn = page.getByRole('button', { name: 'Configure' }).first();
-    await expect(ollamaConfigureBtn).toBeVisible();
-    await ollamaConfigureBtn.click();
-
-    // 3. Verify Local Inference Engines Auto-Discovery HUD
+  test('verifies local AI engine auto-discovery in Intelligence and GitHub in Integrations', async ({ page }) => {
+    await page.locator("button[aria-label='Settings']").click();
     const dialog = page.getByRole('dialog', { name: 'Settings' });
+
+    await dialog.getByRole('tab', { name: 'Intelligence' }).click();
     await expect(dialog.getByText('Auto-Detected Local Inference Engines')).toBeVisible();
     await expect(dialog.getByText(/model\(s\) active|Offline/).first()).toBeVisible();
-    await expect(dialog.getByText('LM Studio', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('LM Studio', { exact: true }).first()).toBeVisible();
     await expect(dialog.getByText('llama.cpp', { exact: true })).toBeVisible();
+    // Only two providers remain
+    await expect(dialog.getByRole('combobox', { name: 'Active AI provider' }).locator('option')).toHaveText([
+      'Ollama (local, private)',
+      'OpenAI-compatible endpoint',
+    ]);
+    await expect(dialog.getByText(/Gemini \(Cloud\)|TypeSafe/)).toHaveCount(0);
 
-    // 3b. Return to overview
-    await dialog.getByText(/Back to Providers/).click();
-
-    // 4. Verify GitHub Integration PAT card
-    const githubHeading = dialog.getByText('GitHub Integration', { exact: true });
-    await expect(githubHeading).toBeVisible();
-    await githubHeading.scrollIntoViewIfNeeded();
+    await dialog.getByRole('tab', { name: 'Integrations' }).click();
     await expect(dialog.getByPlaceholder(/ghp_... or github_pat_.../)).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Test GitHub Token' })).toBeVisible();
-
-    // 5. Capture screenshot
     await page.screenshot({ path: 'test-results/local-ai-discovery-settings.png' });
 
-    // 6. Close Settings modal
-    const closeBtn = dialog.locator("button[aria-label='Close settings']");
-    await closeBtn.click();
+    await dialog.locator("button[aria-label='Close settings']").click();
     await expect(dialog).not.toBeVisible();
   });
 
-  test('verifies updated shortcuts: R (rectangle), N (sticky note), A (task), T (text)', async ({ page }) => {
+  test('shortcuts: R rectangle, T text, A arrow, N sticky text, and ⌘↵ toggles a to-do', async ({ page }) => {
     const canvas = page.locator('.react-flow__pane');
     await canvas.click({ position: { x: 50, y: 50 } });
 
-    // 1. Verify R activates Rectangle tool
     await page.keyboard.press('r');
-    const rectToolBtn = page.locator("button[title*='Sketch Rectangle Tool (R)']");
-    await expect(rectToolBtn).toHaveClass(/bg-emerald-600/);
+    await expect(page.locator("button[title*='Sketch Rectangle Tool (R)']")).toHaveClass(/bg-emerald-600/);
 
-    // 2. Verify N activates Sticky Note tool
-    await page.keyboard.press('n');
-    const noteToolBtn = page.locator("button[title*='Paper Sticky Note Tool (N)']");
-    await expect(noteToolBtn).toHaveClass(/bg-amber-500/);
-
-    // 3. Verify T activates Text tool
     await page.keyboard.press('t');
-    const textToolBtn = page.locator("button[title*='Text Note Tool (T)']");
-    await expect(textToolBtn).toHaveClass(/bg-amber-600/);
+    await expect(page.locator("button[title^='Text (T)']")).toHaveClass(/bg-amber-600/);
 
-    // 4. Verify A creates EXACTLY one new Task Card (no duplicate task creation)
-    const initialTaskCount = await page.locator('.react-flow__node-focusTask').count();
     await page.keyboard.press('a');
-    await page.waitForTimeout(300);
-    const newTaskCount = await page.locator('.react-flow__node-focusTask').count();
-    expect(newTaskCount).toBe(initialTaskCount + 1);
+    await expect(page.locator("button[title^='Arrow (A)']")).toHaveClass(/bg-violet-600/);
 
-    // Verify task has enough vertical space so action items section is visible on creation
-    const createdTask = page.locator('.react-flow__node-focusTask').last();
-    await expect(createdTask).toBeVisible();
-    const actionItemsHeader = createdTask.getByText(/WHAT THIS TASK IS ABOUT • DEFINITION OF DONE/i);
-    await expect(actionItemsHeader).toBeVisible();
-    const actionItemsPrompt = createdTask.getByText(/Define what done looks like/i);
-    await expect(actionItemsPrompt).toBeVisible();
+    // A no longer creates a task card, and there is no task tool
+    await expect(page.locator("button[title*='Task Card Tool']")).toHaveCount(0);
 
-    const boundingBox = await createdTask.boundingBox();
-    expect(boundingBox?.height).toBeGreaterThanOrEqual(140);
+    // N places sticky-style text
+    await page.keyboard.press('n');
+    await canvas.click({ position: { x: 640, y: 520 } });
+    await expect(page.locator('.react-flow__node-note').last()).toBeVisible();
+    await page.keyboard.press('Escape');
 
+    // ⌘↵ on selected text toggles the to-do checkbox
+    await canvas.click({ position: { x: 700, y: 40 } });
+    const text = page.locator('.react-flow__node[data-id="text-demo"]');
+    await text.click();
+    await expect(page.getByRole('radiogroup', { name: 'Text style' })).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+Enter');
+    await expect(text.locator('[role="checkbox"]')).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+Enter');
+    await expect(text.locator('[role="checkbox"]')).toHaveCount(0);
     await page.screenshot({ path: 'test-results/shortcuts-verified.png' });
   });
 
@@ -429,7 +326,7 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     const canvas = page.locator('.react-flow__pane');
 
     // 1. Click Text Tool in vertical toolbar
-    const textToolBtn = page.locator("button[title*='Text Note Tool']");
+    const textToolBtn = page.locator("button[title^='Text (T)']");
     await expect(textToolBtn).toBeVisible();
     await textToolBtn.click();
 
@@ -500,7 +397,7 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     const canvas = page.locator('.react-flow__pane');
 
     // 1. Create text node using Text Tool
-    const textToolBtn = page.locator("button[title*='Text Note Tool']");
+    const textToolBtn = page.locator("button[title^='Text (T)']");
     await expect(textToolBtn).toBeVisible();
     await textToolBtn.click();
     await canvas.click({ position: { x: 750, y: 300 } });

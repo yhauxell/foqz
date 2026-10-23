@@ -257,7 +257,7 @@ function isToolUnsupportedError(err: Error): boolean {
 }
 
 /**
- * Runs the multi-turn agent execution loop with Ollama, OpenAI, or Gemini and MCP tools.
+ * Runs the multi-turn agent execution loop with Ollama or an OpenAI-compatible endpoint and MCP tools.
  */
 export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentLoopResult> {
   const maxSteps = options.maxSteps ?? 12
@@ -270,11 +270,7 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
   const model =
     options.model ||
     activeConfig.model ||
-    (provider === 'openai'
-      ? 'gpt-4o-mini'
-      : provider === 'gemini'
-      ? 'gemini-1.5-flash'
-      : 'qwen2.5-coder:7b')
+    (provider === 'openai' ? 'gpt-4o-mini' : 'qwen2.5-coder:7b')
   const apiKey = options.apiKey || activeConfig.apiKey
   const baseUrl = options.baseUrl || activeConfig.baseUrl
 
@@ -404,19 +400,10 @@ When you receive tool execution results, summarize them naturally for the user i
           serverName === 'foqz' ||
           rawName.startsWith('foqz_') ||
           rawName.startsWith('foqz__') ||
+          // Legacy names some models still emit; the executor maps them to current tools.
           toolName === 'spawn_tasks' ||
-          toolName === 'create_timer' ||
-          toolName === 'add_sticky_note' ||
-          toolName === 'get_canvas_summary' ||
-          toolName === 'jev_triage_items' ||
-          toolName === 'jev_audit_portfolio' ||
-          toolName === 'update_node' ||
-          toolName === 'expand_task' ||
-          toolName === 'connect_nodes' ||
-          toolName === 'start_focus_session' ||
-          toolName === 'stop_focus_session' ||
-          toolName === 'jev_evaluate_task' ||
-          toolName === 'delete_node' ||
+          toolName === 'spawn_notes' ||
+          toolName === 'create_task' ||
           NATIVE_FOQZ_TOOLS.some((t) => t.name === toolName)
 
         if (

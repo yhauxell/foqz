@@ -14,11 +14,10 @@ import {
 } from 'lucide-react'
 import {
   listRepositoryIssues,
-  mapLabelsToPriority,
   getGithubToken,
   type GitHubIssue,
 } from '../lib/githubSync'
-import { normalizeGithubRepoInput } from '../lib/githubAgentSync'
+import { normalizeGithubRepoInput } from '../lib/githubRepo'
 import { useFlowCanvasStore } from '../poc/store/flowCanvasStore'
 
 interface GitHubIssuesModalProps {
@@ -75,7 +74,7 @@ export function GitHubIssuesModal({
   const importedNumbers = useMemo(() => {
     const set = new Set<number>()
     nodes.forEach((n) => {
-      if (n.type === 'focusTask' && (n.data as any)?.githubIssueNumber) {
+      if ((n.data as any)?.githubIssueNumber) {
         set.add(Number((n.data as any).githubIssueNumber))
       }
     })
@@ -171,7 +170,6 @@ export function GitHubIssuesModal({
     const existingCount = nodes.filter((n) => n.parentId === targetParentId).length
 
     issuesToImport.forEach((issue, idx) => {
-      const priority = mapLabelsToPriority(issue.labels)
       const formattedTitle = `#${issue.number} ${issue.title}`
 
       let notes = issue.body || ''
@@ -182,7 +180,6 @@ export function GitHubIssuesModal({
 
       const taskId = store.createTask({
         title: formattedTitle,
-        priority,
         status: issue.state === 'closed' ? 'done' : 'open',
         notes,
         parentId: targetParentId,
@@ -349,19 +346,6 @@ export function GitHubIssuesModal({
                   onClick={() => {
                     const token = quickToken.trim()
                     if (token) {
-                      if (projectId) {
-                        const store = useFlowCanvasStore.getState()
-                        const node = store.nodes.find((n) => n.id === projectId)
-                        if (node) {
-                          const existingConn = (node.data as any)?.connectors || {}
-                          store.updateNodeData(projectId, {
-                            connectors: {
-                              ...existingConn,
-                              githubToken: token,
-                            },
-                          })
-                        }
-                      }
                       localStorage.setItem('foqz_github_token', token)
                       setTokenSaved(true)
                       setErrorMsg(null)
@@ -407,7 +391,6 @@ export function GitHubIssuesModal({
             filteredIssues.map((issue) => {
               const isSelected = selectedIssueNumbers.has(issue.number)
               const isAlreadyImported = importedNumbers.has(issue.number) || importedStatus[issue.number]
-              const priorityNum = mapLabelsToPriority(issue.labels)
 
               return (
                 <div
@@ -454,11 +437,6 @@ export function GitHubIssuesModal({
                           }`}
                         >
                           {issue.state}
-                        </span>
-
-                        {/* Priority Pill */}
-                        <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-black/5 dark:bg-white/10 text-zinc-500">
-                          P{priorityNum}
                         </span>
 
                         {/* Already imported indicator */}

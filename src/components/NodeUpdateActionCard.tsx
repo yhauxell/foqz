@@ -12,6 +12,7 @@ import {
   GitCommit,
 } from 'lucide-react'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
+import { nodeTitle } from '@/lib/nodePredicates'
 import { renderMarkdownInline } from '@/lib/markdown'
 import type { AgentToolCallEvent } from '@/lib/mcpAgentLoop'
 import type { ProposedNodeUpdate } from '@/lib/canvasSpawner'
@@ -21,24 +22,17 @@ export interface ExecutedToolDiffCardProps {
   nodeId?: string | null
 }
 
-const PRIORITY_LABELS: Record<number, string> = {
-  1: 'P1 Urgent',
-  2: 'P2 High',
-  3: 'P3 Normal',
-  4: 'P4 Low',
-}
-
 /**
  * Renders a visual diff card when the model executes update_node via tool call.
  */
 export function ExecutedToolDiffCard({ toolCall, nodeId }: ExecutedToolDiffCardProps) {
   const [reverted, setReverted] = useState(false)
-  const args = toolCall.arguments || {}
+  const args = toolCall.args || {}
   const targetId = args.nodeId || args.taskId || nodeId
 
   const allNodes = useFlowCanvasStore((s) => s.nodes)
   const targetNode = allNodes.find((n) => n.id === targetId)
-  const targetTitle = (targetNode?.data as any)?.title || args.title || targetId || 'Active Card'
+  const targetTitle = (targetNode ? nodeTitle(targetNode) : '') || args.title || targetId || 'Selection'
 
   const handleUndo = () => {
     try {
@@ -57,21 +51,20 @@ export function ExecutedToolDiffCard({ toolCall, nodeId }: ExecutedToolDiffCardP
   if (args.status !== undefined) {
     changedFields.push({ label: 'Status', value: String(args.status) })
   }
-  if (args.priority !== undefined) {
-    const pNum = Number(args.priority)
-    changedFields.push({ label: 'Priority', value: PRIORITY_LABELS[pNum] || `P${pNum}` })
+  if (args.actionable !== undefined) {
+    changedFields.push({ label: 'To-do', value: args.actionable ? 'on' : 'off' })
   }
-  if (args.paper !== undefined) {
-    changedFields.push({ label: 'Paper', value: String(args.paper) })
+  if (args.style !== undefined) {
+    changedFields.push({ label: 'Style', value: String(args.style) })
   }
-  if (args.appendNotes !== undefined) {
+  if (args.appendText !== undefined || args.appendNotes !== undefined) {
     changedFields.push({
-      label: 'Added Checkpoints',
-      value: String(args.appendNotes),
+      label: 'Added',
+      value: String(args.appendText ?? args.appendNotes),
       isAdd: true,
     })
-  } else if (args.notes !== undefined) {
-    changedFields.push({ label: 'Updated Notes', value: String(args.notes) })
+  } else if (args.text !== undefined || args.notes !== undefined) {
+    changedFields.push({ label: 'Rewrote text', value: String(args.text ?? args.notes) })
   }
 
   if (changedFields.length === 0) return null
@@ -152,7 +145,7 @@ export function ProposedUpdateCard({ update, activeNodeId }: ProposedUpdateCardP
   const allNodes = useFlowCanvasStore((s) => s.nodes)
   const targetId = update.nodeId || activeNodeId
   const targetNode = allNodes.find((n) => n.id === targetId)
-  const targetTitle = (targetNode?.data as any)?.title || targetId || 'Active Card'
+  const targetTitle = (targetNode ? nodeTitle(targetNode) : '') || targetId || 'Selection'
 
   if (dismissed || !targetNode) return null
 
@@ -161,11 +154,12 @@ export function ProposedUpdateCard({ update, activeNodeId }: ProposedUpdateCardP
     const store = useFlowCanvasStore.getState()
     const patch: Record<string, any> = {}
     if (update.title) patch.title = update.title
-    if (update.priority) patch.priority = update.priority
-    if (update.status) patch.status = update.status
-    if (update.paper) patch.paper = update.paper
+    if (update.status) {
+      patch.status = update.status
+      patch.actionable = true
+    }
     if (update.goal) patch.goal = update.goal
-    if (update.notes) patch.notes = update.notes
+    if (update.notes) patch[targetNode.type === 'focusTask' ? 'notes' : 'text'] = update.notes
 
     store.updateNodeData(targetId, patch)
 
@@ -183,11 +177,12 @@ export function ProposedUpdateCard({ update, activeNodeId }: ProposedUpdateCardP
   const handleAppendNotes = () => {
     if (!targetId) return
     const store = useFlowCanvasStore.getState()
-    const existing = ((targetNode?.data as any)?.notes as string) || ''
+    const field = targetNode?.type === 'focusTask' ? 'notes' : 'text'
+    const existing = ((targetNode?.data as any)?.[field] as string) || ''
     const toAppend = update.appendNotes || update.notes || ''
     const merged = existing ? `${existing}\n\n${toAppend}` : toAppend
 
-    store.updateNodeData(targetId, { notes: merged })
+    store.updateNodeData(targetId, { [field]: merged })
 
     const lines = merged.split('\n').filter(Boolean).length
     const autoHeight = Math.max(84, 84 + lines * 24)
@@ -226,14 +221,6 @@ export function ProposedUpdateCard({ update, activeNodeId }: ProposedUpdateCardP
             <span className="text-[10px] font-mono text-zinc-500 shrink-0">Title:</span>
             <span className="text-[11px] font-medium text-zinc-900 dark:text-zinc-100">
               {update.title}
-            </span>
-          </div>
-        )}
-        {update.priority && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-mono text-zinc-500 shrink-0">Priority:</span>
-            <span className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-full bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60">
-              {PRIORITY_LABELS[update.priority] || `P${update.priority}`}
             </span>
           </div>
         )}

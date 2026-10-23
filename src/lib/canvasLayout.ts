@@ -25,8 +25,6 @@ export function getNodeDimensions(node: Node): { w: number; h: number } {
           ? 360
           : node.type === "projectFrame"
           ? 680
-          : node.type === "runwayFrame"
-          ? 480
           : 200))
   );
 
@@ -46,8 +44,6 @@ export function getNodeDimensions(node: Node): { w: number; h: number } {
           ? 240
           : node.type === "projectFrame"
           ? 440
-          : node.type === "runwayFrame"
-          ? 600
           : 80))
   );
 
@@ -85,8 +81,8 @@ export function findAnnotationTargetAtFlowPos(
 } | null {
   // Prefer inner cards/elements over container frames, and higher z-index / later DOM order first
   const candidateNodes = [...nodes].sort((a, b) => {
-    const isFrameA = a.type === "projectFrame" || a.type === "runwayFrame";
-    const isFrameB = b.type === "projectFrame" || b.type === "runwayFrame";
+    const isFrameA = a.type === "projectFrame";
+    const isFrameB = b.type === "projectFrame";
     if (isFrameA && !isFrameB) return 1;
     if (!isFrameA && isFrameB) return -1;
     const zA = Number(a.style?.zIndex ?? a.zIndex ?? 0);
@@ -207,136 +203,4 @@ export function findNonOverlappingPosition(
 
   // Fallback offset
   return { x: preferred.x + 40, y: preferred.y + 40 };
-}
-
-/**
- * Arranges and tidies up all elements on the canvas (or within selected clusters/containers)
- * to separate overlapping items and restore spatial clarity.
- */
-export function arrangeLayout(nodes: Node[]): Node[] {
-  // 1. Separate nodes by parent containers (frames vs top-level items)
-  const parents = new Set(nodes.filter((n) => n.parentId).map((n) => n.parentId!));
-  let modified = [...nodes];
-
-  // A. Tidy items inside each project frame
-  for (const parentId of parents) {
-    const parentNode = modified.find((n) => n.id === parentId);
-    if (!parentNode || parentNode.type === "runwayFrame") continue;
-
-    const children = modified.filter((n) => n.parentId === parentId);
-    if (children.length === 0) continue;
-
-    const parentW = Number(parentNode.style?.width ?? parentNode.width ?? 680);
-    const startX = 36;
-    let currentY = 80;
-    const colCount = parentW >= 920 ? 3 : parentW >= 620 ? 2 : 1;
-    const colSpacing = 24;
-
-    const positionedChildren: Node[] = [];
-    const colHeights = new Array(colCount).fill(80);
-
-    children.forEach((child, index) => {
-      const dim = getNodeDimensions(child);
-      const col = index % colCount;
-      const x = startX + col * (dim.w + colSpacing);
-      const y = colHeights[col];
-
-      colHeights[col] += dim.h + 20;
-
-      positionedChildren.push({
-        ...child,
-        position: { x, y },
-      });
-    });
-
-    const maxChildY = Math.max(...colHeights);
-    const neededH = Math.max(
-      Number(parentNode.style?.height ?? parentNode.height ?? 440),
-      maxChildY + 40
-    );
-
-    // Update parent frame height and children positions
-    modified = modified.map((n) => {
-      if (n.id === parentId) {
-        return {
-          ...n,
-          style: { ...n.style, height: neededH },
-          height: neededH,
-        };
-      }
-      const childMatch = positionedChildren.find((c) => c.id === n.id);
-      return childMatch || n;
-    });
-  }
-
-  // B. Tidy top-level elements (root frames, unparented cards, notes)
-  const topLevel = modified.filter((n) => !n.parentId);
-  if (topLevel.length <= 1) return modified;
-
-  // Simple separation pass: if two top-level items overlap, nudge the right/lower one
-  const boundsMap = new Map<string, NodeBounds>();
-  topLevel.forEach((n) => {
-    const dim = getNodeDimensions(n);
-    boundsMap.set(n.id, {
-      id: n.id,
-      x: n.position.x,
-      y: n.position.y,
-      w: dim.w,
-      h: dim.h,
-    });
-  });
-
-  const updatedTopLevel: Node[] = [];
-  const placedBounds: NodeBounds[] = [];
-
-  // Sort by visual reading order (y then x)
-  const sortedTopLevel = [...topLevel].sort((a, b) => {
-    if (Math.abs(a.position.y - b.position.y) > 40) {
-      return a.position.y - b.position.y;
-    }
-    return a.position.x - b.position.x;
-  });
-
-  for (const item of sortedTopLevel) {
-    const dim = getNodeDimensions(item);
-    let posX = item.position.x;
-    let posY = item.position.y;
-
-    let overlap = true;
-    let iterations = 0;
-
-    while (overlap && iterations < 30) {
-      iterations++;
-      overlap = false;
-      for (const placed of placedBounds) {
-        if (
-          posX < placed.x + placed.w + 32 &&
-          posX + dim.w + 32 > placed.x &&
-          posY < placed.y + placed.h + 32 &&
-          posY + dim.h + 32 > placed.y
-        ) {
-          overlap = true;
-          // Nudge item to the right of or below the collision
-          if (posX + dim.w / 2 <= placed.x + placed.w / 2) {
-            posY = placed.y + placed.h + 40;
-          } else {
-            posX = placed.x + placed.w + 40;
-          }
-          break;
-        }
-      }
-    }
-
-    const finalBounds = { id: item.id, x: posX, y: posY, w: dim.w, h: dim.h };
-    placedBounds.push(finalBounds);
-    updatedTopLevel.push({
-      ...item,
-      position: { x: posX, y: posY },
-    });
-  }
-
-  return modified.map((n) => {
-    const topMatch = updatedTopLevel.find((t) => t.id === n.id);
-    return topMatch || n;
-  });
 }

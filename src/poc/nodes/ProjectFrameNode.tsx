@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { memo, useEffect, useRef, useState } from "react";
 import { NodeResizer, Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
 import {
@@ -6,12 +6,6 @@ import {
   GitPullRequest,
   MessageSquare,
   Sparkles,
-  PlaneTakeoff,
-  ExternalLink,
-  Undo2,
-  ChevronDown,
-  ChevronRight,
-  CheckCircle2,
   RefreshCw,
 } from "lucide-react";
 import { syncRepoTasks } from "@/lib/githubTaskSync";
@@ -29,9 +23,6 @@ export interface ProjectFrameNodeData {
   borderStyle?: "solid" | "dashed" | "dotted";
   connectors?: {
     githubRepo?: string;
-    githubToken?: string;
-    notionWorkspace?: string;
-    sentryProject?: string;
   };
   [key: string]: unknown;
 }
@@ -63,43 +54,9 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isSyncingGithub, setIsSyncingGithub] = useState(false);
-  const [titleVal, setTitleVal] = useState(data.title || "Project Frame");
+  const [titleVal, setTitleVal] = useState(data.title || "Region");
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [goalVal, setGoalVal] = useState(data.goal || "");
-  const [isRibbonCollapsed, setIsRibbonCollapsed] = useState(false);
-
-  const allNodes = useFlowCanvasStore((s) => s.nodes);
-
-  const stagedRunwayTasks = useMemo(() => {
-    return allNodes
-      .filter((n) => {
-        if (n.type !== "focusTask") return false;
-        const d = n.data as any;
-        return d?.originProjectId === id && n.parentId !== id;
-      })
-      .map((n) => {
-        const parentRunway = allNodes.find((r) => r.id === n.parentId);
-        const runwayTitle = (parentRunway?.data as any)?.title || "Runway";
-        return {
-          task: n,
-          runwayId: n.parentId,
-          runwayTitle,
-        };
-      });
-  }, [allNodes, id]);
-
-  const handleJumpToTask = useCallback((e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation();
-    useFlowCanvasStore.getState().setSelectedNodeId(taskId);
-    window.dispatchEvent(
-      new CustomEvent("foqz:flow-center-on", { detail: { id: taskId, fullSpace: true } })
-    );
-  }, []);
-
-  const handleReturnTask = useCallback((e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation();
-    useFlowCanvasStore.getState().returnTaskToProject(taskId);
-  }, []);
 
   const w = Math.max(360, width);
   const h = Math.max(240, height);
@@ -223,28 +180,12 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
               }}
               className="font-bold text-base tracking-tight truncate text-zinc-900 dark:text-zinc-100 cursor-text"
               style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
-              title="Double-click to edit project title"
+              title="Double-click to rename"
             >
-              {data.title || "Project Frame"}
+              {data.title || "Region"}
             </span>
           )}
         </div>
-
-        {stagedRunwayTasks.length > 0 && isRibbonCollapsed && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsRibbonCollapsed(false);
-            }}
-            className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 font-mono text-[10px] transition-colors cursor-pointer shadow-2xs ml-2 shrink-0"
-            title="Expand runway tasks ribbon"
-          >
-            <PlaneTakeoff className="size-3 text-rose-500" />
-            <span>{stagedRunwayTasks.length} in flight</span>
-            <ChevronRight className="size-2.5" />
-          </button>
-        )}
 
         <button
           type="button"
@@ -265,7 +206,7 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
           title={
             data.connectors?.githubRepo
               ? `Connected repo: ${data.connectors.githubRepo}`
-              : "Configure project connectors & AI context"
+              : "Region settings: GitHub repo and AI context"
           }
         >
           <GitBranch className="size-3 shrink-0" />
@@ -286,7 +227,7 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
               );
             }}
             className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-mono text-[10px] transition-colors cursor-pointer shadow-2xs ml-1.5 shrink-0"
-            title="Browse and import GitHub issues into this project"
+            title="Browse and import GitHub issues into this region"
           >
             <GitPullRequest className="size-3 shrink-0 text-purple-500" />
             <span>Issues</span>
@@ -305,7 +246,7 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
               syncRepoTasks(repo).finally(() => setIsSyncingGithub(false));
             }}
             className="flex items-center justify-center size-6 rounded-full border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors cursor-pointer shadow-2xs ml-1.5 shrink-0 disabled:cursor-default"
-            title="Sync status, priority labels, and assignees of linked tasks with GitHub"
+            title="Sync status and assignees of linked items with GitHub"
           >
             <RefreshCw className={`size-3 shrink-0 ${isSyncingGithub ? "animate-spin" : ""}`} />
           </button>
@@ -322,8 +263,8 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
             );
           }}
           className="size-6 rounded-full border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-800 text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center transition-all cursor-pointer shadow-2xs ml-1.5 shrink-0"
-          title="Chat with this project/group via AI Copilot (Scope: Group)"
-          aria-label="Chat with project or group"
+          title="Ask AI about this region"
+          aria-label="Ask AI about this region"
         >
           <MessageSquare className="size-3 shrink-0" />
         </button>
@@ -362,98 +303,10 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
             style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
             title="Double-click to edit goal"
           >
-            {data.goal || "Double-click to set milestone goal..."}
+            {data.goal || "Double-click to add a goal"}
           </span>
         )}
       </div>
-
-      {/* Mini-Card Flight Ribbon */}
-      {stagedRunwayTasks.length > 0 && !isRibbonCollapsed && (
-        <div className="relative z-10 px-5 pb-2">
-          <div className="flex flex-col gap-1.5 w-full bg-rose-500/5 dark:bg-rose-950/25 border border-rose-500/20 dark:border-rose-900/40 rounded-xl p-2 backdrop-blur-xs transition-all shadow-2xs">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-                <PlaneTakeoff className="size-3 text-rose-500 shrink-0" />
-                <span>In Flight / Runway ({stagedRunwayTasks.length})</span>
-              </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsRibbonCollapsed(true);
-                }}
-                className="p-0.5 rounded hover:bg-rose-200/50 dark:hover:bg-rose-900/50 text-rose-500 transition-colors cursor-pointer"
-                title="Collapse flight ribbon"
-              >
-                <ChevronDown className="size-3" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
-              {stagedRunwayTasks.map(({ task, runwayTitle }) => {
-                const taskData = task.data as any;
-                const status = taskData?.status || "open";
-                const isDone = status === "done";
-                const isDoing = status === "doing";
-
-                return (
-                  <div
-                    key={task.id}
-                    onClick={(e) => handleJumpToTask(e, task.id)}
-                    className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 bg-white/85 dark:bg-zinc-800/85 hover:bg-white dark:hover:bg-zinc-700/85 hover:border-rose-400/60 dark:hover:border-rose-500/60 transition-all shadow-2xs cursor-pointer shrink-0 max-w-[220px]"
-                    title={`Staged in "${runwayTitle}". Click to fly camera to runway.`}
-                  >
-                    {/* Status indicator */}
-                    {isDone ? (
-                      <CheckCircle2 className="size-3 text-emerald-500 shrink-0" />
-                    ) : isDoing ? (
-                      <span className="size-2 rounded-full bg-blue-500 ring-2 ring-blue-400/30 animate-pulse shrink-0" />
-                    ) : (
-                      <span className="size-1.5 rounded-full bg-rose-400 shrink-0" />
-                    )}
-
-                    {/* Title */}
-                    <span
-                      className={`text-[11px] font-medium truncate flex-1 leading-tight ${
-                        isDone
-                          ? "line-through text-zinc-400 dark:text-zinc-500"
-                          : "text-zinc-800 dark:text-zinc-200"
-                      }`}
-                    >
-                      {taskData?.title || "Untitled Task"}
-                    </span>
-
-                    {/* Target Runway pill */}
-                    <span className="text-[9px] font-mono text-zinc-500 dark:text-zinc-400 truncate max-w-[60px] px-1 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700/60 shrink-0">
-                      {runwayTitle}
-                    </span>
-
-                    {/* Quick Actions */}
-                    <div className="flex items-center gap-0.5 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
-                      <button
-                        type="button"
-                        onClick={(e) => handleJumpToTask(e, task.id)}
-                        className="p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/50 text-zinc-400 hover:text-rose-500 transition-colors cursor-pointer"
-                        title="Jump to runway"
-                      >
-                        <ExternalLink className="size-2.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => handleReturnTask(e, task.id)}
-                        className="p-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950/50 text-zinc-400 hover:text-blue-500 transition-colors cursor-pointer"
-                        title="Return task back to project"
-                      >
-                        <Undo2 className="size-2.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Subflow containment drop target zone */}
       <div className="w-full h-[calc(100%-60px)] pointer-events-none" />

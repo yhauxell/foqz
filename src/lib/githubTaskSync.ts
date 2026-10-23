@@ -2,8 +2,8 @@ import { useEffect } from 'react'
 import { create } from 'zustand'
 import type { Node } from '@xyflow/react'
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
-import { normalizeGithubRepoInput } from './githubAgentSync'
-import { mapLabelsToPriority } from './githubLabels'
+import { normalizeGithubRepoInput } from './githubRepo'
+import { isActionable } from './nodePredicates'
 import {
   isLocallyDirty,
   reconcile,
@@ -16,19 +16,17 @@ import {
   type SyncSnapshot,
 } from './githubReconcile'
 import {
-  addIssueLabels,
   changeIssueAssignees,
   getGithubToken,
   getIssue,
   listIssuesUpdatedSince,
-  removeIssueLabel,
   updateGitHubIssue,
   type GitHubIssue,
 } from './githubSync'
 
 /**
- * Two-way sync between canvas Focus Tasks and their linked GitHub issues (status, priority labels,
- * primary assignee).
+ * Two-way sync between actionable canvas items and their linked GitHub issues (open/closed and
+ * primary assignee; labels are pulled for display).
  *
  * Last-synced snapshots (one per card) live in localStorage, outside the undoable canvas store, so
  * undoing a task change makes it differ from the snapshot again and the undo is pushed to GitHub
@@ -110,7 +108,7 @@ interface LinkedTask {
 }
 
 function toLinkedTask(node: Node): LinkedTask | null {
-  if (node.type !== 'focusTask') return null
+  if (!isActionable(node)) return null
   const d = (node.data || {}) as Record<string, any>
   const issueNumber = Number(d.githubIssueNumber)
   const repo = d.githubRepo ? normalizeGithubRepoInput(String(d.githubRepo)) : ''
@@ -125,7 +123,6 @@ function toLinkedTask(node: Node): LinkedTask | null {
     key: `${useFlowCanvasStore.getState().activeBoardId}:${node.id}`,
     local: {
       state: d.status === 'done' ? 'closed' : 'open',
-      priority: ([1, 2, 3, 4].includes(d.priority) ? d.priority : 3) as LocalTaskFields['priority'],
       assignee: d.githubAssignee ? String(d.githubAssignee) : null,
     },
     labels: Array.isArray(d.githubLabels) ? d.githubLabels.map(String) : [],
@@ -158,7 +155,7 @@ function writeTask(nodeId: string, patch: Record<string, any>) {
   const wasTracking = temporal.getState().isTracking
   if (wasTracking) temporal.getState().pause()
   try {
-    useFlowCanvasStore.getState().updateNodeData(nodeId, patch, { skipAutoAdvance: true })
+    useFlowCanvasStore.getState().updateNodeData(nodeId, patch)
   } finally {
     if (wasTracking) temporal.getState().resume()
   }
@@ -181,9 +178,8 @@ function writeTask(nodeId: string, patch: Record<string, any>) {
 function pullPatch(pull: ReconcilePlan['pull'], currentStatus: string): Record<string, any> {
   const patch: Record<string, any> = {}
   if (pull.state === 'closed') patch.status = 'done'
-  // Reopening on GitHub moves a done task back to open; "doing" vs "open" is canvas-only detail.
+  // Reopening on GitHub moves a done item back to open.
   if (pull.state === 'open' && currentStatus === 'done') patch.status = 'open'
-  if (pull.priority !== undefined) patch.priority = pull.priority
   if (pull.assignee !== undefined) patch.githubAssignee = pull.assignee
   if (pull.labels !== undefined) patch.githubLabels = pull.labels
   return patch
@@ -232,13 +228,9 @@ export async function syncTask(nodeId: string, remoteIssue?: GitHubIssue): Promi
     const snapshot = snapshotFor(fresh)
     const remote = remoteFields(issue, snapshot.assignee)
     const plan = reconcile(fresh.local, snapshot, remote, Date.now())
-    const hasPush =
-      plan.push.state !== undefined ||
-      plan.push.addLabels.length > 0 ||
-      plan.push.removeLabels.length > 0 ||
-      plan.push.assignee !== undefined
+    const hasPush = plan.push.state !== undefined || plan.push.assignee !== undefined
     if (hasPush && !getGithubToken(fresh.repo)) {
-      throw new Error('GitHub token missing. Configure it in Project Connectors or Settings to push changes.')
+      throw new Error('GitHub token missing. Add it in Settings → Integrations to push changes.')
     }
 
     const pushError = await executePush(fresh, plan)
@@ -278,18 +270,6 @@ async function executePush(task: LinkedTask, plan: ReconcilePlan): Promise<strin
     }
   }
 
-  let labels: string[] | null = null
-  for (const name of push.removeLabels) {
-    labels = (await removeIssueLabel(repo, issueNumber, name)) ?? labels
-  }
-  if (push.addLabels.length > 0) {
-    labels = await addIssueLabels(repo, issueNumber, push.addLabels)
-  }
-  if (labels) {
-    nextSnapshot.labels = labels
-    pull.labels = labels
-  }
-
   if (push.assignee) {
     const { from, to } = push.assignee
     if (to) {
@@ -325,12 +305,6 @@ export async function resolveSyncConflict(nodeId: string, choice: 'mine' | 'gith
   if (fields.includes('state')) {
     snapshot.state = remote.state
     if (choice === 'github') Object.assign(patch, pullPatch({ state: remote.state }, task.status))
-  }
-  if (fields.includes('priority')) {
-    snapshot.labels = remote.labels
-    snapshot.priority = mapLabelsToPriority(remote.labels)
-    patch.githubLabels = remote.labels
-    if (choice === 'github') patch.priority = snapshot.priority
   }
   if (fields.includes('assignee')) {
     snapshot.assignee = remote.assignee
@@ -415,7 +389,7 @@ export function useGitHubSyncEngine() {
           continue
         }
         // Schedule once per distinct local edit; failed pushes wait for the next edit or poll.
-        const signature = `${task.local.state}|${task.local.priority}|${task.local.assignee}`
+        const signature = `${task.local.state}|${task.local.assignee}`
         if (lastDirtySignature.get(task.nodeId) === signature) continue
         lastDirtySignature.set(task.nodeId, signature)
         if (useGitHubSyncStatus.getState().byNode[task.nodeId]?.status === 'conflict') continue

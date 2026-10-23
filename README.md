@@ -27,109 +27,76 @@ Most productivity tools force your thoughts into rigid linear lists or endless d
 
 ## Key Features
 
-### 🎯 Spatial Focus Canvas
+Content is text, drawing primitives are shapes, and everything else (to-do, focus, GitHub sync, annotations) is a behavior you switch on where you are standing. Nothing moves a node somewhere else to give it meaning.
+
+### ✍️ One kind of text
+- Click anywhere with the **Text** tool (`T`) and write. Markdown, checklists and links render in place.
+- Pick a style from the node toolbar: **Plain**, **Sticky** or **Card**. Switching keeps the content, position, connections and annotations.
+- Make any text a **to-do** with `⌘↵` (or the To-do button): it gets a checkbox, can be focused on, and moves to the Logbook after the workday once done. Cards are always to-dos.
+
+### 🎯 Focus in place
+- Press `F` on any text. The camera zooms to it, the rest of the board dims, and a small timer floats on top: pause, +5 minutes, done, leave.
+- The timer length comes from Settings. When time is up you get a notification (and an optional chime).
+- `Esc` leaves focus.
+
+### 🗺️ Spatial canvas
 - Infinite, zoomable canvas powered by **React Flow** (`@xyflow/react`).
-- Tactile **Paper Sticky Notes** with organic corners, fold styles, paper noise textures, tape/pin details, and multiple pastel color variants.
-- Freehand pencil drawing with pressure simulation via **perfect-freehand**.
-- Sketch-style boxes and circles rendered with **Rough.js** for a hand-drawn aesthetic.
-- Draggable, resizable Project Frames for partitioning work spatially.
-- Smart node re-parenting: drag a task out of a project frame and confirm to move it to the root canvas.
-- **Quick Center** action on the node toolbar to instantly snap the viewport to any selected element.
-- High-performance rendering with viewport culling, scoped timer subscriptions, atomic SVG rendering, and throttled cursor tracking.
+- **Regions** group things by area. Drop something inside to adopt it, drag it out to release it, no confirmation. Deleting a region keeps what was inside it.
+- Connections are **depends on** or **relates to**. "Depends on" drives the waiting/ready badges and the AI context.
+- Sketch-style rectangles, circles and arrows (**Rough.js**), freehand pencil (**perfect-freehand**), pasted images and link cards.
 
-### ⚡ Focus Task Cards
-- Compact cards with editable title, rich markdown notes (rendered via **marked**), and inline checklists.
-- Priority cycling (P1 Urgent → P2 High → P3 Normal → P4 Low) with color-coded indicators.
-- Status tracking (open / doing / done) with one-click toggle.
-- Fully dark-mode aware with distinct paper themes (cream, fog, sage, bloom).
+### 💬 Annotations
+- Pin a **comment**, **question** or **decision** to any element or to empty canvas, with threaded replies.
+- Annotations marked "visible to AI" are included in what the assistant reads about the board.
 
-### 🔒 Mono Focus Mode (Deep Work Lock)
-- Lock the canvas to a single task with a full-screen dimmed overlay.
-- Integrated 25-minute countdown timer with pause, extend, and reset controls.
-- **AI-powered exit friction**: when you try to escape early, you must justify the context switch. Jev (TypeSafe) evaluates whether the reason is legitimate or an impulse and pushes back with feedback when needed.
-- Hold `Esc` for 3 seconds to force-unlock if truly necessary.
+### 🤖 AI assistant & agents
+- **Inline chat** next to any element, a region, or the whole board, with `/` commands (`/todo`, `/expand`, `/criteria`, `/focus`, `/done`, `/rename`).
+- Eight native tools, shared with external agents: `get_canvas_summary`, `spawn_text`, `update_node`, `delete_node`, `expand_task`, `start_focus_session`, `stop_focus_session`, `create_github_issue`.
+- Two providers: **Ollama** (local, private) and any **OpenAI-compatible** endpoint (OpenAI, OpenRouter, Google Gemini, LM Studio) from Settings → Intelligence.
+- **MCP client**: add external tool servers in Settings → Integrations.
 
-### 🤖 Spatial AI Copilot & Agent System
-- **Element Inline Chat**: a floating, draggable chat panel anchored contextually next to any selected node or the whole canvas.
-- **Full Agent Loop & Native Tools**: autonomous multi-step tool calls for spawning tasks, spawning sticky notes, updating nodes, decomposing tasks into subtask trees (`expand_task`), and triaging candidate items.
-- **Stop Execution Controls**: cancel active agent loops and tool execution runs cleanly at any moment via UI controls or `Esc`.
-- **Project AGENT.md Persona Profiles**: load custom instructions, persona profiles, and skills per project frame, with automated discovery and syncing directly from connected GitHub repositories.
-- **AI Copilot Drawer**: full slide-over chat with canvas-spawn capabilities — turn AI responses into task nodes placed directly on the board.
-- **MCP Integration**: connect external tools via the Model Context Protocol. The GitHub MCP server is built-in; additional servers can be configured in Settings.
-- Supports **Ollama** (local, 100% private) and **external AI providers** (OpenAI, Gemini, OpenRouter, and OpenAI-compatible endpoints) configurable via Settings → AI.
-- Space-aware prompts: the AI is given context about the active node type, its text, its containing project, and the full canvas state.
+### 🔍 Command bar (`⌘K`)
+- Find any text, to-do or region and jump to it, or start focusing from the result list.
+- Type anything and press Enter to write it where you were. Start with `[]` (or press `⌘↵`) to write a to-do. `⌘⇧N` opens it ready to capture.
+- Type `?` for the shortcuts list.
 
-### 🔍 Global Spotlight (`Cmd+K`)
-- Search, navigate, and **create** canvas elements from a single keyboard-first command bar.
-- Fuzzy search across all nodes on the canvas.
-- Prefix command actions: `/note` for fast sticky note creation, `/sweep` to collect free items into an inbox frame.
-- Quick-create actions for Task, Sticky Note, Project, Box, Text, and Circle nodes.
-- AI prioritization mode: describe your goal for the day and let TypeSafe Jev rank, score, and surface the most relevant tasks.
+### 🐙 GitHub
+- Link a repository to a region, import issues as to-dos, or file an issue from any to-do.
+- Two-way sync of open/closed state and the primary assignee, with conflict resolution. Labels are shown for reference. One token in Settings → Integrations.
 
-### 🗂️ Project Frames & Connectors
-- Visual boundary frames to group related tasks spatially.
-- Per-project **connectors**: link a GitHub repository, Sentry project, Notion workspace, or custom MCP servers.
-- Context tab for attaching free-form project notes or syncing a GitHub README as project context for the AI.
-- Dedicated **Agent Persona tab** to configure or sync custom `AGENT.md` instructions and behavior per project.
+### 📒 Done lifecycle & Logbook
+- Done items stay visible in place during your workday, then move to the Logbook after it ends (overnight items move the next morning). Never while you are focusing.
+- A one-click Undo pill after each sweep; restore any item from the Logbook back to where it was, in the same style.
+- Downstream to-dos get a small badge naming the finished item they depended on, and only those linked items reach the AI context.
+- Stored as monthly JSON files (`logbook/YYYY-MM.json`) in the app data folder.
 
 ### 🖥️ Window Management & macOS Desktop Spaces
 - Dedicated maximize / restore controls in the header bar and native macOS traffic lights support.
 - Full screen Desktop Space transition support (`Cmd+Ctrl+F` or `F11`).
 - Double-click the topbar to quickly toggle maximized state.
 
-### 🛫 Today's Runway & Flight Strips
-- **Dedicated `runwayFrame` Entity**: separate from generic project containers, purpose-built for daily execution and WIP limiting.
-- **Deep Work Framework Templates**:
-  - **The Rule of 3**: 3 high-impact outcomes for the day (Chris Bailey / J.D. Meier).
-  - **90-Minute Ultradian Sprint**: 2 core deep-work focus blocks based on natural ultradian rhythm cycles.
-  - **Critical Path / Blocker Chain**: 4 sequential prerequisite steps for unblocking mission-critical work.
-  - **15-Minute Rapid Batch**: 5 quick-burst administrative or triage micro-tasks.
-- **Task Provenance & Origin Memory**: dragging a task into a Runway records its `originProjectId`, `originProjectTitle`, `originProjectAccent`, and original board position. Clicking `[● Project Name ↗]` flies camera directly to the project, while project metrics preserve total backlog counts. A 1-click **Return to Project** action snaps completed or deferred tasks right back home.
-- **Compact Flight Strips (~48px)**: tasks staged in a runway transform into low-profile strips with blocker status (`⛔ Blocked` / `🟢 Ready`), quick timer trigger, origin badge, and instant status toggling.
-
-### 🛣️ Waypoint Rail (Left Dock)
-- **Distinct Runway & Project Waypoints**:
-  - **Runways Section**: squircle icons with template flight glyphs, active sprint indicators, and a dedicated `+` popover to spin up new framework-based runways.
-  - **Projects Section**: circle icons with project monograms and accent colors, plus `+` project button.
-  - **Notification-Style Completed Badges**: counter badges showing completed items (`2`, `5`, or `✓` when fully cleared) without cluttering pending tasks.
-  - Click any squircle or circle to fly camera smoothly to that spatial zone (`⌘0` / Space+1 to fit all).
-- **Logbook Quick Access**: Dedicated amber `BookOpen` action at the bottom of the rail to summon the Logbook drawer from anywhere on the canvas.
-
-### 📒 Done Lifecycle & Modular Logbook
-- **Daytime Retention**: Tasks marked `done` remain visible in place on the spatial canvas during your workday (`workingHours.startMin` to `workingHours.endMin`), allowing you to celebrate completed work and preserve spatial context throughout the day.
-- **Workday & Overnight Sweep**: At the end of your workday, completed tasks are automatically swept into the Logbook. Tasks completed after hours or late at night remain visible overnight and sweep the following morning at the start of your next workday.
-- **Deep Work Guardrails**: Sweeping is deferred automatically whenever a focus timer is actively running (`isTimerRunning` / `activeFocusNodeId`), guaranteeing uninterrupted focus sessions.
-- **Non-Intrusive HUD & 1-Click Undo**: A floating HUD pill notifies you of swept tasks and provides a one-click Undo action to restore them immediately back to their exact canvas positions.
-- **Logbook Drawer (`WaypointRail` Book Button)**: Slide-out drawer with month-by-month calendar navigation, full-text task search, completion metrics, and one-click "Restore to Canvas".
-- **Downstream Dependency Stubs**: When a task with live canvas dependents is swept, downstream cards receive an amber `[📖 N]` reference badge displaying the completed predecessor's title and completion timestamp.
-- **Relation-Gated AI Context Expansion**: Completed tasks stored in the logbook don't pollute the LLM token window; only completed predecessors directly linked to active canvas tasks are injected into AI planning prompts.
-- **Modular Crash-Resistant Storage**: Stored as monthly JSON files (`logbook/YYYY-MM.json`) in the user app data directory, utilizing atomic temporary writes and file renames to guarantee integrity against unexpected shutdowns.
-
 ### ⌨️ Keyboard Shortcuts
 | Shortcut | Action |
 | :--- | :--- |
 | `Cmd+Shift+F` / `Ctrl+Shift+F` | Toggle Foqz window (global) |
-| `Cmd+K` / `Ctrl+K` | Open Global Spotlight (`/note`, `/sweep`) |
-| `Cmd+J` / `Ctrl+J` / `C` | Open In-Canvas AI Chat (on node or canvas) |
-| `Cmd+B` / `Ctrl+B` / `0` | Fit view (zoom to all content) |
+| `Cmd+K` | Command bar: find, run, or type to write |
+| `Cmd+Shift+N` | Capture: command bar ready to write |
+| `Cmd+N` | New text at the pointer |
+| `Cmd+Enter` | Make the selected text a to-do (or not) |
+| `F` | Focus here |
+| `Esc` | Leave focus / clear selection / stop the assistant |
+| `Cmd+J` | Ask AI about the selection or the board |
+| `V` `T` `N` `R` `O` `A` `L` `P` `C` | Select, Text, Sticky text, Rectangle, Circle, Arrow, Connect, Pencil, Annotate |
+| `Cmd+Shift+P` | New region |
+| `Cmd+G` / `Cmd+Shift+G` | Group selection into a region / dissolve a region |
+| `Shift+C` | Center on selection |
+| `0` / `Cmd+B` | Fit the board |
+| `Backspace` / `Delete` | Delete (a region keeps its contents) |
+| `Cmd+D` | Duplicate |
+| `Cmd+Z` / `Cmd+Shift+Z` | Undo / redo |
+| `Cmd+,` | Settings |
+| `?` | Shortcuts list |
 | `Cmd+Ctrl+F` / `F11` | Maximize / restore window |
-| `V` / `1` | Select / pointer / pan tool |
-| `N` / `Cmd+N` | New Task card |
-| `S` | New Paper Sticky Note |
-| `B` / `2` | Box tool |
-| `O` | Circle tool |
-| `T` / `3` | Text note tool |
-| `A` / `4` | Arrow / connector tool |
-| `P` / `5` / `D` | Pencil / freehand tool |
-| `Cmd+Shift+P` | New Project Frame |
-| `Shift+C` | Center camera on selected element and bring to front |
-| `F` | Lock into Focus Mode (on selected task) |
-| `Backspace` / `Delete` | Delete selected element |
-| `Cmd+D` / `Ctrl+D` | Duplicate selected |
-| `Cmd+Z` / `Ctrl+Z` | Undo |
-| `Cmd+Shift+Z` / `Ctrl+Y` | Redo |
-| `?` | Toggle keyboard shortcuts cheatsheet |
-| `Esc` | Stop agent execution / clear selection / cancel tool |
 
 ### 🛎️ Native System Tray / Menu Bar
 - 2-tone template icon designed for macOS dark and light menu bars.
@@ -138,7 +105,7 @@ Most productivity tools force your thoughts into rigid linear lists or endless d
 - Native app menus with keyboard shortcuts for Undo, Preferences, and Check for Updates.
 
 ### 🔒 Local-First & Private
-- All boards and settings saved locally as standard JSON in your OS application data folder.
+- Boards are saved locally in the app's storage; settings and the Logbook are JSON files in your OS application data folder.
 - No accounts, no telemetry, no internet required to use core features.
 
 ---
@@ -255,17 +222,17 @@ Foqz connects to a local Ollama instance with zero API keys or external services
    # or: ollama pull qwen2.5-coder
    # or: ollama pull mistral
    ```
-3. In Foqz, open **Settings (⚙️) → AI** and set your Ollama endpoint (default: `http://127.0.0.1:11434`), then select your active model.
+3. In Foqz, open **Settings (⚙️) → Intelligence** and set your Ollama endpoint (default: `http://127.0.0.1:11434`), then select your active model.
 
-You can also configure external AI providers (e.g. OpenAI-compatible APIs) from the same Settings panel.
+You can also point Foqz at any OpenAI-compatible endpoint (OpenAI, OpenRouter, Google Gemini, LM Studio) from the same tab.
 
 ---
 
 ## Connect Claude & Other Agents (MCP Server)
 
-Foqz can run a local [Model Context Protocol](https://modelcontextprotocol.io) server so external agents — Claude Code, Claude Desktop, Cursor, Cline, or your own scripts — can read your board and act on it with the same native tools the built-in copilot uses (`get_canvas_summary`, `spawn_tasks`, `update_node`, `spawn_notes`, `connect_nodes`, `start_focus_session`, …).
+Foqz can run a local [Model Context Protocol](https://modelcontextprotocol.io) server so external agents — Claude Code, Claude Desktop, Cursor, Cline, or your own scripts — can read your board and act on it with the same native tools the built-in assistant uses: `get_canvas_summary`, `spawn_text`, `update_node`, `delete_node`, `expand_task`, `start_focus_session`, `stop_focus_session`, `create_github_issue`.
 
-1. Open **Settings (⚙️) → Agents & MCP → Connect External Agents to Foqz** and tick **Enable**.
+1. Open **Settings (⚙️) → Integrations → Let external agents use Foqz** and tick **Enable**.
 2. Copy the ready-made configuration for your client from the same panel. The server listens on `http://127.0.0.1:7337/mcp` by default (Streamable HTTP) and requires the bearer token shown there.
 
 **Claude Code**
@@ -298,7 +265,7 @@ claude mcp add --transport http foqz http://127.0.0.1:7337/mcp --header "Authori
 }
 ```
 
-Foqz must be running for agents to reach it. The server only binds to `127.0.0.1`, rejects browser-originated requests, and the token can be regenerated at any time from Settings. The aliases `foqz_get_board_summary`, `foqz_create_task`, `foqz_start_timer`, and `foqz_stop_timer` are also accepted.
+Foqz must be running for agents to reach it. The server only binds to `127.0.0.1`, rejects browser-originated requests, and the token can be regenerated at any time from Settings. Older tool names (`spawn_tasks`, `spawn_notes`, `foqz_create_task`, `foqz_get_board_summary`, `foqz_start_timer`, `foqz_stop_timer`) are still accepted. The `jev_*`, `generate_image`, `connect_nodes`, `group_nodes` and `arrange_layout` tools were removed in v0.14.
 
 ---
 
@@ -308,63 +275,52 @@ Foqz must be running for agents to reach it. The server only binds to `127.0.0.1
 foqz/
 ├── electron/                   # Electron main process & preload IPC
 │   ├── main.cjs                # Window management, tray, native menus, global shortcuts, auto-updater
-│   ├── logbook.cjs             # Modular monthly file storage (atomic temp-write + rename)
+│   ├── settingsMigration.cjs   # v0.14 settings migration (Gemini → OpenAI-compatible, removed keys)
+│   ├── logbook.cjs             # Modular monthly logbook files
+│   ├── mcp/                    # MCP client manager and the embedded Foqz MCP server
 │   └── preload.cjs             # ContextBridge API exposing secure disk & app hooks
 ├── electron-assets/            # App icons (.icns, .png, 2-tone macOS tray templates)
 ├── src/
 │   ├── poc/                    # Spatial canvas (React Flow)
-│   │   ├── FlowCanvas.tsx      # Main canvas component — nodes, edges, tools, shortcuts
-│   │   ├── FlowCanvasAppWrapper.tsx  # ReactFlowProvider wrapper
-│   │   ├── nodes/              # Custom node renderers
-│   │   │   ├── FocusTaskNode.tsx     # Task card with timer, priority, notes, resolved dependency badge
-│   │   │   ├── NoteNode.tsx          # Tactile paper sticky note (colors, folds, noise)
-│   │   │   ├── ProjectFrameNode.tsx  # Resizable project boundary frame
-│   │   │   ├── BoxNode.tsx           # Rough.js sketch-style box
-│   │   │   ├── CircleNode.tsx        # Rough.js sketch-style circle
-│   │   │   ├── TextNode.tsx          # Inline editable text node
-│   │   │   └── PencilNode.tsx        # Freehand stroke node (perfect-freehand)
-│   │   ├── edges/              # Custom edge (connector) renderers
-│   │   ├── components/
-│   │   │   ├── FlowShapeMenu.tsx     # Floating node toolbar (color, border, center, delete)
-│   │   │   ├── FlowZoomControls.tsx  # Zoom in/out/fit controls
-│   │   │   ├── ReparentConfirmModal.tsx  # Confirm drag-out-of-project re-parenting
-│   │   │   └── ShortcutsModal.tsx    # Keyboard shortcuts cheatsheet overlay
-│   │   ├── store/
-│   │   │   └── flowCanvasStore.ts    # Zustand + Zundo store (nodes, edges, undo/redo, sweep & restore)
-│   │   ├── hooks/
-│   │   │   └── useFlowCanvasShortcuts.ts  # Hotkey bindings via react-hotkeys-hook
-│   │   └── shortcuts/          # Shortcut definitions & config
-│   ├── components/             # App-level React UI components
-│   │   ├── ElementInlineChat.tsx      # Floating, draggable per-node AI chat panel
-│   │   ├── CopilotDrawer.tsx          # Full slide-over AI copilot with canvas spawner
-│   │   ├── LogbookDrawer.tsx          # Slide-out Logbook with search, history & 1-click restore
-│   │   ├── MonoFocusController.tsx    # Deep work lock-in overlay with timer & AI exit friction
-│   │   ├── GlobalSpotlight.tsx        # Cmd+K command palette for search & creation (/note, /sweep)
-│   │   ├── ProjectConnectorsModal.tsx # Per-project connectors & AGENT.md persona config
-│   │   ├── WaypointRail.tsx           # Spatial bookmark rail with Logbook button
+│   │   ├── FlowCanvas.tsx      # Main canvas component: nodes, edges, tools, shortcuts, region adoption
+│   │   ├── nodes/              # Node renderers
+│   │   │   ├── TextNode.tsx          # Text, plain style (checkbox when it is a to-do)
+│   │   │   ├── NoteNode.tsx          # Text, sticky style
+│   │   │   ├── FocusTaskNode.tsx     # Text, card style (GitHub link, notes checklist)
+│   │   │   ├── ProjectFrameNode.tsx  # Region
+│   │   │   ├── BoxNode.tsx / CircleNode.tsx / ArrowNode.tsx / PencilNode.tsx
+│   │   │   └── ImageNode.tsx / LinkCardNode.tsx
+│   │   ├── edges/              # "depends on" / "relates to" connections
+│   │   ├── components/         # Floating node toolbar, annotations, to-do checkbox, zoom controls
+│   │   ├── store/flowCanvasStore.ts  # Zustand + Zundo store (nodes, edges, annotations, focus, sweep)
+│   │   ├── hooks/useFlowCanvasShortcuts.ts
+│   │   └── shortcuts/shortcutsConfig.ts  # Shortcuts list shown in the command bar
+│   ├── components/
+│   │   ├── FocusInPlace.tsx           # Dims the board and floats the focus timer
+│   │   ├── GlobalSpotlight.tsx        # Command bar: find, run, capture, shortcuts
+│   │   ├── ElementInlineChat.tsx      # Floating AI chat next to a node, a region, or the board
+│   │   ├── LogbookDrawer.tsx          # Logbook with search, history & restore
+│   │   ├── ProjectConnectorsModal.tsx # Region settings: GitHub repo and AI context
 │   │   ├── TopbarBoardMenu.tsx        # Board selector & management
-│   │   ├── FocusSettings.tsx          # App preferences (AI, MCP, theme, working hours)
-│   │   └── WorkspaceSidebar.tsx       # Spatial navigation & task metrics (legacy)
-│   ├── lib/                    # Utilities & AI helpers
-│   │   ├── canvasSpawner.ts    # Programmatic node generation from AI responses
-│   │   ├── canvasTools.ts      # Native Foqz agent tools (spawn, update, expand, triage)
-│   │   ├── logbookTiming.ts    # Workday retention & sweep milestone calculation
-│   │   ├── logbookService.ts   # Universal logbook IPC & web storage adapter
-│   │   ├── useWorkdaySweepTicker.ts   # Periodic 30s background sweep ticker & Undo toast
-│   │   ├── mcpAgentLoop.ts     # Multi-turn tool execution loop with abort/cancellation
-│   │   ├── agentProfiles.ts    # AGENT.md markdown parser & prompt templates
-│   │   ├── githubAgentSync.ts  # GitHub repo AGENT.md discovery & sync
-│   │   ├── canvasContext.ts    # Relation-gated spatial context builder for AI prompts
-│   │   ├── ollama.ts           # Ollama client & streaming parser
-│   │   ├── jev.ts              # TypeSafe/Jev integration for AI evaluations
-│   │   ├── mcp.ts              # MCP client management & tool dispatch
-│   │   └── appSettings.ts      # Settings schema, defaults & persistence
-│   ├── context/                # React contexts (settings, focus app state)
-│   ├── types/                  # Shared TypeScript type definitions (logbook, canvas, storage)
-│   ├── FocusCanvasApp.tsx      # Root app component, ticker & event bus orchestration
-│   └── styles.css              # Tailwind CSS v4 global styles & theme tokens
-├── landing/                    # Web landing page source
-└── scripts/                    # Helper scripts (icon generation, landing sync)
+│   │   └── FocusSettings.tsx          # Settings: App, Intelligence, Integrations
+│   ├── lib/
+│   │   ├── nodePredicates.ts   # isActionable, text styles, style conversion (pure)
+│   │   ├── nodeBehaviors.ts    # To-do and focus actions on the store
+│   │   ├── storage/            # Board persistence and the v1 → v2 board migration
+│   │   ├── canvasTools.ts      # Native agent tools
+│   │   ├── canvasContext.ts    # What the AI reads about the board
+│   │   ├── mcpAgentLoop.ts     # Multi-turn tool loop with abort
+│   │   ├── githubTaskSync.ts / githubReconcile.ts  # Two-way GitHub sync
+│   │   ├── logbookService.ts / logbookTiming.ts / useWorkdaySweepTicker.ts
+│   │   ├── aiProvider.ts / ollama.ts  # Ollama and OpenAI-compatible streaming
+│   │   └── appSettings.ts      # Settings schema, defaults & migration
+│   ├── context/                # React contexts (settings)
+│   ├── types/                  # Shared types (canvas, annotations, logbook, storage)
+│   ├── FocusCanvasApp.tsx      # Root app component, focus timer & event bus
+│   └── styles.css
+├── docs/specs/                 # Feature specs (canvas pruning, done lifecycle)
+├── tests/                      # Playwright suites (renderer + Electron smoke)
+└── scripts/                    # Helper scripts (icon generation, landing sync, live-interact)
 ```
 
 ---
@@ -380,8 +336,7 @@ foqz/
 | **Styling** | Tailwind CSS v4 + shadcn/ui components |
 | **Freehand Drawing** | perfect-freehand |
 | **Sketch Graphics** | Rough.js |
-| **AI Runtime** | Ollama (local) + configurable external providers |
-| **AI Evaluations** | TypeSafe / Jev |
+| **AI Runtime** | Ollama (local) + any OpenAI-compatible endpoint |
 | **MCP** | `@modelcontextprotocol/sdk` |
 | **Hotkeys** | react-hotkeys-hook |
 | **Icons** | Lucide React |
@@ -400,8 +355,9 @@ Foqz stores board snapshots, logs, and settings as local JSON via Electron's sto
 - **Linux**: `~/.config/foqz/`
 
 ### File Layout
-- `boards.json`: Board definitions and spatial canvas node/edge snapshots.
-- `settings.json`: User preferences, working hours, AI keys, and MCP configurations.
+- Boards: kept in the app's local storage (one snapshot per board). Opening a board saved by v0.13 upgrades it once and keeps the original under `foqz_board_backup_v1:<board id>`.
+- `app-settings.json`: User preferences, working hours, AI keys.
+- `foqz-mcp.json`: MCP tool servers. `foqz-mcp-host.json`: the embedded MCP server port and token.
 - `logbook/YYYY-MM.json`: Modular monthly partitions containing completed tasks, time tracked, completion timestamps, and provenance telemetry.
 
 Snapshots and logbook partitions are clean JSON — back them up, sync with Syncthing, Dropbox, or version-control your workspaces however you like.
@@ -413,9 +369,9 @@ Snapshots and logbook partitions are clean JSON — back them up, sync with Sync
 Active milestones are tracked in [GitHub Issues](https://github.com/yhauxell/foqz/issues?q=is%3Aissue+label%3Aroadmap):
 
 - [x] Done Lifecycle: workday retention, sweep ticker, and modular monthly Logbook
-- [ ] Auto-detect running local LLM servers (Ollama, LM Studio, llama.cpp, LocalAI)
+- [x] Auto-detect running local LLM servers (Ollama, LM Studio, llama.cpp)
+- [x] Canvas pruning: one text concept, focus in place, regions (v0.14, see `docs/specs/canvas-pruning.md`)
 - [ ] Improved spatial layout algorithms for AI-generated canvas elements
-- [x] Custom SKILL and AGENT.md configuration profiles for the AI copilot
 - [x] Native window maximization and macOS Desktop Spaces support
 - [x] Autonomous agent loop with native canvas tools and cancel/abort execution controls
 - [x] Deeper project-scoped AI context and cross-node awareness
