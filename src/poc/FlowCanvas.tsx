@@ -1468,6 +1468,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     >
       {/* Vertical Icon-Only Toolbar on the Right (capsule pill, moves with Copilot drawer) */}
       <div
+        data-tool-rail
         className="absolute top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-1.5 p-1.5 rounded-full glass-panel shadow-2xl backdrop-blur-2xl backdrop-saturate-150 transition-all duration-200 select-none border border-white/60 dark:border-white/10"
         style={{
           right: "var(--tools-bar-right, 18px)",

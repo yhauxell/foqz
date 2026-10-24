@@ -152,17 +152,30 @@ test.describe('Canvas pruning', () => {
     await pane(page).click({ position: { x: 980, y: 480 } });
     const textarea = page.getByPlaceholder('Type something in markdown...');
     await textarea.fill('Draft the pricing page');
+    // While typing, the toolbar shows only formatting
+    await expect(page.getByRole('toolbar', { name: 'Text formatting' })).toBeVisible();
+    await page.waitForTimeout(200);
+    await shot(page, '02-toolbar-while-typing');
     await pane(page).click({ position: { x: 700, y: 40 } });
 
     const text = page.locator('.react-flow__node-text').filter({ hasText: 'Draft the pricing page' });
     await text.click();
-    await expect(page.getByRole('radiogroup', { name: 'Text style' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Style:/ })).toBeVisible();
+    await page.waitForTimeout(200);
     await shot(page, '02a-plain-text-selected');
+
+    await expect(page.getByRole('toolbar', { name: 'Element actions' })).toBeVisible();
+    await page.getByRole('button', { name: 'More actions' }).click();
+    await expect(page.getByRole('menuitem', { name: /Duplicate/ })).toBeVisible();
+    await page.waitForTimeout(200);
+    await shot(page, '02-toolbar-more-menu');
+    await page.keyboard.press('Escape');
+    await text.click();
 
     await page.keyboard.press('ControlOrMeta+Enter');
     const checkbox = text.getByRole('checkbox');
     await expect(checkbox).toHaveAttribute('aria-checked', 'false');
-    await expect(page.getByRole('button', { name: 'To-do', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: /^To-do/ })).toHaveAttribute('aria-pressed', 'true');
     await shot(page, '02b-plain-text-is-a-todo');
 
     await checkbox.click();
@@ -184,19 +197,27 @@ test.describe('Canvas pruning', () => {
       s.updateNodeData('text-demo', { text: 'Pricing tiers\n- [ ] Free\n- [ ] Pro' });
     });
 
+    const styleButton = page.getByRole('button', { name: /^Style:/ });
     const styles = page.getByRole('radiogroup', { name: 'Text style' });
     // The demo pencil stroke sits under the text; click its top-left corner.
     await node(page, 'text-demo').click({ position: { x: 16, y: 10 } });
-    await expect(styles).toBeVisible();
+    await expect(styleButton).toHaveAccessibleName('Style: Plain');
     await shot(page, '03a-style-plain');
 
-    await styles.getByRole('radio', { name: 'Sticky' }).click();
+    // Style is a small dropdown in the toolbar
+    await styleButton.click();
+    await expect(styles).toBeVisible();
+    await page.waitForTimeout(200);
+    await shot(page, '03a2-style-menu-open');
+    await styles.getByRole('radio', { name: /Sticky/ }).click();
     await expect(node(page, 'text-demo')).toHaveClass(/react-flow__node-note/);
     await expect(node(page, 'text-demo')).toContainText('Pricing tiers');
-    await page.waitForTimeout(300); // let the toolbar's color transition finish
+    await expect(styleButton).toHaveAccessibleName('Style: Sticky');
+    await page.waitForTimeout(300);
     await shot(page, '03b-style-sticky');
 
-    await styles.getByRole('radio', { name: 'Card' }).click();
+    await styleButton.click();
+    await styles.getByRole('radio', { name: /Card/ }).click();
     await expect(node(page, 'text-demo')).toHaveClass(/react-flow__node-focusTask/);
     await expect(node(page, 'text-demo')).toContainText('Pricing tiers');
     await page.waitForTimeout(300);
