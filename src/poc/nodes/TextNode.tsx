@@ -66,6 +66,18 @@ export const TextNode = memo(function TextNode({
     }
   }, [isEditing, resizeTextarea]);
 
+  // Tell the floating toolbar to show formatting controls while typing.
+  useEffect(() => {
+    const store = useFlowCanvasStore.getState();
+    if (isEditing) store.setEditingNodeId(id);
+    else if (store.editingNodeId === id) store.setEditingNodeId(null);
+    return () => {
+      if (useFlowCanvasStore.getState().editingNodeId === id) {
+        useFlowCanvasStore.getState().setEditingNodeId(null);
+      }
+    };
+  }, [isEditing, id]);
+
   // When selected but not editing, pressing Enter begins editing
   useEffect(() => {
     if (!selected || isEditing) return;

@@ -199,7 +199,7 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await expect(arrowNode).toBeVisible();
 
     // 5. Verify arrow toolbar appears with spear controls
-    const spearEndBtn = page.locator("button[title*='Arrowhead pointing right (end)']");
+    const spearEndBtn = page.locator("button[title='Arrowheads']");
     await expect(spearEndBtn).toBeVisible();
 
     // 6. Capture visual screenshot of curved arrow with controls
@@ -214,7 +214,9 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await expect(spearEndBtn).toBeVisible();
 
     // 9. Verify arrow component can be deleted via trash button in floating menu
-    const deleteBtn = page.locator("button[title='Delete (Del/Backspace)']");
+    // Delete lives in the toolbar's "More actions" menu
+    await page.getByRole('button', { name: 'More actions' }).click();
+    const deleteBtn = page.getByRole('menuitem', { name: /Delete/ });
     await expect(deleteBtn).toBeVisible();
     await deleteBtn.click();
     await expect(arrowNode).not.toBeVisible();
@@ -271,7 +273,7 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await canvas.click({ position: { x: 700, y: 40 } });
     const text = page.locator('.react-flow__node[data-id="text-demo"]');
     await text.click();
-    await expect(page.getByRole('radiogroup', { name: 'Text style' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Style:/ })).toBeVisible();
     await page.keyboard.press('ControlOrMeta+Enter');
     await expect(text.locator('[role="checkbox"]')).toBeVisible();
     await page.keyboard.press('ControlOrMeta+Enter');

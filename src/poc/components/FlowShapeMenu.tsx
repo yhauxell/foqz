@@ -1,26 +1,35 @@
-import React, { memo, useState, useRef, useEffect, useCallback } from "react";
+import React, { memo, useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import {
   useReactFlow,
+  useStore,
   NodeToolbar,
   Position,
   type Node,
 } from "@xyflow/react";
 import {
+  ALargeSmall,
+  Bold,
+  Check,
+  CheckSquare,
+  ChevronDown,
   Copy,
   Crosshair,
+  Ellipsis,
   GitPullRequest,
-  MessageSquare,
-  Trash2,
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  Link2,
   Highlighter,
-  RemoveFormatting,
+  Italic,
+  LayoutList,
+  Link2,
+  MessageSquarePlus,
   Minus,
   Plus,
-  CheckSquare,
+  RemoveFormatting,
+  Sparkles,
+  StickyNote,
+  Strikethrough,
+  Trash2,
+  Type as TypeIcon,
+  Underline,
 } from "lucide-react";
 import { type ProjectAccent, type TaskPaperTheme } from "@/types/canvas";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
@@ -33,11 +42,6 @@ import {
   type TextStyle,
 } from "@/lib/nodeBehaviors";
 
-const TEXT_STYLES: Array<{ id: TextStyle; label: string; hint: string }> = [
-  { id: "plain", label: "Plain", hint: "Text on the canvas" },
-  { id: "sticky", label: "Sticky", hint: "Text on a sticky note" },
-  { id: "card", label: "Card", hint: "Text on a card (always a to-do)" },
-];
 import {
   HIGHLIGHT_COLORS,
   type HighlightColor,
@@ -90,6 +94,22 @@ const BORDER_STYLES = [
   },
 ];
 
+const TEXT_STYLES: Array<{ id: TextStyle; label: string; hint: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { id: "plain", label: "Plain", hint: "Text on the canvas", icon: TypeIcon },
+  { id: "sticky", label: "Sticky", hint: "On a sticky note", icon: StickyNote },
+  { id: "card", label: "Card", hint: "On a card, always a to-do", icon: LayoutList },
+];
+
+/** Text size presets (FigJam / Miro style) instead of a pixel stepper. */
+const TEXT_SIZES = [
+  { label: "S", px: 13 },
+  { label: "M", px: 16 },
+  { label: "L", px: 22 },
+  { label: "XL", px: 32 },
+];
+
+type MenuId = "style" | "size" | "color" | "border" | "spear" | "more" | "highlight" | "link";
+
 function useOutsideClick(ref: React.RefObject<HTMLDivElement | null>, onClose: () => void) {
   useEffect(() => {
     const handler = (e: PointerEvent) => {
@@ -100,28 +120,173 @@ function useOutsideClick(ref: React.RefObject<HTMLDivElement | null>, onClose: (
   }, [ref, onClose]);
 }
 
+/** Icon button for the context toolbar. Keeps focus in the text while typing. */
+function ToolButton({
+  label,
+  onClick,
+  active,
+  danger,
+  pressed,
+  children,
+  className = "",
+  ...rest
+}: {
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  danger?: boolean;
+  pressed?: boolean;
+  children: React.ReactNode;
+  className?: string;
+} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "children">) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={pressed}
+      onPointerDown={(e) => e.preventDefault()}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+      className={`h-7 min-w-7 px-1.5 rounded-lg flex items-center justify-center gap-1 text-[11px] font-medium transition-colors cursor-pointer ${
+        active
+          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+          : danger
+          ? "text-zinc-600 dark:text-zinc-300 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/60"
+          : "text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white"
+      } ${className}`}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Divider() {
+  return <div className="w-px h-4 mx-0.5 bg-zinc-200 dark:bg-zinc-700/80" />;
+}
+
+/** Canvas area a floating element must stay inside: under the top bar, left of the tool rail. */
+function canvasBounds() {
+  const rail = document.querySelector("[data-tool-rail]")?.getBoundingClientRect();
+  return { top: 56, left: 8, right: (rail && rail.width > 0 ? rail.left : window.innerWidth) - 8 };
+}
+
+/** Horizontal shift that keeps an element whose unshifted box is `r` inside the canvas. */
+function horizontalFit(r: DOMRect) {
+  const b = canvasBounds();
+  let dx = 0;
+  if (r.right > b.right) dx = b.right - r.right;
+  if (r.left + dx < b.left) dx = b.left - r.left;
+  return Math.round(dx);
+}
+
+/** Popover panel anchored above (or below) the toolbar; flips and slides to stay on the canvas. */
+function Panel({ children, className = "", below }: { children: React.ReactNode; className?: string; below?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<{ dx: number; below: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // Measured before any shift is applied; offsetWidth because the enter animation starts scaled down.
+    const r = el.getBoundingClientRect();
+    const center = (r.left + r.right) / 2;
+    const half = el.offsetWidth / 2;
+    setFit({
+      dx: horizontalFit(new DOMRect(center - half, r.top, half * 2, r.height)),
+      below: !!below || r.top < canvasBounds().top,
+    });
+  }, [below]);
+  const openBelow = fit ? fit.below : below;
+  return (
+    <div
+      ref={ref}
+      className={`absolute left-1/2 -translate-x-1/2 ${openBelow ? "top-full mt-2" : "bottom-full mb-2"} z-50 p-1 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl animate-in fade-in zoom-in-95 duration-100 ${className}`}
+      style={{ marginLeft: fit?.dx ?? 0, visibility: fit ? undefined : "hidden" }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** A row inside a dropdown panel. */
+function MenuItem({
+  label,
+  hint,
+  icon,
+  shortcut,
+  selected,
+  danger,
+  onClick,
+  role = "menuitem",
+}: {
+  label: string;
+  hint?: string;
+  icon?: React.ReactNode;
+  shortcut?: string;
+  selected?: boolean;
+  danger?: boolean;
+  onClick: () => void;
+  role?: "menuitem" | "radio";
+}) {
+  return (
+    <button
+      type="button"
+      role={role}
+      aria-checked={role === "radio" ? selected : undefined}
+      onPointerDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+        danger
+          ? "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+          : "text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      }`}
+    >
+      {icon && <span className="size-4 flex items-center justify-center text-zinc-500 shrink-0">{icon}</span>}
+      <span className="flex-1 min-w-0">
+        <span className="block font-medium">{label}</span>
+        {hint && <span className="block text-[10px] text-zinc-500 dark:text-zinc-400">{hint}</span>}
+      </span>
+      {shortcut && <kbd className="text-[10px] font-mono text-zinc-400">{shortcut}</kbd>}
+      {selected && <Check className="size-3.5 text-zinc-900 dark:text-zinc-100 shrink-0" />}
+    </button>
+  );
+}
+
 export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowShapeMenuProps) {
   const { setNodes, getInternalNode, fitView } = useReactFlow();
-  const [colorOpen, setColorOpen] = useState(false);
-  const [borderOpen, setBorderOpen] = useState(false);
-  const [highlightOpen, setHighlightOpen] = useState(false);
-  const [linkOpen, setLinkOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const [linkInput, setLinkInput] = useState("https://");
+  const editingNodeId = useFlowCanvasStore((s) => s.editingNodeId);
 
-  const colorRef = useRef<HTMLDivElement>(null);
-  const borderRef = useRef<HTMLDivElement>(null);
-  const highlightRef = useRef<HTMLDivElement>(null);
-  const linkRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarDx, setToolbarDx] = useState(0);
+  // Re-render on pan and zoom so the toolbar can slide back inside the canvas.
+  useStore((s) => s.transform);
+  const closeMenus = useCallback(() => setOpenMenu(null), []);
+  useOutsideClick(toolbarRef, closeMenus);
 
-  const closeColor = useCallback(() => setColorOpen(false), []);
-  const closeBorder = useCallback(() => setBorderOpen(false), []);
-  const closeHighlight = useCallback(() => setHighlightOpen(false), []);
-  const closeLink = useCallback(() => setLinkOpen(false), []);
+  // A different selection starts with every dropdown closed.
+  useEffect(() => setOpenMenu(null), [selectedNode?.id]);
 
-  useOutsideClick(colorRef, closeColor);
-  useOutsideClick(borderRef, closeBorder);
-  useOutsideClick(highlightRef, closeHighlight);
-  useOutsideClick(linkRef, closeLink);
+  // Near the canvas edge, slide the toolbar sideways instead of letting the tool rail cover it.
+  useLayoutEffect(() => {
+    // NodeToolbar's wrapper is the unshifted box, so this never feeds back on itself.
+    const wrapper = toolbarRef.current?.parentElement;
+    if (!wrapper) return;
+    const dx = horizontalFit(wrapper.getBoundingClientRect());
+    if (dx !== toolbarDx) setToolbarDx(dx);
+  });
+
+  const toggleMenu = (id: MenuId) => setOpenMenu((cur) => (cur === id ? null : id));
 
   const handleCenter = useCallback(
     (e?: React.MouseEvent) => {
@@ -182,17 +347,13 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     [selectedNode, setNodes]
   );
 
-  const handleFontSizeDelta = useCallback(
-    (delta: number) => {
+  const handleFontSize = useCallback(
+    (size: number) => {
       if (!selectedNode) return;
-      const currentSize = (selectedNode.data?.fontSize as number) || 16;
-      const newSize = Math.min(72, Math.max(10, currentSize + delta));
+      const newSize = Math.min(72, Math.max(10, size));
       useFlowCanvasStore.getState().updateNodeData(selectedNode.id, { fontSize: newSize });
-      setNodes((nodes) =>
-        nodes.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, fontSize: newSize } } : n))
-      );
     },
-    [selectedNode, setNodes]
+    [selectedNode]
   );
 
   if (!selectedNode) return null;
@@ -233,7 +394,7 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
   const currentFontSize = (selectedNode.data?.fontSize as number) || 16;
 
   const handleColorChange = (color: typeof COLOR_PRESETS[0]) => {
-    setColorOpen(false);
+    setOpenMenu(null);
     setNodes((nodes) =>
       nodes.map((node) => {
         if (node.id !== selectedNode.id) return node;
@@ -348,7 +509,7 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
   const currentBorderIcon = BORDER_STYLES.find((s) => s.id === currentBorderStyle)?.icon ?? BORDER_STYLES[0].icon;
 
   const handleBorderStyleChange = (borderStyle: "solid" | "dashed" | "dotted") => {
-    setBorderOpen(false);
+    setOpenMenu(null);
     setNodes((nodes) =>
       nodes.map((node) => {
         if (node.id !== selectedNode.id) return node;
@@ -360,203 +521,117 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
   const nodeInternal = getInternalNode(selectedNode.id);
   const nodeAbsY = nodeInternal?.internals?.positionAbsolute?.y ?? selectedNode.position.y;
   const toolbarPosition = nodeAbsY < 70 ? Position.Bottom : Position.Top;
+  const below = toolbarPosition === Position.Bottom;
+
+  const isTextLike = isTextNode(selectedNode);
+  const isEditingText = isText && editingNodeId === selectedNode.id;
+  const style = textStyleOf(selectedNode);
+  const styleMeta = TEXT_STYLES.find((t) => t.id === style) ?? TEXT_STYLES[0];
+  const StyleIcon = styleMeta.icon;
+  const sizePreset = TEXT_SIZES.find((t) => t.px === currentFontSize);
+  const actionable = isActionable(selectedNode);
+  const githubUrl = (selectedNode.data as any)?.githubIssueUrl as string | undefined;
+
+  const colorControl = (
+    <div className="relative">
+      <ToolButton label="Change color" onClick={() => toggleMenu("color")}>
+        <span
+          className="size-4 rounded-full ring-1 ring-black/15 dark:ring-white/20"
+          style={{ backgroundColor: currentHex }}
+        />
+      </ToolButton>
+      {openMenu === "color" && (
+        <Panel below={below} className="flex flex-col gap-1.5 p-1.5">
+          <div className="flex items-center gap-1">
+            {COLOR_PRESETS.map((color) => (
+              <button
+                key={color.name}
+                type="button"
+                title={color.name}
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => handleColorChange(color)}
+                className={`size-6 rounded-full border border-black/10 dark:border-white/20 transition-transform hover:scale-110 cursor-pointer ${
+                  currentHex === color.hex ? "ring-2 ring-offset-1 ring-zinc-900 dark:ring-zinc-100 dark:ring-offset-zinc-900" : ""
+                }`}
+                style={{ backgroundColor: color.hex }}
+              />
+            ))}
+          </div>
+          {isFillEligible && (
+            <div className="flex items-center gap-0.5 pt-1 border-t border-zinc-200/70 dark:border-zinc-800">
+              {(
+                [
+                  ["solid", "Solid", "Solid opaque background (no transparent)"],
+                  ["tint", "Tint", "Soft translucent tint fill"],
+                  ["hachure", "Sketch", "Sketchy cross-hatch fill"],
+                  ["none", "Outline", "Transparent border outline only"],
+                ] as const
+              ).map(([id, label, title]) => (
+                <button
+                  key={id}
+                  type="button"
+                  title={title}
+                  onClick={() => handleFillStyleChange(id)}
+                  className={`flex-1 px-1.5 py-1 rounded-md text-[10px] font-medium transition-colors cursor-pointer ${
+                    currentFillStyle === id
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
+    </div>
+  );
 
   return (
     <NodeToolbar nodeId={selectedNode.id} isVisible={true} position={toolbarPosition} offset={10} align="center">
       <div
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full glass-panel shadow-2xl select-none pointer-events-auto border border-white/60 dark:border-zinc-800/80 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-150 whitespace-nowrap"
+        ref={toolbarRef}
+        role="toolbar"
+        aria-label={isEditingText ? "Text formatting" : "Element actions"}
+        style={{ translate: `${toolbarDx}px 0` }}
+        className="flex items-center gap-0.5 p-1 rounded-xl bg-white/95 dark:bg-zinc-900/95 border border-zinc-200/90 dark:border-zinc-800 shadow-lg backdrop-blur-xl select-none pointer-events-auto whitespace-nowrap animate-in fade-in zoom-in-95 duration-100"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* One text concept: pick a style, switch the to-do behavior on or off */}
-        {isTextNode(selectedNode) && (
+        {isEditingText ? (
+          /* While typing: only formatting, like the inline text bar in Canva or Miro. */
           <>
-            <div
-              className="flex items-center gap-0.5 bg-black/5 dark:bg-white/5 rounded-full p-0.5"
-              role="radiogroup"
-              aria-label="Text style"
-            >
-              {TEXT_STYLES.map((style) => {
-                const active = textStyleOf(selectedNode) === style.id;
-                return (
-                  <button
-                    key={style.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    title={style.hint}
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!active) setTextStyle(selectedNode.id, style.id);
-                    }}
-                    className={`px-2 h-5 rounded-full text-[10px] font-medium transition-colors cursor-pointer ${
-                      active
-                        ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
-                        : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                    }`}
-                  >
-                    {style.label}
-                  </button>
-                );
-              })}
-            </div>
-            {selectedNode.type !== "focusTask" && (
-              <button
-                type="button"
-                aria-pressed={isActionable(selectedNode)}
-                title="To-do: adds a checkbox, focus and the Logbook (⌘↵)"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleActionable(selectedNode.id);
-                }}
-                className={`px-1.5 h-5 rounded-full flex items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${
-                  isActionable(selectedNode)
-                    ? "bg-emerald-600 text-white"
-                    : "text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                }`}
-              >
-                <CheckSquare className="size-3" />
-                <span>To-do</span>
-              </button>
-            )}
-            <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
-          </>
-        )}
-
-        {/* TEXT SPECIFIC CONTROLS */}
-        {isText && (
-          <>
-            {/* Font Size (+-) controls */}
-            <div className="flex items-center gap-1 bg-black/5 dark:bg-white/5 rounded-full px-1.5 py-0.5">
-              <button
-                type="button"
-                title="Decrease font size"
-                onPointerDown={(e) => e.preventDefault()}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleFontSizeDelta(-2);
-                }}
-                className="size-5 rounded-full flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
-              >
-                <Minus className="size-3" />
-              </button>
-
-              <span className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 min-w-[28px] text-center font-mono">
+            <div className="flex items-center">
+              <ToolButton label="Decrease font size" onClick={() => handleFontSize(currentFontSize - 2)}>
+                <Minus className="size-3.5" />
+              </ToolButton>
+              <span className="text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-300 w-9 text-center tabular-nums">
                 {currentFontSize}px
               </span>
-
-              <button
-                type="button"
-                title="Increase font size"
-                onPointerDown={(e) => e.preventDefault()}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleFontSizeDelta(2);
-                }}
-                className="size-5 rounded-full flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
-              >
-                <Plus className="size-3" />
-              </button>
+              <ToolButton label="Increase font size" onClick={() => handleFontSize(currentFontSize + 2)}>
+                <Plus className="size-3.5" />
+              </ToolButton>
             </div>
-
-            <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
-
-            {/* Bold */}
-            <button
-              type="button"
-              title="Bold (**text**)"
-              onPointerDown={(e) => e.preventDefault()}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleFormatAction("bold");
-              }}
-              className="size-6 rounded flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
-            >
+            <Divider />
+            <ToolButton label="Bold (**text**)" onClick={() => handleFormatAction("bold")}>
               <Bold className="size-3.5" />
-            </button>
-
-            {/* Italic */}
-            <button
-              type="button"
-              title="Italic (*text*)"
-              onPointerDown={(e) => e.preventDefault()}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleFormatAction("italic");
-              }}
-              className="size-6 rounded flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
-            >
+            </ToolButton>
+            <ToolButton label="Italic (*text*)" onClick={() => handleFormatAction("italic")}>
               <Italic className="size-3.5" />
-            </button>
-
-            {/* Underline */}
-            <button
-              type="button"
-              title="Underline (<u>text</u>)"
-              onPointerDown={(e) => e.preventDefault()}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleFormatAction("underline");
-              }}
-              className="size-6 rounded flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
-            >
+            </ToolButton>
+            <ToolButton label="Underline (<u>text</u>)" onClick={() => handleFormatAction("underline")}>
               <Underline className="size-3.5" />
-            </button>
-
-            {/* Strikethrough */}
-            <button
-              type="button"
-              title="Strikethrough (~~text~~)"
-              onPointerDown={(e) => e.preventDefault()}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleFormatAction("strike");
-              }}
-              className="size-6 rounded flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
-            >
+            </ToolButton>
+            <ToolButton label="Strikethrough (~~text~~)" onClick={() => handleFormatAction("strike")}>
               <Strikethrough className="size-3.5" />
-            </button>
-
-            {/* Add Link */}
-            <div className="relative" ref={linkRef}>
-              <button
-                type="button"
-                title="Add Link ([text](url))"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setLinkOpen((v) => !v);
-                  setHighlightOpen(false);
-                  setColorOpen(false);
-                }}
-                className={`size-6 rounded flex items-center justify-center transition-colors cursor-pointer ${
-                  linkOpen
-                    ? "bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400"
-                    : "text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white"
-                }`}
-              >
+            </ToolButton>
+            <div className="relative">
+              <ToolButton label="Add Link ([text](url))" active={openMenu === "link"} onClick={() => toggleMenu("link")}>
                 <Link2 className="size-3.5" />
-              </button>
-
-              {linkOpen && (
-                <div
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 p-2 rounded-2xl glass-panel shadow-2xl border border-white/60 dark:border-zinc-800 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-100 z-50 bg-white/95 dark:bg-zinc-900/95 flex items-center gap-1.5"
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
+              </ToolButton>
+              {openMenu === "link" && (
+                <Panel below={below} className="flex items-center gap-1.5 p-1.5">
                   <input
                     type="url"
                     value={linkInput}
@@ -567,9 +642,9 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
                       if (e.key === "Enter") {
                         e.preventDefault();
                         handleFormatAction("link", { url: linkInput });
-                        setLinkOpen(false);
+                        setOpenMenu(null);
                       } else if (e.key === "Escape") {
-                        setLinkOpen(false);
+                        setOpenMenu(null);
                       }
                     }}
                     className="w-48 px-2.5 py-1 text-xs rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 outline-none focus:ring-1 focus:ring-blue-500"
@@ -578,43 +653,22 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
                     type="button"
                     onClick={() => {
                       handleFormatAction("link", { url: linkInput });
-                      setLinkOpen(false);
+                      setOpenMenu(null);
                     }}
-                    className="px-2 py-1 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors cursor-pointer"
+                    className="px-2 py-1 text-xs font-medium rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 cursor-pointer"
                   >
                     Apply
                   </button>
-                </div>
+                </Panel>
               )}
             </div>
-
-            {/* Highlight with Color Popover */}
-            <div className="relative" ref={highlightRef}>
-              <button
-                type="button"
-                title="Highlight text"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setHighlightOpen((v) => !v);
-                  setLinkOpen(false);
-                  setColorOpen(false);
-                }}
-                className={`size-6 rounded flex items-center justify-center transition-colors cursor-pointer ${
-                  highlightOpen
-                    ? "bg-amber-100 dark:bg-amber-900/60 text-amber-600 dark:text-amber-400"
-                    : "text-zinc-600 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-white"
-                }`}
-              >
+            <div className="relative">
+              <ToolButton label="Highlight text" active={openMenu === "highlight"} onClick={() => toggleMenu("highlight")}>
                 <Highlighter className="size-3.5" />
-              </button>
-
-              {highlightOpen && (
-                <div
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 p-1.5 rounded-2xl glass-panel shadow-2xl border border-white/60 dark:border-zinc-800 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-100 z-50 bg-white/95 dark:bg-zinc-900/95 flex flex-col gap-1.5"
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
-                  <div className="flex items-center gap-1.5 px-1 pt-0.5">
+              </ToolButton>
+              {openMenu === "highlight" && (
+                <Panel below={below} className="flex flex-col gap-1 p-1.5">
+                  <div className="flex items-center gap-1.5 px-0.5">
                     {HIGHLIGHT_COLORS.map((c) => (
                       <button
                         key={c.name}
@@ -626,346 +680,241 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
                           e.preventDefault();
                           e.stopPropagation();
                           handleFormatAction("highlight", { color: c });
-                          setHighlightOpen(false);
+                          setOpenMenu(null);
                         }}
-                        className="size-5 rounded-full border border-black/10 dark:border-white/20 transition-transform hover:scale-125 cursor-pointer shadow-2xs"
+                        className="size-5 rounded-full border border-black/10 dark:border-white/20 transition-transform hover:scale-110 cursor-pointer"
                         style={{ backgroundColor: c.bg }}
                       />
                     ))}
                   </div>
-                  <button
-                    type="button"
-                    onPointerDown={(e) => e.preventDefault()}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleFormatAction("clear");
-                      setHighlightOpen(false);
-                    }}
-                    className="w-full text-center text-[10px] text-zinc-500 hover:text-rose-600 dark:hover:text-rose-400 py-0.5 hover:bg-black/5 dark:hover:bg-white/5 rounded cursor-pointer transition-colors"
-                  >
-                    Remove Highlight
-                  </button>
-                </div>
+                </Panel>
               )}
             </div>
-
-            {/* Clear Formatting */}
-            <button
-              type="button"
-              title="Clear formatting"
-              onPointerDown={(e) => e.preventDefault()}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleFormatAction("clear");
-              }}
-              className="size-6 rounded flex items-center justify-center text-zinc-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
-            >
+            <ToolButton label="Clear formatting" onClick={() => handleFormatAction("clear")}>
               <RemoveFormatting className="size-3.5" />
-            </button>
-
-            <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
+            </ToolButton>
           </>
-        )}
-
-        {/* Color swatch button → opens popover */}
-        <div className="relative" ref={colorRef}>
-          <button
-            type="button"
-            title="Change color"
-            onClick={() => {
-              setColorOpen((v) => !v);
-              setBorderOpen(false);
-              setHighlightOpen(false);
-              setLinkOpen(false);
-            }}
-            className="size-5 rounded-full border-2 border-white/90 dark:border-zinc-600 shadow-xs transition-transform hover:scale-110 cursor-pointer ring-1 ring-black/10 dark:ring-white/10"
-            style={{ backgroundColor: currentHex }}
-          />
-          {colorOpen && (
-            <div
-              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 flex flex-col gap-1.5 p-1.5 rounded-2xl glass-panel shadow-2xl border border-white/60 dark:border-zinc-800 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-100 z-50 bg-white/90 dark:bg-zinc-900/90"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center gap-1">
-                {COLOR_PRESETS.map((color) => (
-                  <button
-                    key={color.name}
-                    type="button"
-                    title={color.name}
-                    onClick={() => handleColorChange(color)}
-                    className={`size-5 rounded-full border border-black/10 dark:border-white/20 transition-transform hover:scale-125 cursor-pointer shadow-2xs ${
-                      currentHex === color.hex ? "ring-2 ring-offset-1 ring-white dark:ring-zinc-700 scale-110" : ""
-                    }`}
-                    style={{ backgroundColor: color.hex }}
-                  />
-                ))}
-              </div>
-
-              {/* Fill style selector for Box / Circle (Solid, Tint, Sketch, Outline) */}
-              {isFillEligible && (
-                <div className="flex items-center gap-1 pt-1 border-t border-zinc-200/70 dark:border-zinc-800">
-                  <button
-                    type="button"
-                    onClick={() => handleFillStyleChange("solid")}
-                    className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer text-center ${
-                      currentFillStyle === "solid"
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xs font-semibold"
-                        : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                    }`}
-                    title="Solid opaque background (no transparent)"
-                  >
-                    Solid
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleFillStyleChange("tint")}
-                    className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer text-center ${
-                      currentFillStyle === "tint"
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xs font-semibold"
-                        : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                    }`}
-                    title="Soft translucent tint fill"
-                  >
-                    Tint
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleFillStyleChange("hachure")}
-                    className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer text-center ${
-                      currentFillStyle === "hachure"
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xs font-semibold"
-                        : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                    }`}
-                    title="Sketchy cross-hatch fill"
-                  >
-                    Sketch
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleFillStyleChange("none")}
-                    className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer text-center ${
-                      currentFillStyle === "none"
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xs font-semibold"
-                        : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                    }`}
-                    title="Transparent border outline only"
-                  >
-                    Outline
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Border style swatch → opens popover */}
-        {isBorderEligible && (
+        ) : (
           <>
-            <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
-            <div className="relative" ref={borderRef}>
-              <button
-                type="button"
-                title={`Border: ${currentBorderStyle}`}
-                onClick={() => {
-                  setBorderOpen((v) => !v);
-                  setColorOpen(false);
-                  setHighlightOpen(false);
-                  setLinkOpen(false);
-                }}
-                className="size-5 rounded flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                {currentBorderIcon}
-              </button>
-              {borderOpen && (
-                <div
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 flex items-center gap-0.5 p-1 rounded-xl glass-panel shadow-2xl border border-white/60 dark:border-zinc-800 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-100 z-50"
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
-                  {BORDER_STYLES.map((style) => {
-                    const isActive = currentBorderStyle === style.id;
-                    return (
-                      <button
-                        key={style.id}
-                        type="button"
-                        title={style.label}
-                        onClick={() => handleBorderStyleChange(style.id)}
-                        className={`size-6 rounded flex items-center justify-center transition-colors cursor-pointer ${
-                          isActive
-                            ? "bg-white dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100 shadow-xs"
-                            : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                        }`}
+            {isTextLike && (
+              <>
+                {/* Style: one dropdown instead of three always-visible tabs */}
+                <div className="relative">
+                  <ToolButton
+                    label={`Style: ${styleMeta.label}`}
+                    active={openMenu === "style"}
+                    onClick={() => toggleMenu("style")}
+                    aria-haspopup="true"
+                    aria-expanded={openMenu === "style"}
+                    className="pr-1"
+                  >
+                    <StyleIcon className="size-3.5" />
+                    <span>{styleMeta.label}</span>
+                    <ChevronDown className="size-3 opacity-60" />
+                  </ToolButton>
+                  {openMenu === "style" && (
+                    <Panel below={below} className="w-52">
+                      <div role="radiogroup" aria-label="Text style">
+                        {TEXT_STYLES.map((t) => {
+                          const Icon = t.icon;
+                          return (
+                            <MenuItem
+                              key={t.id}
+                              role="radio"
+                              label={t.label}
+                              hint={t.hint}
+                              icon={<Icon className="size-3.5" />}
+                              selected={style === t.id}
+                              onClick={() => {
+                                setOpenMenu(null);
+                                if (style !== t.id) setTextStyle(selectedNode.id, t.id);
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </Panel>
+                  )}
+                </div>
+
+                {selectedNode.type !== "focusTask" && (
+                  <ToolButton
+                    label="To-do (⌘↵)"
+                    pressed={actionable}
+                    onClick={() => toggleActionable(selectedNode.id)}
+                    className={actionable ? "!bg-emerald-600 !text-white" : ""}
+                  >
+                    <CheckSquare className="size-3.5" />
+                  </ToolButton>
+                )}
+
+                {isText && (
+                  <div className="relative">
+                    <ToolButton
+                      label="Text size"
+                      active={openMenu === "size"}
+                      onClick={() => toggleMenu("size")}
+                      className="pr-1"
+                    >
+                      <ALargeSmall className="size-4" />
+                      <span className="text-[10px] font-mono">{sizePreset?.label ?? currentFontSize}</span>
+                    </ToolButton>
+                    {openMenu === "size" && (
+                      <Panel below={below} className="flex items-center gap-0.5">
+                        {TEXT_SIZES.map((t) => (
+                          <button
+                            key={t.label}
+                            type="button"
+                            title={`${t.px}px`}
+                            onPointerDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              handleFontSize(t.px);
+                              setOpenMenu(null);
+                            }}
+                            className={`h-7 min-w-8 px-2 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors ${
+                              currentFontSize === t.px
+                                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                                : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                            }`}
+                          >
+                            {t.label}
+                          </button>
+                        ))}
+                      </Panel>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {selectedNode.type !== "image" && selectedNode.type !== "linkCard" && colorControl}
+
+            {isBorderEligible && !isTextLike && (
+              <div className="relative">
+                <ToolButton label={`Border: ${currentBorderStyle}`} active={openMenu === "border"} onClick={() => toggleMenu("border")}>
+                  {currentBorderIcon}
+                </ToolButton>
+                {openMenu === "border" && (
+                  <Panel below={below} className="flex items-center gap-0.5">
+                    {BORDER_STYLES.map((b) => (
+                      <ToolButton
+                        key={b.id}
+                        label={b.label}
+                        active={currentBorderStyle === b.id}
+                        onClick={() => handleBorderStyleChange(b.id)}
                       >
-                        {style.icon}
-                      </button>
-                    );
-                  })}
-                </div>
+                        {b.icon}
+                      </ToolButton>
+                    ))}
+                  </Panel>
+                )}
+              </div>
+            )}
+
+            {isArrow && (
+              <div className="relative">
+                <ToolButton label="Arrowheads" active={openMenu === "spear"} onClick={() => toggleMenu("spear")} className="pr-1">
+                  <span className="font-mono text-[11px]">
+                    {currentSpear === "start" ? "←" : currentSpear === "both" ? "↔" : "→"}
+                  </span>
+                  <ChevronDown className="size-3 opacity-60" />
+                </ToolButton>
+                {openMenu === "spear" && (
+                  <Panel below={below} className="w-44">
+                    <MenuItem label="End →" selected={currentSpear === "end"} onClick={() => handleSpearChange("end")} />
+                    <MenuItem label="← Start" selected={currentSpear === "start"} onClick={() => handleSpearChange("start")} />
+                    <MenuItem label="↔ Both" selected={currentSpear === "both"} onClick={() => handleSpearChange("both")} />
+                  </Panel>
+                )}
+              </div>
+            )}
+
+            <Divider />
+
+            <ToolButton
+              label="Ask AI about this"
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent("foqz:open-inline-chat", { detail: { shapeId: selectedNode.id } }))
+              }
+              className="text-blue-600 dark:text-blue-400"
+            >
+              <Sparkles className="size-3.5" />
+            </ToolButton>
+            <ToolButton
+              label="Annotate"
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent("foqz:open-annotation-composer", { detail: { nodeId: selectedNode.id } }))
+              }
+              className="text-amber-600 dark:text-amber-400"
+            >
+              <MessageSquarePlus className="size-3.5" />
+            </ToolButton>
+
+            <div className="relative">
+              <ToolButton label="More actions" active={openMenu === "more"} onClick={() => toggleMenu("more")}>
+                <Ellipsis className="size-4" />
+              </ToolButton>
+              {openMenu === "more" && (
+                <Panel below={below} className="w-52">
+                  {isTextLike && actionable && (
+                    <MenuItem
+                      label={githubUrl ? `Open GitHub #${(selectedNode.data as any)?.githubIssueNumber}` : "Create GitHub issue"}
+                      icon={<GitPullRequest className="size-3.5" />}
+                      onClick={() => {
+                        setOpenMenu(null);
+                        if (githubUrl) window.open(githubUrl, "_blank", "noopener,noreferrer");
+                        else
+                          window.dispatchEvent(
+                            new CustomEvent("foqz:open-create-github-issue", { detail: { taskId: selectedNode.id } })
+                          );
+                      }}
+                    />
+                  )}
+                  {isBorderEligible && isTextLike && (
+                    <MenuItem
+                      label={`Border: ${currentBorderStyle}`}
+                      hint="Solid, dashed or dotted"
+                      icon={currentBorderIcon}
+                      onClick={() => {
+                        const order = ["solid", "dashed", "dotted"] as const;
+                        handleBorderStyleChange(order[(order.indexOf(currentBorderStyle) + 1) % order.length]);
+                      }}
+                    />
+                  )}
+                  <MenuItem
+                    label="Center on screen"
+                    shortcut="⇧C"
+                    icon={<Crosshair className="size-3.5" />}
+                    onClick={() => {
+                      setOpenMenu(null);
+                      handleCenter();
+                    }}
+                  />
+                  <MenuItem
+                    label="Duplicate"
+                    shortcut="⌘D"
+                    icon={<Copy className="size-3.5" />}
+                    onClick={() => {
+                      setOpenMenu(null);
+                      useFlowCanvasStore.getState().duplicateSelected();
+                    }}
+                  />
+                  <div className="my-1 h-px bg-zinc-200 dark:bg-zinc-800" />
+                  <MenuItem
+                    label="Delete"
+                    shortcut="⌫"
+                    danger
+                    icon={<Trash2 className="size-3.5" />}
+                    onClick={() => {
+                      setOpenMenu(null);
+                      handleDelete();
+                    }}
+                  />
+                </Panel>
               )}
             </div>
           </>
         )}
-
-        {/* Arrowhead Spear Direction selector for Arrow nodes */}
-        {isArrow && (
-          <>
-            <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
-            <div className="flex items-center gap-0.5 bg-black/5 dark:bg-white/5 rounded-lg p-0.5">
-              <button
-                type="button"
-                title="Arrowhead pointing right (end)"
-                onClick={() => handleSpearChange("end")}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
-                  currentSpear === "end"
-                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
-                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                }`}
-              >
-                End →
-              </button>
-              <button
-                type="button"
-                title="Arrowhead pointing left (start)"
-                onClick={() => handleSpearChange("start")}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
-                  currentSpear === "start"
-                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
-                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                }`}
-              >
-                ← Start
-              </button>
-              <button
-                type="button"
-                title="Double spearheads (both)"
-                onClick={() => handleSpearChange("both")}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
-                  currentSpear === "both"
-                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
-                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                }`}
-              >
-                ↔ Both
-              </button>
-            </div>
-          </>
-        )}
-
-        <div className="w-[1px] h-3.5 bg-zinc-300/70 dark:bg-zinc-700/70" />
-
-        <button
-          type="button"
-          title="Chat with Element"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            window.dispatchEvent(
-              new CustomEvent("foqz:open-inline-chat", {
-                detail: { shapeId: selectedNode.id },
-              })
-            );
-          }}
-          className="size-5 rounded-full flex items-center justify-center hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-colors cursor-pointer"
-        >
-          <MessageSquare className="size-3" />
-        </button>
-
-        <button
-          type="button"
-          title="Annotate Element"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            window.dispatchEvent(
-              new CustomEvent('foqz:open-annotation-composer', {
-                detail: { nodeId: selectedNode.id },
-              })
-            );
-          }}
-          className="px-1.5 h-5 rounded-full flex items-center gap-1 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-600 dark:text-amber-400 transition-colors cursor-pointer text-[10px] font-medium"
-        >
-          <MessageSquare className="size-2.5" />
-          <span>Annotate</span>
-        </button>
-
-        {isActionable(selectedNode) && (
-          <button
-            type="button"
-            title={(selectedNode.data as any)?.githubIssueNumber ? `GitHub #${(selectedNode.data as any).githubIssueNumber}` : "Create GitHub Issue"}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              const issueUrl = (selectedNode.data as any)?.githubIssueUrl;
-              if (issueUrl) {
-                window.open(issueUrl, "_blank", "noopener,noreferrer");
-              } else {
-                window.dispatchEvent(
-                  new CustomEvent("foqz:open-create-github-issue", {
-                    detail: { taskId: selectedNode.id },
-                  })
-                );
-              }
-            }}
-            className="size-5 rounded-full flex items-center justify-center hover:bg-purple-50 dark:hover:bg-purple-950/40 text-purple-600 dark:text-purple-400 transition-colors cursor-pointer"
-          >
-            <GitPullRequest className="size-3" />
-          </button>
-        )}
-
-        <button
-          type="button"
-          title="Center on Screen (⇧C)"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onClick={handleCenter}
-          className="size-5 rounded-full flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
-        >
-          <Crosshair className="size-3" />
-        </button>
-
-        <button
-          type="button"
-          title="Duplicate (⌘D)"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            useFlowCanvasStore.getState().duplicateSelected();
-          }}
-          className="size-5 rounded-full flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
-        >
-          <Copy className="size-3" />
-        </button>
-
-        <button
-          type="button"
-          title="Delete (Del/Backspace)"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            handleDelete(e);
-          }}
-          onClick={handleDelete}
-          className="size-5 rounded-full flex items-center justify-center hover:bg-rose-100 dark:hover:bg-rose-950/80 text-zinc-500 hover:text-rose-600 transition-colors cursor-pointer"
-        >
-          <Trash2 className="size-3" />
-        </button>
       </div>
     </NodeToolbar>
   );
