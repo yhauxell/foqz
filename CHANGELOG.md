@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0](https://github.com/yhauxell/foqz/compare/v0.13.1...v1.0.0) (2026-10-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **canvas:** the Foqz MCP host exposes 8 tools. spawn_tasks and spawn_notes are accepted as aliases of spawn_text; jev_*, generate_image, connect_nodes, group_nodes and arrange_layout are removed. Boards saved by v0.13 are upgraded on first open.
+
+### Features
+
+* **canvas:** compact text toolbar, self-sizing text, macOS-only CI ([#77](https://github.com/yhauxell/foqz/issues/77)) ([12dcc28](https://github.com/yhauxell/foqz/commit/12dcc2872e7f5b100e500af44f6e0f80f6833816))
+* **canvas:** prune the canvas to one text concept, focus in place, and regions ([#75](https://github.com/yhauxell/foqz/issues/75)) ([2c0b51c](https://github.com/yhauxell/foqz/commit/2c0b51cba85875c2efc2a2f4d4561dcdcfdc1acc))
+
 ## [0.13.1](https://github.com/yhauxell/foqz/compare/v0.13.0...v0.13.1) (2026-10-22)
 
 
