@@ -130,6 +130,7 @@ Everything in "Removed outright", "Merged" (except the deferred items below), "F
 - One text concept: `src/lib/nodePredicates.ts` (`isActionable`, `textStyleOf`, `convertTextStyle`, `nodeTitle`) and `src/lib/nodeBehaviors.ts` (`toggleActionable`, `toggleDone`, `setTextStyle`, `startFocus`, `stopFocus`). Every former `type === "focusTask"` check for to-do semantics goes through `isActionable`. The style switch and To-do button live in the floating node toolbar; the checkbox is `src/poc/components/TodoCheckbox.tsx`.
 - Restyling drops appearance that belongs to the old style (a plain text color would otherwise become a sticky background).
 - Linking or filing a GitHub issue switches the text to card style, because that is where the sync status and assignee controls are.
+- Floating node toolbar (`src/poc/components/FlowShapeMenu.tsx`) follows the FigJam/Canva pattern: icon-only buttons, Style and Text size as small dropdowns, an overflow menu (⋯) for center, duplicate, delete and GitHub, and a formatting-only bar while typing. It and its dropdowns slide or flip to stay clear of the top bar and the tool rail.
 - Focus in place: `src/components/FocusInPlace.tsx`. The focused card no longer shows its own timer; the floating pill is the only one.
 - Command bar: `src/components/GlobalSpotlight.tsx` replaces Spotlight, the quick-task modal and the shortcuts modal. `⌘⇧N` opens it in capture mode.
 - Settings: `src/components/FocusSettings.tsx` with App, Intelligence, Integrations.

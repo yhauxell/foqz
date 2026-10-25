@@ -198,6 +198,9 @@ export interface FlowCanvasState {
   selectedNodeId: string | null;
   cursorPosition: { x: number; y: number } | null;
   setCursorPosition: (pos: { x: number; y: number } | null) => void;
+  /** Text node whose content is being typed into; the toolbar shows formatting while set. */
+  editingNodeId: string | null;
+  setEditingNodeId: (id: string | null) => void;
   setNodes: (nodes: Node[] | ((prev: Node[]) => Node[])) => void;
   setEdges: (edges: Edge[] | ((prev: Edge[]) => Edge[])) => void;
   setSelectedNodeId: (id: string | null) => void;
@@ -335,6 +338,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
       selectedNodeId: null,
       cursorPosition: null,
       setCursorPosition: (pos) => set({ cursorPosition: pos }),
+      editingNodeId: null,
+      setEditingNodeId: (id) => set({ editingNodeId: id }),
       setActiveAnnotationId: (id) => set({ activeAnnotationId: id }),
       activeFocusNodeId: null,
       timerSecondsRemaining: focusLengthSeconds(),

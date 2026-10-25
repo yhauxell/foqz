@@ -568,7 +568,15 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
+      // Measuring and selecting are not edits; keep them out of undo history so ⌘Z undoes what you changed.
+      const notAnEdit = changes.every(
+        (c) => c.type === "select" || (c.type === "dimensions" && !c.resizing && !c.setAttributes)
+      );
+      const history = useFlowCanvasStore.temporal.getState();
+      const quiet = notAnEdit && history.isTracking;
+      if (quiet) history.pause();
       setNodes((nds) => applyNodeChanges(changes, nds));
+      if (quiet) history.resume();
       const selectionChange = changes.find((c) => c.type === "select");
       if (selectionChange && "selected" in selectionChange) {
         if (selectionChange.selected) {
@@ -587,7 +595,11 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
+      const history = useFlowCanvasStore.temporal.getState();
+      const quiet = changes.every((c) => c.type === "select") && history.isTracking;
+      if (quiet) history.pause();
       setEdges((eds) => applyEdgeChanges(changes, eds));
+      if (quiet) history.resume();
     },
     [setEdges]
   );
@@ -1468,6 +1480,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     >
       {/* Vertical Icon-Only Toolbar on the Right (capsule pill, moves with Copilot drawer) */}
       <div
+        data-tool-rail
         className="absolute top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-1.5 p-1.5 rounded-full glass-panel shadow-2xl backdrop-blur-2xl backdrop-saturate-150 transition-all duration-200 select-none border border-white/60 dark:border-white/10"
         style={{
           right: "var(--tools-bar-right, 18px)",

@@ -25,14 +25,12 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  # The only automatic build: macOS, and only when release-please has just cut a release on main.
+  # Windows and Linux are off for now; add them back to electron-builder's args when needed.
   publish-artifacts:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -49,9 +47,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build renderer and package (publish to GitHub Release)
+      - name: Build renderer and package for macOS (publish to GitHub Release)
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: yarn dist:publish
+        run: yarn dist:publish --mac
