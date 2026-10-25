@@ -1762,6 +1762,11 @@ html.dark .canvas {
   z-index: 20;
 }
 
+/* Text height always hugs its content; ignore heights stored by older resizes. */
+.react-flow__node-text {
+  height: auto !important;
+}
+
 .react-flow__edgelabel-renderer {
   z-index: 1001 !important;
   pointer-events: none;
