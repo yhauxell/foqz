@@ -1,6 +1,4 @@
-# Build and publish installers to GitHub Releases on tag push or manual dispatch.
-#
-# Versioning: bump the `version` field in package.json and push a git tag (e.g. `v0.1.0`).
+# Manual fallback: build and publish the macOS installer to GitHub Releases from main.
 #
 # macOS builds are ad-hoc signed in CI. For notarized, trusted installs, add Apple certs and
 # notarize hooks to electron-builder (CSC_LINK, APPLE_ID, etc.).
@@ -24,11 +22,9 @@ env:
 
 jobs:
   publish:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    # Builds happen only for releases on main, macOS only for now.
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-latest
     timeout-minutes: 45
 
     steps:
@@ -50,4 +46,4 @@ jobs:
         env:
           # Unsigned macOS builds in CI (add Apple signing secrets later for notarized releases)
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: yarn dist:publish
+        run: yarn dist:publish --mac

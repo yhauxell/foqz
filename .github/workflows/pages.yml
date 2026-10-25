@@ -5,6 +5,15 @@ name: Deploy landing
 on:
   push:
     branches: [main]
+    # Only redeploy when the landing itself changes; app-only merges don't touch the site.
+    paths:
+      - landing.html
+      - vite.landing.config.ts
+      - src/landing/**
+      - landing-public/**
+      - scripts/write-landing-release.mjs
+      - scripts/landing-copy-index.mjs
+      - .github/workflows/pages.yml
   # Rebuild so release-embed.json matches the latest release without needing a dummy commit on main.
   release:
     types: [published]
