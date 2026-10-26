@@ -119,14 +119,20 @@ class ClaudeCodeRunner {
       '--verbose',
       '--include-partial-messages',
       '--no-session-persistence',
+      // Canvas text (imported GitHub issues included) lands in the prompt, so the run is locked down
+      // whatever the user's own Claude Code settings say: no shell or code-running tools, user and
+      // project settings ignored, file tools confined to the working folder, and anything not
+      // pre-approved below refused instead of prompted for.
+      '--restricted',
+      '--permission-mode',
+      'dontAsk',
     ]
     if (typeof req.systemPrompt === 'string' && req.systemPrompt.trim()) {
       args.push('--append-system-prompt', req.systemPrompt)
     }
     if (settings.claudeCodeModel) args.push('--model', settings.claudeCodeModel)
 
-    // Canvas tools come from the embedded Foqz MCP server. Only its tools are pre-approved; in print
-    // mode anything else that needs permission is refused rather than prompted for.
+    // Canvas tools come from the embedded Foqz MCP server, and only its tools are pre-approved.
     const host = this.getMcpHost()
     if (host.enabled && host.running) {
       const mcpConfig = {

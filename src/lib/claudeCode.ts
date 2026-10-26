@@ -124,6 +124,8 @@ export async function runClaudeCodeAgent(options: RunAgentLoopOptions): Promise<
       streamed += ev.text
       options.onChunk?.(ev.text)
     } else if (ev.type === 'tool_use') {
+      // Claude Code loads MCP tool schemas on demand; that lookup is not a step worth a card.
+      if (ev.name === 'ToolSearch') return
       steps++
       const { serverName, toolName } = splitClaudeToolName(ev.name)
       const event: AgentToolCallEvent = { id: ev.id, serverName, toolName, rawName: ev.name, args: ev.input }

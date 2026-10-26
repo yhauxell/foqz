@@ -233,7 +233,9 @@ You can also point Foqz at any OpenAI-compatible endpoint (OpenAI, OpenRouter, G
 If you use [Claude Code](https://claude.com/claude-code), the canvas chat can run it instead of a model endpoint. It uses your own Claude login and runs `claude -p` on your machine.
 
 1. In **Settings → Intelligence → Claude Code (local)**, tick **Enable Claude Code**. Foqz finds `claude` on your PATH or in `~/.local/bin`; set **Path to claude** if it lives elsewhere. **Working folder** is where it runs (your home folder by default).
-2. Turn on the Foqz MCP server (**Settings → Integrations**, see below). Claude Code then gets the canvas tools and only those are pre-approved; anything else that would need permission is refused, since there is no terminal to ask in.
+2. Turn on the Foqz MCP server (**Settings → Integrations**, see below) so Claude Code gets the canvas tools.
+
+Runs from the canvas are locked down, whatever your own Claude Code settings say: restricted mode (no shell or code-running tools, your user and project settings and hooks are not loaded, file tools stay inside the working folder) and `dontAsk` permissions, with only the Foqz canvas tools pre-approved. Anything else that would need permission is refused, since there is no terminal to ask in.
 3. Pick **Claude Code** in the chat's provider menu, or as the model used by Foqz.
 
 ---
