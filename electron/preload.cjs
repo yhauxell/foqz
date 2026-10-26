@@ -47,6 +47,21 @@ contextBridge.exposeInMainWorld('focusStore', {
       return () => ipcRenderer.removeListener('mcpHost:call', listener)
     },
   },
+  claudeCode: {
+    detect: () => ipcRenderer.invoke('claudeCode:detect'),
+    run: (req) => ipcRenderer.invoke('claudeCode:run', req),
+    cancel: (requestId) => ipcRenderer.invoke('claudeCode:cancel', requestId),
+    onLine: (callback) => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('claudeCode:line', listener)
+      return () => ipcRenderer.removeListener('claudeCode:line', listener)
+    },
+    onExit: (callback) => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('claudeCode:exit', listener)
+      return () => ipcRenderer.removeListener('claudeCode:exit', listener)
+    },
+  },
   reminders: {
     set: (list) => ipcRenderer.send('reminders:set', list),
     onFired: (callback) => {

@@ -12,6 +12,7 @@ import {
 import { getCachedAppSettings } from './appSettingsCache'
 import { resolveActiveAiConfig } from './appSettings'
 import { NATIVE_FOQZ_TOOLS } from './canvasTools'
+import { runClaudeCodeAgent } from './claudeCode'
 
 export interface AgentToolCallEvent {
   id: string
@@ -267,6 +268,8 @@ export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AgentL
 
   const activeConfig = resolveActiveAiConfig(getCachedAppSettings())
   const provider: AiProviderName = options.provider || activeConfig.provider
+  // Claude Code runs its own tool loop and reaches the canvas over the Foqz MCP server.
+  if (provider === 'claude-code') return runClaudeCodeAgent(options)
   const model =
     options.model ||
     activeConfig.model ||

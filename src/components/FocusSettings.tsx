@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useFocusAppSettings } from "@/context/FocusAppSettingsContext";
-import { GEMINI_OPENAI_BASE_URL, mergeAppSettings } from "@/lib/appSettings";
+import { GEMINI_OPENAI_BASE_URL, mergeAppSettings, type AiProviderId } from "@/lib/appSettings";
 import { ensureNotificationPermission } from "@/lib/focusSessionFeedback";
 import {
   Bot,
@@ -19,6 +19,7 @@ import {
 import { McpSettingsTab } from "@/components/McpSettingsTab";
 import { getSyncIntervalMinutes, setSyncIntervalMinutes } from "@/lib/githubTaskSync";
 import { McpHostSettings } from "./McpHostSettings";
+import { ClaudeCodeSettings } from "./ClaudeCodeSettings";
 import {
   OPENAI_DEFAULT_MODELS,
   testOllamaConnection,
@@ -1050,11 +1051,12 @@ export function FocusSettings({
                   <select
                     aria-label="Active AI provider"
                     value={settings.activeAiProvider || "ollama"}
-                    onChange={(e) => void update({ activeAiProvider: e.target.value as "ollama" | "openai" })}
+                    onChange={(e) => void update({ activeAiProvider: e.target.value as AiProviderId })}
                     className="h-8 px-2.5 rounded-lg border border-input bg-background text-xs font-medium text-foreground cursor-pointer shadow-2xs"
                   >
                     <option value="ollama">Ollama (local, private)</option>
                     <option value="openai">OpenAI-compatible endpoint</option>
+                    <option value="claude-code">Claude Code (local CLI)</option>
                   </select>
                 </div>
 
@@ -1308,6 +1310,10 @@ export function FocusSettings({
                         </div>
                       </div>
                   </div>
+                </Section>
+
+                <Section title="Claude Code (local)">
+                  <ClaudeCodeSettings settings={settings} update={update} />
                 </Section>
               </div>
             ) : null}

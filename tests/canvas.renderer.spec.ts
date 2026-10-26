@@ -231,10 +231,11 @@ test.describe('Foqz Live Visual & Interaction Test Suite', () => {
     await expect(dialog.getByText(/model\(s\) active|Offline/).first()).toBeVisible();
     await expect(dialog.getByText('LM Studio', { exact: true }).first()).toBeVisible();
     await expect(dialog.getByText('llama.cpp', { exact: true })).toBeVisible();
-    // Only two providers remain
+    // Local, OpenAI-compatible, and the local Claude Code CLI (#80)
     await expect(dialog.getByRole('combobox', { name: 'Active AI provider' }).locator('option')).toHaveText([
       'Ollama (local, private)',
       'OpenAI-compatible endpoint',
+      'Claude Code (local CLI)',
     ]);
     await expect(dialog.getByText(/Gemini \(Cloud\)|TypeSafe/)).toHaveCount(0);
 

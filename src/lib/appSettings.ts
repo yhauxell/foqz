@@ -37,8 +37,19 @@ export type AppSettings = {
   openaiBaseUrl?: string;
   openaiDefaultModel?: string;
   githubToken?: string;
-  activeAiProvider?: "ollama" | "openai";
+  /** Run the local Claude Code CLI as the canvas AI (it reaches the canvas through the Foqz MCP host). */
+  claudeCodeEnabled?: boolean;
+  /** Path to the `claude` binary; empty finds it on PATH and the usual install folders. */
+  claudeCodePath?: string;
+  /** Folder Claude Code runs in; empty uses the home folder. */
+  claudeCodeCwd?: string;
+  /** Model alias or name passed to `--model`; empty uses Claude Code's default. */
+  claudeCodeModel?: string;
+  activeAiProvider?: AiProviderId;
 };
+
+export type AiProviderId = "ollama" | "openai" | "claude-code";
+const AI_PROVIDER_IDS: AiProviderId[] = ["ollama", "openai", "claude-code"];
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   defaultFocusMinutes: 25,
@@ -63,6 +74,10 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   openaiBaseUrl: "https://api.openai.com/v1",
   openaiDefaultModel: "gpt-4o-mini",
   githubToken: "",
+  claudeCodeEnabled: false,
+  claudeCodePath: "",
+  claudeCodeCwd: "",
+  claudeCodeModel: "",
 };
 
 function isValidBounds(b: unknown): b is AppWindowBounds {
@@ -250,17 +265,26 @@ export function mergeAppSettings(
       typeof parsed.githubToken === "string"
         ? parsed.githubToken.trim()
         : base.githubToken,
-    activeAiProvider:
-      parsed.activeAiProvider === "openai" || parsed.activeAiProvider === "ollama"
-        ? parsed.activeAiProvider
-        : base.activeAiProvider,
+    claudeCodeEnabled:
+      typeof parsed.claudeCodeEnabled === "boolean"
+        ? parsed.claudeCodeEnabled
+        : base.claudeCodeEnabled,
+    claudeCodePath:
+      typeof parsed.claudeCodePath === "string" ? parsed.claudeCodePath.trim() : base.claudeCodePath,
+    claudeCodeCwd:
+      typeof parsed.claudeCodeCwd === "string" ? parsed.claudeCodeCwd.trim() : base.claudeCodeCwd,
+    claudeCodeModel:
+      typeof parsed.claudeCodeModel === "string" ? parsed.claudeCodeModel.trim() : base.claudeCodeModel,
+    activeAiProvider: AI_PROVIDER_IDS.includes(parsed.activeAiProvider as AiProviderId)
+      ? (parsed.activeAiProvider as AiProviderId)
+      : base.activeAiProvider,
   };
   for (const key of REMOVED_SETTINGS_KEYS) delete (merged as Record<string, unknown>)[key];
   return merged;
 }
 
 export interface ActiveAiConfig {
-  provider: "ollama" | "openai";
+  provider: AiProviderId;
   model: string;
   apiKey?: string;
   baseUrl?: string;
@@ -277,6 +301,14 @@ export function resolveActiveAiConfig(
   const merged = mergeAppSettings(settings);
 
   // If user explicitly chose a provider:
+  if (merged.activeAiProvider === "claude-code") {
+    return {
+      provider: "claude-code",
+      model: merged.claudeCodeModel || "",
+      isConfigured: merged.claudeCodeEnabled === true,
+    };
+  }
+
   if (merged.activeAiProvider === "openai") {
     return {
       provider: "openai",
