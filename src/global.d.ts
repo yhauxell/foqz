@@ -1,6 +1,8 @@
 import type { AppSettings } from "./lib/appSettings";
 import type { McpHostApi, McpStoreApi } from "./lib/mcpTypes";
 import type { LogbookDay, LogbookEntry } from "./types/logbook";
+import type { PendingReminder } from "./lib/reminders";
+import type { ClaudeCodeDetectResult } from "./lib/claudeCode";
 
 export {};
 
@@ -44,6 +46,22 @@ declare global {
       mcp?: McpStoreApi;
       /** Embedded Foqz MCP server for external agents */
       mcpHost?: McpHostApi;
+      /** Local Claude Code CLI, run from main (see electron/claudeCode.cjs) */
+      claudeCode?: {
+        detect: () => Promise<ClaudeCodeDetectResult>;
+        run: (req: { requestId: string; prompt: string; systemPrompt?: string }) => Promise<{ ok: boolean; error?: string }>;
+        cancel: (requestId: string) => Promise<boolean>;
+        onLine: (callback: (payload: { requestId: string; line: string }) => void) => () => void;
+        onExit: (
+          callback: (payload: { requestId: string; code: number | null; signal: string | null; stderr: string }) => void,
+        ) => () => void;
+      };
+      /** Element reminders, scheduled in main so they ring while the window is hidden */
+      reminders?: {
+        set: (list: PendingReminder[]) => void;
+        onFired: (callback: (nodeId: string) => void) => () => void;
+        onOpen: (callback: (nodeId: string) => void) => () => void;
+      };
       /** Auto-updater API */
       updater?: {
         check: () => Promise<{ ok: boolean; status?: string; error?: string; updateInfo?: any }>;

@@ -17,6 +17,8 @@ const path = require('node:path')
 const childProcess = require('node:child_process')
 const { McpClientManager } = require('./mcp/McpClientManager.cjs')
 const { FoqzMcpHost } = require('./mcp/FoqzMcpHost.cjs')
+const { ReminderScheduler } = require('./reminders.cjs')
+const { ClaudeCodeRunner } = require('./claudeCode.cjs')
 const logbook = require('./logbook.cjs')
 
 // Ensure production macOS app inherits full user shell PATH (npx, node, uvx, bun, etc.)
@@ -78,6 +80,15 @@ fixSystemPath()
 
 const mcpManager = new McpClientManager()
 const mcpHost = new FoqzMcpHost()
+const reminders = new ReminderScheduler({ ipcMain, getWindow: () => mainWindow, showWindow: () => showWindow() })
+const claudeCode = new ClaudeCodeRunner({
+  ipcMain,
+  getSettings: () => appSettings,
+  getMcpHost: () => {
+    const s = mcpHost.getStatus()
+    return { enabled: s.enabled, running: s.status === 'running', url: s.url, token: s.token }
+  },
+})
 
 app.setName('Foqz')
 app.name = 'Foqz'
@@ -296,6 +307,10 @@ const DEFAULT_SETTINGS = {
   openaiEnabled: false,
   openaiApiKey: '',
   openaiBaseUrl: 'https://api.openai.com/v1',
+  claudeCodeEnabled: false,
+  claudeCodePath: '',
+  claudeCodeCwd: '',
+  claudeCodeModel: '',
   openaiDefaultModel: 'gpt-4o-mini',
 }
 
@@ -394,8 +409,16 @@ function mergeSettings(input) {
       typeof parsed.openaiDefaultModel === 'string'
         ? parsed.openaiDefaultModel.trim()
         : d.openaiDefaultModel,
+    claudeCodeEnabled:
+      typeof parsed.claudeCodeEnabled === 'boolean' ? parsed.claudeCodeEnabled : d.claudeCodeEnabled,
+    claudeCodePath:
+      typeof parsed.claudeCodePath === 'string' ? parsed.claudeCodePath.trim() : d.claudeCodePath,
+    claudeCodeCwd:
+      typeof parsed.claudeCodeCwd === 'string' ? parsed.claudeCodeCwd.trim() : d.claudeCodeCwd,
+    claudeCodeModel:
+      typeof parsed.claudeCodeModel === 'string' ? parsed.claudeCodeModel.trim() : d.claudeCodeModel,
     activeAiProvider:
-      ['ollama', 'openai'].includes(parsed.activeAiProvider)
+      ['ollama', 'openai', 'claude-code'].includes(parsed.activeAiProvider)
         ? parsed.activeAiProvider
         : d.activeAiProvider,
   }
@@ -1016,6 +1039,8 @@ ipcMain.handle('mcpHost:regenerateToken', async () => {
 
 app.on('before-quit', (e) => {
   mcpManager.disconnectAll().catch(() => {})
+  reminders.dispose()
+  claudeCode.dispose()
   if (appQuitting) return
   if (!mainWindow || mainWindow.isDestroyed()) return
   e.preventDefault()

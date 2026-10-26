@@ -47,6 +47,34 @@ contextBridge.exposeInMainWorld('focusStore', {
       return () => ipcRenderer.removeListener('mcpHost:call', listener)
     },
   },
+  claudeCode: {
+    detect: () => ipcRenderer.invoke('claudeCode:detect'),
+    run: (req) => ipcRenderer.invoke('claudeCode:run', req),
+    cancel: (requestId) => ipcRenderer.invoke('claudeCode:cancel', requestId),
+    onLine: (callback) => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('claudeCode:line', listener)
+      return () => ipcRenderer.removeListener('claudeCode:line', listener)
+    },
+    onExit: (callback) => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('claudeCode:exit', listener)
+      return () => ipcRenderer.removeListener('claudeCode:exit', listener)
+    },
+  },
+  reminders: {
+    set: (list) => ipcRenderer.send('reminders:set', list),
+    onFired: (callback) => {
+      const listener = (_event, nodeId) => callback(nodeId)
+      ipcRenderer.on('reminders:fired', listener)
+      return () => ipcRenderer.removeListener('reminders:fired', listener)
+    },
+    onOpen: (callback) => {
+      const listener = (_event, nodeId) => callback(nodeId)
+      ipcRenderer.on('reminders:open', listener)
+      return () => ipcRenderer.removeListener('reminders:open', listener)
+    },
+  },
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),
     getState: () => ipcRenderer.invoke('updater:getState'),

@@ -17,6 +17,7 @@ import { FlowCanvasAppWrapper } from "./poc/FlowCanvasAppWrapper";
 import { useFlowCanvasStore } from "./poc/store/flowCanvasStore";
 import { useGitHubSyncEngine } from "@/lib/githubTaskSync";
 import { useMcpHostBridge } from "@/lib/mcpHostBridge";
+import { useReminders } from "@/lib/reminders";
 import { isActionable, startFocus, stopFocus } from "@/lib/nodeBehaviors";
 import { playFocusBlockEndFeedback } from "@/lib/focusSessionFeedback";
 
@@ -33,6 +34,7 @@ export function FocusCanvasApp() {
 function FocusCanvasAppInner() {
   useGitHubSyncEngine();
   useMcpHostBridge();
+  useReminders();
   const flowSelectedNodeId = useFlowCanvasStore((s) => s.selectedNodeId);
   const storeActiveFocusNodeId = useFlowCanvasStore((s) => s.activeFocusNodeId);
   const isTimerRunning = useFlowCanvasStore((s) => s.isTimerRunning);

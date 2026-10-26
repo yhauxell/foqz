@@ -44,6 +44,8 @@ Content is text, drawing primitives are shapes, and everything else (to-do, focu
 - **Regions** group things by area. Drop something inside to adopt it, drag it out to release it, no confirmation. Deleting a region keeps what was inside it.
 - Connections are **depends on** or **relates to**. "Depends on" drives the waiting/ready badges and the AI context.
 - Sketch-style rectangles, circles and arrows (**Rough.js**), freehand pencil (**perfect-freehand**), pasted images and link cards.
+- **Reminders** on any element (bell in its toolbar): a desktop notification when it comes due, even with the window hidden in the tray. Clicking it brings you back to the element.
+- **Highlights** in text: `==text==` or `=={blue}text==` (yellow, green, blue, pink, purple, orange) from the text toolbar.
 
 ### 💬 Annotations
 - Pin a **comment**, **question** or **decision** to any element or to empty canvas, with threaded replies.
@@ -52,7 +54,7 @@ Content is text, drawing primitives are shapes, and everything else (to-do, focu
 ### 🤖 AI assistant & agents
 - **Inline chat** next to any element, a region, or the whole board, with `/` commands (`/todo`, `/expand`, `/criteria`, `/focus`, `/done`, `/rename`).
 - Eight native tools, shared with external agents: `get_canvas_summary`, `spawn_text`, `update_node`, `delete_node`, `expand_task`, `start_focus_session`, `stop_focus_session`, `create_github_issue`.
-- Two providers: **Ollama** (local, private) and any **OpenAI-compatible** endpoint (OpenAI, OpenRouter, Google Gemini, LM Studio) from Settings → Intelligence.
+- Three providers: **Ollama** (local, private), any **OpenAI-compatible** endpoint (OpenAI, OpenRouter, Google Gemini, LM Studio), and your local **Claude Code** CLI, from Settings → Intelligence.
 - **MCP client**: add external tool servers in Settings → Integrations.
 
 ### 🔍 Command bar (`⌘K`)
@@ -226,6 +228,16 @@ Foqz connects to a local Ollama instance with zero API keys or external services
 
 You can also point Foqz at any OpenAI-compatible endpoint (OpenAI, OpenRouter, Google Gemini, LM Studio) from the same tab.
 
+### Run your local Claude Code from the canvas
+
+If you use [Claude Code](https://claude.com/claude-code), the canvas chat can run it instead of a model endpoint. It uses your own Claude login and runs `claude -p` on your machine.
+
+1. In **Settings → Intelligence → Claude Code (local)**, tick **Enable Claude Code**. Foqz finds `claude` on your PATH or in `~/.local/bin`; set **Path to claude** if it lives elsewhere. **Working folder** is where it runs (your home folder by default).
+2. Turn on the Foqz MCP server (**Settings → Integrations**, see below) so Claude Code gets the canvas tools.
+
+Runs from the canvas are locked down, whatever your own Claude Code settings say: restricted mode (no shell or code-running tools, your user and project settings and hooks are not loaded, file tools stay inside the working folder) and `dontAsk` permissions, with only the Foqz canvas tools pre-approved. Anything else that would need permission is refused, since there is no terminal to ask in.
+3. Pick **Claude Code** in the chat's provider menu, or as the model used by Foqz.
+
 ---
 
 ## Connect Claude & Other Agents (MCP Server)
@@ -276,6 +288,8 @@ foqz/
 ├── electron/                   # Electron main process & preload IPC
 │   ├── main.cjs                # Window management, tray, native menus, global shortcuts, auto-updater
 │   ├── settingsMigration.cjs   # v0.14 settings migration (Gemini → OpenAI-compatible, removed keys)
+│   ├── claudeCode.cjs          # Runs the local Claude Code CLI for the canvas chat
+│   ├── reminders.cjs           # Schedules element reminders and shows desktop notifications
 │   ├── logbook.cjs             # Modular monthly logbook files
 │   ├── mcp/                    # MCP client manager and the embedded Foqz MCP server
 │   └── preload.cjs             # ContextBridge API exposing secure disk & app hooks

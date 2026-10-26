@@ -30,6 +30,7 @@ import { runAgentLoop, type AgentToolCallEvent } from '@/lib/mcpAgentLoop'
 import { NATIVE_FOQZ_TOOLS, createFlowCanvasToolExecutor } from '@/lib/canvasTools'
 import { OPENAI_DEFAULT_MODELS } from '@/lib/aiConnectors'
 import type { AiProviderName } from '@/lib/aiProvider'
+import type { ClaudeCodeDetectResult } from '@/lib/claudeCode'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import {
   FOQZ_SYSTEM_PROMPT,
@@ -117,12 +118,29 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     if (activeConfig.provider === 'openai') {
       return settings.openaiDefaultModel || 'gpt-4o-mini'
     }
+    if (activeConfig.provider === 'claude-code') {
+      return settings.claudeCodeModel || 'default'
+    }
     return activeConfig.model
   }, [activeConfig, selectedModel, settings])
+
+  const claudeCodeApi = typeof window !== 'undefined' ? window.focusStore?.claudeCode : undefined
+  const [claudeCodeStatus, setClaudeCodeStatus] = useState<ClaudeCodeDetectResult | null>(null)
+  useEffect(() => {
+    if (!modelMenuOpen || activeConfig.provider !== 'claude-code' || !claudeCodeApi) return
+    let cancelled = false
+    claudeCodeApi.detect().then((r) => {
+      if (!cancelled) setClaudeCodeStatus(r)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [modelMenuOpen, activeConfig.provider, claudeCodeApi])
 
   const isAiReady = useMemo(() => {
     if (activeConfig.provider === 'ollama') return online
     if (activeConfig.provider === 'openai') return Boolean(settings.openaiApiKey?.trim())
+    if (activeConfig.provider === 'claude-code') return Boolean(claudeCodeApi) && settings.claudeCodeEnabled === true
     return Boolean(activeConfig.apiKey)
   }, [activeConfig, online, settings])
 
@@ -1023,6 +1041,8 @@ ${TOOL_GUIDE}`
                       ? `Active AI: ${activeConfig.provider.toUpperCase()} (${activeModelLabel})`
                       : activeConfig.provider === 'ollama'
                       ? 'Ollama is offline (start localhost:11434)'
+                      : activeConfig.provider === 'claude-code'
+                      ? 'Turn on Claude Code in Settings → Intelligence (desktop app only)'
                       : `${activeConfig.provider.toUpperCase()} API key missing`
                   }
                   className={`h-6 px-2 rounded-full border text-[10px] font-medium transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer ${
@@ -1039,7 +1059,11 @@ ${TOOL_GUIDE}`
                 }`}
               />
               <span className="truncate max-w-[85px] font-mono text-[10px]">
-                {activeConfig.provider === 'openai' ? 'OpenAI' : 'Ollama'}
+                {activeConfig.provider === 'openai'
+                  ? 'OpenAI'
+                  : activeConfig.provider === 'claude-code'
+                  ? 'Claude Code'
+                  : 'Ollama'}
                 : {activeModelLabel}
               </span>
               <ChevronDown className="size-2.5 text-zinc-400 shrink-0" />
@@ -1060,7 +1084,7 @@ ${TOOL_GUIDE}`
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-1 bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-0.5 rounded-full text-xs">
+              <div className="grid grid-cols-3 gap-1 bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 p-0.5 rounded-full text-xs">
                 <button
                   type="button"
                   onClick={() => handleSelectProvider('ollama')}
@@ -1083,7 +1107,50 @@ ${TOOL_GUIDE}`
                 >
                   OpenAI
                 </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectProvider('claude-code')}
+                  className={`py-1 px-1.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer text-center ${
+                    activeConfig.provider === 'claude-code'
+                      ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs'
+                      : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  Claude Code
+                </button>
               </div>
+
+              {activeConfig.provider === 'claude-code' && (
+                <div className="pt-0.5" data-claude-code-status>
+                  {!claudeCodeApi || !settings.claudeCodeEnabled ? (
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-[11px] text-amber-800 dark:text-amber-300">
+                      <p className="font-semibold">Claude Code is off</p>
+                      <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
+                        {claudeCodeApi
+                          ? 'Turn it on in Settings → Intelligence to run your local Claude Code from the canvas.'
+                          : 'Runs only in the Foqz desktop app.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/60 text-[11px] text-zinc-600 dark:text-zinc-300 space-y-0.5">
+                      {!claudeCodeStatus ? (
+                        <p>Looking for Claude Code…</p>
+                      ) : claudeCodeStatus.ok ? (
+                        <>
+                          <p className="font-semibold text-zinc-800 dark:text-zinc-100">{claudeCodeStatus.version}</p>
+                          <p className="text-[10px]">
+                            {claudeCodeStatus.canvasTools
+                              ? 'Can read and edit the canvas through the Foqz MCP server.'
+                              : 'Chat only: turn on the Foqz MCP server in Settings → Integrations so it can edit the canvas.'}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-rose-600 dark:text-rose-400">{claudeCodeStatus.error}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {activeConfig.provider === 'openai' && (
                 <div className="space-y-1.5 pt-0.5">

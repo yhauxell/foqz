@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01V3FM85QdM6LYXHppnzr5Xq","name":"Glob","input":{"pattern":"*.ndjson"},"caller":{"type":"direct"}}]},"parent_tool_use_id":null}
+{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_01V3FM85QdM6LYXHppnzr5Xq","type":"tool_result","content":"sample.ndjson\ntool.ndjson"}]},"parent_tool_use_id":null}

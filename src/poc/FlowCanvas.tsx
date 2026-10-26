@@ -25,6 +25,7 @@ import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./edges";
 import { FlowZoomControls } from "./components/FlowZoomControls";
 import { FlowShapeMenu } from "./components/FlowShapeMenu";
+import { ReminderBadges } from "./components/ReminderBadges";
 import { useFlowCanvasShortcuts } from "./hooks/useFlowCanvasShortcuts";
 import {
   Pointer,
@@ -1664,6 +1665,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         />
         <FlowZoomControls sidebarOpen={sidebarOpen} />
         <FlowShapeMenu selectedNode={selectedNode} />
+        <ReminderBadges />
       </ReactFlow>
 
       {/* Live Freehand Pencil Preview Overlay (Smooth 60fps) */}

@@ -7,8 +7,9 @@ import {
   type OllamaToolDefinition,
 } from './ollama'
 import { encodeToolName } from './mcpAgentLoop'
+import type { AiProviderId } from './appSettings'
 
-export type AiProviderName = 'ollama' | 'openai'
+export type AiProviderName = AiProviderId
 
 export interface AiChatMessage extends OllamaChatMessage {
   tool_call_id?: string
@@ -262,6 +263,9 @@ export async function streamAiChatWithTools(
   opts: StreamAiChatOptions,
 ): Promise<StreamAiChatResult> {
   const provider = opts.provider || 'ollama'
+  if (provider === 'claude-code') {
+    throw new Error('Claude Code is run through runAgentLoop, not as a chat completion endpoint.')
+  }
 
   try {
     if (provider === 'openai') {
