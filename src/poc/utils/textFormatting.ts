@@ -1,4 +1,6 @@
 export interface HighlightColor {
+  /** Written into the source as `=={key}text==`. */
+  key: string;
   name: string;
   bg: string;
   text: string;
@@ -7,12 +9,12 @@ export interface HighlightColor {
 }
 
 export const HIGHLIGHT_COLORS: HighlightColor[] = [
-  { name: "Yellow", bg: "#fef08a", text: "#713f12", darkBg: "#854d0e", darkText: "#fef08a" },
-  { name: "Green",  bg: "#bbf7d0", text: "#14532d", darkBg: "#166534", darkText: "#bbf7d0" },
-  { name: "Blue",   bg: "#bfdbfe", text: "#1e3a8a", darkBg: "#1e40af", darkText: "#bfdbfe" },
-  { name: "Pink",   bg: "#fbcfe8", text: "#831843", darkBg: "#9d174d", darkText: "#fbcfe8" },
-  { name: "Purple", bg: "#e9d5ff", text: "#581c87", darkBg: "#6b21a8", darkText: "#e9d5ff" },
-  { name: "Orange", bg: "#fed7aa", text: "#7c2d12", darkBg: "#9a3412", darkText: "#fed7aa" },
+  { key: "yellow", name: "Yellow", bg: "#fef08a", text: "#713f12", darkBg: "#854d0e", darkText: "#fef08a" },
+  { key: "green", name: "Green",  bg: "#bbf7d0", text: "#14532d", darkBg: "#166534", darkText: "#bbf7d0" },
+  { key: "blue", name: "Blue",   bg: "#bfdbfe", text: "#1e3a8a", darkBg: "#1e40af", darkText: "#bfdbfe" },
+  { key: "pink", name: "Pink",   bg: "#fbcfe8", text: "#831843", darkBg: "#9d174d", darkText: "#fbcfe8" },
+  { key: "purple", name: "Purple", bg: "#e9d5ff", text: "#581c87", darkBg: "#6b21a8", darkText: "#e9d5ff" },
+  { key: "orange", name: "Orange", bg: "#fed7aa", text: "#7c2d12", darkBg: "#9a3412", darkText: "#fed7aa" },
 ];
 
 export type TextFormatType =
@@ -23,6 +25,44 @@ export type TextFormatType =
   | "link"
   | "highlight"
   | "clear";
+
+const HIGHLIGHT_KEYS = HIGHLIGHT_COLORS.map((c) => c.key).join("|");
+/** `==text==` (yellow) or `=={blue}text==`; one line at most, like the renderer. */
+export const HIGHLIGHT_SOURCE_RE = new RegExp(`==(?:\\{(${HIGHLIGHT_KEYS})\\})?([^=\\n]+)==`, "g");
+const WHOLE_HIGHLIGHT_RE = new RegExp(`^==(?:\\{(${HIGHLIGHT_KEYS})\\})?([^=\\n]+)==$`);
+const WHOLE_LEGACY_MARK_RE = /^<mark[^>]*>([\s\S]*)<\/mark>$/;
+// List bullets, checkboxes, headings and quotes stay outside the marker so the line still parses.
+const LINE_PREFIX_RE = /^(\s*(?:>\s*)*(?:#{1,6}\s+|(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)?)([\s\S]*)$/;
+
+function stripHighlights(str: string): string {
+  return str.replace(HIGHLIGHT_SOURCE_RE, "$2").replace(/<\/?mark[^>]*>/g, "");
+}
+
+/**
+ * Highlights `text` with `color`. A text that already is one highlight is recolored, or
+ * unwrapped when the color is the same, so highlights never nest. Anything else loses its
+ * inner highlights and gets one marker per line, because a highlight cannot span lines.
+ * `atLineStart` says whether `text` begins a line, so its list or heading prefix is kept.
+ */
+export function toggleHighlight(text: string, color: HighlightColor, atLineStart = true): string {
+  const whole = text.match(WHOLE_HIGHLIGHT_RE);
+  if (whole) {
+    const current = whole[1] ?? "yellow";
+    return current === color.key ? whole[2] : `=={${color.key}}${whole[2]}==`;
+  }
+  const legacy = text.match(WHOLE_LEGACY_MARK_RE);
+  if (legacy && !legacy[1].includes("\n")) return `=={${color.key}}${stripHighlights(legacy[1])}==`;
+
+  return stripHighlights(text)
+    .split("\n")
+    .map((line, i) => {
+      const [, prefix, body] = (i > 0 || atLineStart ? line.match(LINE_PREFIX_RE) : null) ?? [line, "", line];
+      const trimmed = body.trimEnd();
+      if (!trimmed.trim()) return line;
+      return `${prefix}=={${color.key}}${trimmed}==${body.slice(trimmed.length)}`;
+    })
+    .join("\n");
+}
 
 /**
  * Strips all markdown and HTML tags from a text string.
@@ -35,7 +75,7 @@ export function clearTextFormatting(str: string): string {
     .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "$1")
     .replace(/(?<!_)_([^_]+)_(?!_)/g, "$1")
     .replace(/~~([^~]+)~~/g, "$1")
-    .replace(/==([^=]+)==/g, "$1")
+    .replace(HIGHLIGHT_SOURCE_RE, "$2")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
     .replace(/<\/?[a-zA-Z][^>]*>/g, "");
 }
@@ -81,15 +121,7 @@ export function applyFormattingToString(
     }
     case "highlight": {
       const color = options?.color || HIGHLIGHT_COLORS[0];
-      const markRegex = /^<mark[^>]*>(.*)<\/mark>$/s;
-      const match = current.match(markRegex);
-      if (match) {
-        return match[1];
-      }
-      if (current.startsWith("==") && current.endsWith("==") && current.length >= 4) {
-        return current.slice(2, -2);
-      }
-      return `<mark style="background-color: ${color.bg}; color: ${color.text};">${current || "Highlighted text"}</mark>`;
+      return toggleHighlight(current || "Highlighted text", color);
     }
     case "clear": {
       return clearTextFormatting(current);
@@ -108,8 +140,8 @@ export function applyFormattingToTextarea(
   format: TextFormatType,
   options?: { url?: string; color?: HighlightColor }
 ): string {
-  const start = textarea.selectionStart ?? 0;
-  const end = textarea.selectionEnd ?? 0;
+  let start = textarea.selectionStart ?? 0;
+  let end = textarea.selectionEnd ?? 0;
   const val = textarea.value;
   const hasSelection = start !== end;
   const selectedText = hasSelection ? val.slice(start, end) : "";
@@ -226,29 +258,22 @@ export function applyFormattingToTextarea(
 
     case "highlight": {
       const color = options?.color || HIGHLIGHT_COLORS[0];
-      const tagOpen = `<mark style="background-color: ${color.bg}; color: ${color.text};">`;
-      const tagClose = `</mark>`;
       defaultPlaceholder = "highlighted text";
       if (hasSelection) {
-        const markRegex = /^<mark[^>]*>(.*)<\/mark>$/s;
-        const match = selectedText.match(markRegex);
-        if (match) {
-          replacement = match[1];
-          newSelectStart = start;
-          newSelectEnd = start + replacement.length;
-        } else if (selectedText.startsWith("==") && selectedText.endsWith("==") && selectedText.length >= 4) {
-          replacement = selectedText.slice(2, -2);
-          newSelectStart = start;
-          newSelectEnd = start + replacement.length;
-        } else {
-          replacement = `${tagOpen}${selectedText}${tagClose}`;
-          newSelectStart = start;
-          newSelectEnd = start + replacement.length;
+        // A selection of just the words inside an existing highlight takes its markers along.
+        const before = val.slice(0, start).match(new RegExp(`==(?:\\{(?:${HIGHLIGHT_KEYS})\\})?$`));
+        if (before && val.startsWith("==", end) && !selectedText.includes("==")) {
+          start -= before[0].length;
+          end += 2;
         }
+        replacement = toggleHighlight(val.slice(start, end), color, start === 0 || val[start - 1] === "\n");
+        newSelectStart = start;
+        newSelectEnd = start + replacement.length;
       } else {
-        replacement = `${tagOpen}${defaultPlaceholder}${tagClose}`;
-        newSelectStart = start + tagOpen.length;
-        newSelectEnd = start + tagOpen.length + defaultPlaceholder.length;
+        const open = `=={${color.key}}`;
+        replacement = `${open}${defaultPlaceholder}==`;
+        newSelectStart = start + open.length;
+        newSelectEnd = newSelectStart + defaultPlaceholder.length;
       }
       break;
     }

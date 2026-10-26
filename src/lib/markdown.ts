@@ -1,5 +1,6 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { HIGHLIGHT_SOURCE_RE } from "@/poc/utils/textFormatting";
 
 marked.setOptions({
   gfm: true,
@@ -22,8 +23,10 @@ const DOMPURIFY_CONFIG = {
 
 function preprocessMarkdown(text: string): string {
   if (!text) return "";
-  // Convert standard markdown ==highlight== to <mark>highlight</mark>
-  return text.replace(/==([^=\n]+)==/g, "<mark>$1</mark>");
+  // ==highlight== and =={blue}highlight== become <mark>; the color is a class so dark mode can restyle it.
+  return text.replace(HIGHLIGHT_SOURCE_RE, (_m, color: string | undefined, body: string) =>
+    color ? `<mark class="hl-${color}">${body}</mark>` : `<mark>${body}</mark>`,
+  );
 }
 
 /**
