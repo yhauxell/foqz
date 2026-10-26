@@ -8,6 +8,8 @@ import {
 } from "@xyflow/react";
 import {
   ALargeSmall,
+  Bell,
+  BellRing,
   Bold,
   Check,
   CheckSquare,
@@ -49,6 +51,8 @@ import {
   applyFormattingToString,
   applyFormattingToTextarea,
 } from "../utils/textFormatting";
+import { ReminderPanel } from "./ReminderPanel";
+import { reminderOf } from "@/lib/reminders";
 
 interface FlowShapeMenuProps {
   selectedNode: Node | null;
@@ -108,7 +112,7 @@ const TEXT_SIZES = [
   { label: "XL", px: 32 },
 ];
 
-type MenuId = "style" | "size" | "color" | "border" | "spear" | "more" | "highlight" | "link";
+type MenuId = "style" | "size" | "color" | "border" | "spear" | "more" | "highlight" | "link" | "reminder";
 
 function useOutsideClick(ref: React.RefObject<HTMLDivElement | null>, onClose: () => void) {
   useEffect(() => {
@@ -849,6 +853,29 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
             >
               <MessageSquarePlus className="size-3.5" />
             </ToolButton>
+
+            <div className="relative">
+              {(() => {
+                const reminder = reminderOf(selectedNode);
+                const pending = reminder && !reminder.fired;
+                return (
+                  <ToolButton
+                    label={pending ? "Edit reminder" : "Remind me"}
+                    active={openMenu === "reminder"}
+                    pressed={Boolean(pending)}
+                    onClick={() => toggleMenu("reminder")}
+                    className={pending ? "text-violet-600 dark:text-violet-400" : ""}
+                  >
+                    {pending ? <BellRing className="size-3.5" /> : <Bell className="size-3.5" />}
+                  </ToolButton>
+                );
+              })()}
+              {openMenu === "reminder" && (
+                <Panel below={below} className="w-60">
+                  <ReminderPanel node={selectedNode} onDone={() => setOpenMenu(null)} />
+                </Panel>
+              )}
+            </div>
 
             <div className="relative">
               <ToolButton label="More actions" active={openMenu === "more"} onClick={() => toggleMenu("more")}>

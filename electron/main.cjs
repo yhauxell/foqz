@@ -17,6 +17,7 @@ const path = require('node:path')
 const childProcess = require('node:child_process')
 const { McpClientManager } = require('./mcp/McpClientManager.cjs')
 const { FoqzMcpHost } = require('./mcp/FoqzMcpHost.cjs')
+const { ReminderScheduler } = require('./reminders.cjs')
 const logbook = require('./logbook.cjs')
 
 // Ensure production macOS app inherits full user shell PATH (npx, node, uvx, bun, etc.)
@@ -78,6 +79,7 @@ fixSystemPath()
 
 const mcpManager = new McpClientManager()
 const mcpHost = new FoqzMcpHost()
+const reminders = new ReminderScheduler({ ipcMain, getWindow: () => mainWindow, showWindow: () => showWindow() })
 
 app.setName('Foqz')
 app.name = 'Foqz'
@@ -1016,6 +1018,7 @@ ipcMain.handle('mcpHost:regenerateToken', async () => {
 
 app.on('before-quit', (e) => {
   mcpManager.disconnectAll().catch(() => {})
+  reminders.dispose()
   if (appQuitting) return
   if (!mainWindow || mainWindow.isDestroyed()) return
   e.preventDefault()

@@ -47,6 +47,19 @@ contextBridge.exposeInMainWorld('focusStore', {
       return () => ipcRenderer.removeListener('mcpHost:call', listener)
     },
   },
+  reminders: {
+    set: (list) => ipcRenderer.send('reminders:set', list),
+    onFired: (callback) => {
+      const listener = (_event, nodeId) => callback(nodeId)
+      ipcRenderer.on('reminders:fired', listener)
+      return () => ipcRenderer.removeListener('reminders:fired', listener)
+    },
+    onOpen: (callback) => {
+      const listener = (_event, nodeId) => callback(nodeId)
+      ipcRenderer.on('reminders:open', listener)
+      return () => ipcRenderer.removeListener('reminders:open', listener)
+    },
+  },
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),
     getState: () => ipcRenderer.invoke('updater:getState'),
