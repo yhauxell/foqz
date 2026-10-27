@@ -1,14 +1,23 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('focusStore', {
-  loadSnapshot: () => ipcRenderer.invoke('snapshot:load'),
-  saveSnapshot: (snapshot) => ipcRenderer.invoke('snapshot:save', snapshot),
   setTrayTooltip: (text) => ipcRenderer.invoke('tray:setTooltip', text),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (partial) => ipcRenderer.invoke('settings:set', partial),
   exportBoardToFile: (snapshot) => ipcRenderer.invoke('snapshot:exportToFile', snapshot),
   importBoardFromFile: () => ipcRenderer.invoke('snapshot:importFromFile'),
-  clearBoardFile: () => ipcRenderer.invoke('snapshot:clear'),
+  boards: {
+    readSync: (boardId) => ipcRenderer.sendSync('boards:readSync', boardId),
+    readCatalogSync: () => ipcRenderer.sendSync('boards:readCatalogSync'),
+    locationSync: () => ipcRenderer.sendSync('boards:locationSync'),
+    write: (boardId, json, options) => ipcRenderer.invoke('boards:write', boardId, json, options),
+    writeCatalog: (json) => ipcRenderer.invoke('boards:writeCatalog', json),
+    remove: (boardId) => ipcRenderer.invoke('boards:delete', boardId),
+    listBackups: (boardId) => ipcRenderer.invoke('boards:listBackups', boardId),
+    readBackup: (boardId, backupId) => ipcRenderer.invoke('boards:readBackup', boardId, backupId),
+    keepUnreadable: (boardId, raw) => ipcRenderer.invoke('boards:keepUnreadable', boardId, raw),
+    revealUnreadable: () => ipcRenderer.invoke('boards:revealUnreadable'),
+  },
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   fetchOgMetadata: (url) => ipcRenderer.invoke('link:fetchOgMetadata', url),
   toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),

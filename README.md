@@ -369,7 +369,9 @@ Foqz stores board snapshots, logs, and settings as local JSON via Electron's sto
 - **Linux**: `~/.config/foqz/`
 
 ### File Layout
-- Boards: kept in the app's local storage (one snapshot per board). Opening a board saved by v0.13 upgrades it once and keeps the original under `foqz_board_backup_v1:<board id>`.
+- `boards/<board id>.json`: one file per board, written atomically (temp file, then rename). `boards/catalog.json` lists the boards. The app's local storage keeps a copy as a cache; on start the newer of the two wins.
+- `boards/backups/<board id>/`: earlier versions of each board, taken at most every 5 minutes while you edit. The last 20 are kept, plus one per day for two weeks. Restore one from the board menu (**Restore from backup…**). Deleting or clearing a board keeps its last version here.
+- `boards/unreadable/`: board data that could not be read. Foqz keeps it there and shows an empty board with a recovery prompt instead of overwriting it.
 - `app-settings.json`: User preferences, working hours, AI keys.
 - `foqz-mcp.json`: MCP tool servers. `foqz-mcp-host.json`: the embedded MCP server port and token.
 - `logbook/YYYY-MM.json`: Modular monthly partitions containing completed tasks, time tracked, completion timestamps, and provenance telemetry.

@@ -50,7 +50,8 @@ import {
   getMaxZIndex,
   findFrameAt,
 } from "./store/flowCanvasStore";
-import { getCanvasStorage, nextBoardSnapshot } from "@/lib/storage";
+import { getCanvasStorage } from "@/lib/storage";
+import { saveActiveBoardNow } from "@/lib/storage/boardPersistence";
 import { isActionable, isTextNode, startFocus, stopFocus, toggleActionable } from "@/lib/nodeBehaviors";
 import {
   findAnnotationTargetAtFlowPos,
@@ -545,27 +546,40 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     };
   }, [fitView, screenToFlowPosition, flowToScreenPosition, setNodes, setSelectedNodeId]);
 
-  // 3. Debounced Auto-save through the canvas storage adapter
+  // 3. Debounced auto-save through the canvas storage adapter. A pending save runs right away when
+  // the app quits or the window is hidden, so the last edit is never lost.
+  const savePendingRef = useRef(false);
   useEffect(() => {
+    savePendingRef.current = true;
     const timer = setTimeout(() => {
-      try {
-        const storage = getCanvasStorage();
-        const previous = storage.loadBoardSync(activeBoardId);
-        storage.saveBoardSync(
-          activeBoardId,
-          nextBoardSnapshot({
-            nodes,
-            edges,
-            annotations,
-            previous,
-          })
-        );
-      } catch (err) {
-        console.warn("Failed to save React Flow snapshot:", err);
-      }
+      savePendingRef.current = false;
+      saveActiveBoardNow();
     }, 600);
     return () => clearTimeout(timer);
   }, [nodes, edges, annotations, activeBoardId]);
+
+  useEffect(() => {
+    const flushPending = () => {
+      if (!savePendingRef.current) return;
+      savePendingRef.current = false;
+      saveActiveBoardNow();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushPending();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flushPending);
+    // The main process waits for this before quitting, and for the board files to be written.
+    const offShutdown = window.focusStore?.onPrepareShutdown?.(async () => {
+      flushPending();
+      await getCanvasStorage().whenIdle();
+    });
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flushPending);
+      offShutdown?.();
+    };
+  }, []);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {

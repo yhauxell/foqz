@@ -1,4 +1,5 @@
 import { LocalStorageAdapter } from "@/lib/storage/LocalStorageAdapter";
+import { DiskBackedStorageAdapter } from "@/lib/storage/DiskBackedStorageAdapter";
 import type { CanvasStorageAdapter } from "@/types/storage";
 
 export {
@@ -17,7 +18,16 @@ export {
   normalizeBoardSnapshot,
 } from "@/lib/storage/snapshot";
 
-let canvasStorage: LocalStorageAdapter = new LocalStorageAdapter();
+export { DiskBackedStorageAdapter } from "@/lib/storage/DiskBackedStorageAdapter";
+export type { BoardBackup } from "@/lib/storage/LocalStorageAdapter";
+
+/** Files on disk in the desktop app; localStorage alone in a plain browser (tests, web preview). */
+function createDefaultStorage(): LocalStorageAdapter {
+  const disk = typeof window !== "undefined" ? window.focusStore?.boards : undefined;
+  return disk ? new DiskBackedStorageAdapter(disk) : new LocalStorageAdapter();
+}
+
+let canvasStorage: LocalStorageAdapter = createDefaultStorage();
 
 /** Active canvas storage adapter (defaults to localStorage). */
 export function getCanvasStorage(): LocalStorageAdapter {
@@ -41,7 +51,7 @@ export function setCanvasStorage(
   );
 }
 
-/** Reset to a fresh LocalStorageAdapter bound to the default storage. */
+/** Reset to a fresh default adapter. */
 export function resetCanvasStorage(): void {
-  canvasStorage = new LocalStorageAdapter();
+  canvasStorage = createDefaultStorage();
 }

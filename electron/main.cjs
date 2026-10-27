@@ -20,6 +20,7 @@ const { FoqzMcpHost } = require('./mcp/FoqzMcpHost.cjs')
 const { ReminderScheduler } = require('./reminders.cjs')
 const { ClaudeCodeRunner } = require('./claudeCode.cjs')
 const logbook = require('./logbook.cjs')
+const boardFiles = require('./boardFiles.cjs')
 
 // Ensure production macOS app inherits full user shell PATH (npx, node, uvx, bun, etc.)
 function fixSystemPath() {
@@ -283,7 +284,6 @@ let shutdownTimeout = null
 
 const { migrateGeminiSettings, REMOVED_SETTINGS_KEYS } = require('./settingsMigration.cjs')
 
-const SNAPSHOT_FILE = 'board-snapshot.json'
 const SETTINGS_FILE = 'app-settings.json'
 
 const DEFAULT_SETTINGS = {
@@ -735,37 +735,63 @@ function createTray() {
   tray.setContextMenu(contextMenu)
 }
 
-function getSnapshotPath() {
-  return path.join(app.getPath('userData'), SNAPSHOT_FILE)
-}
+// --- Boards on disk (see boardFiles.cjs) ---------------------------------------------------------
 
-ipcMain.handle('snapshot:load', async () => {
+const boardsRoot = () => app.getPath('userData')
+
+// Startup reads are synchronous so the renderer's store can pick the newer of disk and cache
+// before the first render.
+ipcMain.on('boards:readSync', (event, boardId) => {
   try {
-    const data = await fs.readFile(getSnapshotPath(), 'utf8')
-    return JSON.parse(data)
-  } catch {
-    return null
+    event.returnValue = { ok: true, raw: boardFiles.readBoardSync(boardsRoot(), boardId) }
+  } catch (error) {
+    event.returnValue = { ok: false, error: error.message }
   }
 })
 
-ipcMain.handle('snapshot:save', async (_event, snapshot) => {
+ipcMain.on('boards:readCatalogSync', (event) => {
   try {
-    await fs.mkdir(app.getPath('userData'), { recursive: true })
-    await fs.writeFile(getSnapshotPath(), JSON.stringify(snapshot), 'utf8')
-    return { ok: true }
+    event.returnValue = { ok: true, raw: boardFiles.readCatalogSync(boardsRoot()) }
   } catch (error) {
+    event.returnValue = { ok: false, error: error.message }
+  }
+})
+
+ipcMain.on('boards:locationSync', (event) => {
+  event.returnValue = boardFiles.boardsDir(boardsRoot())
+})
+
+/** Run a board file operation, reporting failures as `{ ok: false, error }` instead of throwing. */
+async function boardsResult(task) {
+  try {
+    return { ok: true, value: await task() }
+  } catch (error) {
+    console.error('[boards]', error)
     return { ok: false, error: error.message }
   }
-})
+}
 
-ipcMain.handle('snapshot:clear', async () => {
-  try {
-    await fs.unlink(getSnapshotPath())
-    return { ok: true }
-  } catch (e) {
-    if (e.code === 'ENOENT') return { ok: true }
-    return { ok: false, error: e.message }
-  }
+ipcMain.handle('boards:write', (_event, boardId, json, options) =>
+  boardsResult(() =>
+    boardFiles.writeBoard(boardsRoot(), boardId, String(json), { forceBackup: Boolean(options?.forceBackup) }),
+  ),
+)
+ipcMain.handle('boards:writeCatalog', (_event, json) =>
+  boardsResult(() => boardFiles.writeCatalog(boardsRoot(), String(json))),
+)
+ipcMain.handle('boards:delete', (_event, boardId) => boardsResult(() => boardFiles.deleteBoard(boardsRoot(), boardId)))
+ipcMain.handle('boards:listBackups', (_event, boardId) =>
+  boardsResult(() => boardFiles.listBackups(boardsRoot(), boardId)),
+)
+ipcMain.handle('boards:readBackup', (_event, boardId, backupId) =>
+  boardsResult(() => boardFiles.readBackup(boardsRoot(), boardId, backupId)),
+)
+ipcMain.handle('boards:keepUnreadable', (_event, boardId, raw) =>
+  boardsResult(() => boardFiles.keepUnreadable(boardsRoot(), boardId, raw)),
+)
+ipcMain.handle('boards:revealUnreadable', () => {
+  shell.openPath(path.join(boardFiles.boardsDir(boardsRoot()), 'unreadable'))
+  return { ok: true }
 })
 
 ipcMain.handle('snapshot:exportToFile', async (_event, snapshot) => {
@@ -970,7 +996,8 @@ ipcMain.on('focus:shutdown-ready', () => {
     shutdownTimeout = null
   }
   appQuitting = true
-  app.quit()
+  // Board writes the renderer started must land before the process exits.
+  boardFiles.whenIdle().finally(() => app.quit())
 })
 
 ipcMain.handle('settings:set', async (_event, partial) => {

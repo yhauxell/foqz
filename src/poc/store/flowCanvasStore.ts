@@ -38,6 +38,11 @@ export function loadBoardSnapshotFromStorage(boardId: string): {
       annotations: stored.annotations,
     };
   }
+  // Never show the demo board in place of one that couldn't be read: it would look like the
+  // user's work was replaced. The unreadable data was kept; the UI offers recovery.
+  if (getCanvasStorage().isUnreadable(boardId)) {
+    return { nodes: [], edges: [], annotations: {} };
+  }
   if (boardId === DEFAULT_BOARD_ID) {
     return { nodes: INITIAL_NODES, edges: INITIAL_EDGES, annotations: {} };
   }
@@ -1365,16 +1370,8 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
 
       resetBoard: () => {
         const state = get();
+        // The board file is kept as a backup, so "Restore from backup" can bring it back.
         getCanvasStorage().deleteBoardSync(state.activeBoardId);
-        if (
-          state.activeBoardId === DEFAULT_BOARD_ID &&
-          typeof window !== "undefined" &&
-          window.focusStore?.clearBoardFile
-        ) {
-          try {
-            window.focusStore.clearBoardFile();
-          } catch {}
-        }
         set({
           nodes: [],
           edges: [],
