@@ -75,6 +75,37 @@ test('an edit made right before quitting is on disk, and boards load from disk w
   }
 });
 
+test('boards never opened since the upgrade are copied to disk too', async () => {
+  // Before this change every board lived only in localStorage.
+  let { app, page } = await launch(userDataDir);
+  await page.evaluate((board) => {
+    localStorage.setItem(
+      'foqz_multiboards_meta_v1',
+      JSON.stringify([
+        { id: 'board-default', name: 'Foqz Board 1', createdAt: 1 },
+        { id: 'board-old', name: 'Old board', createdAt: 2 },
+      ]),
+    );
+    localStorage.setItem('foqz_board_snapshot_board-old', board);
+  }, boardJson([textNode('old', 'Only in the old cache')]));
+  await quit(app);
+  fs.rmSync(boardsDir(), { recursive: true, force: true });
+
+  ({ app, page } = await launch(userDataDir));
+  await expect.poll(() => fs.existsSync(path.join(boardsDir(), 'board-old.json'))).toBe(true);
+  expect(fs.readFileSync(path.join(boardsDir(), 'catalog.json'), 'utf8')).toContain('board-old');
+  await quit(app);
+
+  fs.rmSync(path.join(userDataDir, 'Local Storage'), { recursive: true, force: true });
+  ({ app, page } = await launch(userDataDir));
+  try {
+    await page.evaluate(() => (window as any).useFlowCanvasStore.getState().switchBoard('board-old'));
+    await expect(page.getByText('Only in the old cache')).toBeVisible();
+  } finally {
+    await quit(app);
+  }
+});
+
 test('a board file that cannot be read is kept, and a backup can be restored', async () => {
   const broken = '{"version": 2, "nodes": [';
   fs.mkdirSync(path.join(boardsDir(), 'backups', 'board-default'), { recursive: true });
@@ -90,10 +121,10 @@ test('a board file that cannot be read is kept, and a backup can be restored', a
     await expect(page.getByRole('alert')).toContainText('couldn’t be read');
     await expect(page.getByText('React Flow Migration Milestone')).toHaveCount(0);
 
-    // The unreadable file is kept, and autosave doesn't destroy it.
+    // The unreadable file is kept once, and autosave doesn't destroy it.
     await page.waitForTimeout(1500);
     const kept = fs.readdirSync(path.join(boardsDir(), 'unreadable'));
-    expect(kept.some((f) => fs.readFileSync(path.join(boardsDir(), 'unreadable', f), 'utf8') === broken)).toBe(true);
+    expect(kept.filter((f) => fs.readFileSync(path.join(boardsDir(), 'unreadable', f), 'utf8') === broken)).toHaveLength(1);
     await page.screenshot({ path: 'test-results/storage-electron-unreadable.png' });
 
     await page.getByRole('button', { name: 'Restore from backup…' }).click();

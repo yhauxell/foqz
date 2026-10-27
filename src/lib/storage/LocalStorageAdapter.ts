@@ -163,7 +163,8 @@ export class LocalStorageAdapter implements CanvasStorageAdapter {
     }
     const parsed = parseStoredBoard(raw);
     if (parsed === "invalid") {
-      this.keepUnreadable(boardId, raw!);
+      // Report once; autosave asks again before its first save replaces the data.
+      if (!this.unreadableIds.has(boardId)) this.keepUnreadable(boardId, raw!);
       return null;
     }
     if (!parsed) return null;

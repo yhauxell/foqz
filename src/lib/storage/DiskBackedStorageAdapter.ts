@@ -50,29 +50,47 @@ export class DiskBackedStorageAdapter extends LocalStorageAdapter {
 
   // --- catalog ---
 
+  /**
+   * The catalog on disk wins: the cache copy can be stale when localStorage was full. Without one,
+   * the cache (or the default list) is written to disk, and on the first call every board that has
+   * no file yet is copied from the cache, so boards never opened since the upgrade survive too.
+   */
   listBoardsSync(): BoardMeta[] {
-    if (this.readCache(STORAGE_BOARDS_KEY)) {
-      const boards = super.listBoardsSync();
-      if (!this.readDisk(() => this.disk.readCatalogSync())) this.writeCatalogToDisk(boards);
-      return boards;
-    }
     const raw = this.readDisk(() => this.disk.readCatalogSync());
+    let boards: BoardMeta[] | null = null;
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as unknown;
-        const boards = Array.isArray(parsed) ? parsed.filter(isBoardMeta) : [];
-        if (boards.length > 0) {
-          super.saveBoardCatalogSync(boards);
-          return boards;
-        }
+        const list = Array.isArray(parsed) ? parsed.filter(isBoardMeta) : [];
+        if (list.length > 0) boards = list;
       } catch (err) {
         console.warn("Board catalog on disk could not be read:", err);
       }
     }
-    const boards = super.listBoardsSync();
-    // A new profile: write the default list so the boards folder is complete on its own.
-    if (!raw) this.writeCatalogToDisk(boards);
+    if (boards) {
+      if (this.readCache(STORAGE_BOARDS_KEY) !== JSON.stringify(boards)) super.saveBoardCatalogSync(boards);
+    } else {
+      boards = super.listBoardsSync();
+      // Leave an unreadable catalog file alone; it is replaced on the next catalog change.
+      if (!raw) this.writeCatalogToDisk(boards);
+    }
+    if (!this.copiedToDisk) {
+      this.copiedToDisk = true;
+      this.copyCachedBoardsToDisk(boards);
+    }
     return boards;
+  }
+
+  private copiedToDisk = false;
+
+  private copyCachedBoardsToDisk(boards: BoardMeta[]) {
+    for (const { id } of boards) {
+      if (this.readDisk(() => this.disk.readSync(id)) !== null) continue;
+      const cached = this.readCache(getBoardStorageKey(id));
+      const parsed = parseStoredBoard(cached);
+      if (parsed === "invalid") void this.disk.keepUnreadable(id, cached!);
+      else if (parsed) this.queueDiskWrite(id, cached!, false);
+    }
   }
 
   saveBoardCatalogSync(boards: BoardMeta[]): void {
@@ -85,6 +103,8 @@ export class DiskBackedStorageAdapter extends LocalStorageAdapter {
   loadBoardSync(boardId: string): BoardSnapshot | null {
     const known = this.loaded.get(boardId);
     if (known) return known;
+    // Already kept and reported; autosave asking again must not keep a second copy.
+    if (this.unreadableIds.has(boardId)) return null;
 
     const key = getBoardStorageKey(boardId);
     const sources = [
