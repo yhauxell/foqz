@@ -3,16 +3,15 @@ import type { McpHostApi, McpStoreApi } from "./lib/mcpTypes";
 import type { LogbookDay, LogbookEntry } from "./types/logbook";
 import type { PendingReminder } from "./lib/reminders";
 import type { ClaudeCodeDetectResult } from "./lib/claudeCode";
+import type { DiskBoardBackend } from "./lib/storage/DiskBackedStorageAdapter";
 
 export {};
 
 declare global {
   interface Window {
     focusStore?: {
-      loadSnapshot: () => Promise<unknown>;
-      saveSnapshot: (
-        snapshot: unknown,
-      ) => Promise<{ ok: boolean; error?: string }>;
+      /** Boards as files on disk (desktop app only). */
+      boards?: DiskBoardBackend;
       setTrayTooltip?: (text: string) => Promise<void>;
       getSettings?: () => Promise<AppSettings>;
       setSettings?: (
@@ -30,7 +29,6 @@ declare global {
         | { ok: true; snapshot: unknown }
         | { ok: false; error?: string; canceled?: boolean }
       >;
-      clearBoardFile?: () => Promise<{ ok: boolean; error?: string }>;
       openExternal?: (url: string) => Promise<boolean>;
       fetchOgMetadata?: (url: string) => Promise<{
         url: string;

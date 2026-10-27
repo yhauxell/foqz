@@ -15,6 +15,22 @@ import {
 } from "@/lib/storage/keys";
 import { normalizeBoardSnapshot } from "@/lib/storage/snapshot";
 import { migrateBoardSnapshot } from "@/lib/storage/migrate";
+import { reportSaveError, reportSaveOk, reportUnreadable } from "@/lib/storage/health";
+
+/** Raw data of a board that could not be read, kept so the next save doesn't destroy it. */
+export function getUnreadableBoardKey(boardId: string): string {
+  return `foqz_board_unreadable:${boardId}`;
+}
+
+/** Parse stored board JSON: a snapshot, null when nothing is stored, or "invalid". */
+export function parseStoredBoard(raw: string | null | undefined): BoardSnapshot | null | "invalid" {
+  if (!raw) return null;
+  try {
+    return normalizeBoardSnapshot(JSON.parse(raw), { migrate: false }) ?? "invalid";
+  } catch {
+    return "invalid";
+  }
+}
 
 function resolveStorage(storage?: Storage | null): Storage | null {
   if (storage !== undefined) return storage;
@@ -34,7 +50,8 @@ function resolveStorage(storage?: Storage | null): Storage | null {
  * changing boot semantics.
  */
 export class LocalStorageAdapter implements CanvasStorageAdapter {
-  private readonly storage: Storage | null;
+  protected readonly storage: Storage | null;
+  protected readonly unreadableIds = new Set<string>();
 
   constructor(storage?: Storage | null) {
     this.storage = resolveStorage(storage);
@@ -137,26 +154,71 @@ export class LocalStorageAdapter implements CanvasStorageAdapter {
   }
 
   loadBoardSync(boardId: string): BoardSnapshot | null {
+    let raw: string | null = null;
     try {
-      const key = getBoardStorageKey(boardId);
-      const raw = this.storage?.getItem(key);
-      if (!raw) return null;
-      const snapshot = normalizeBoardSnapshot(JSON.parse(raw), { migrate: false });
-      if (!snapshot) return null;
-      return this.migrateOnLoad(boardId, raw, snapshot);
+      raw = this.storage?.getItem(getBoardStorageKey(boardId)) ?? null;
     } catch (err) {
       console.warn("Failed to load board snapshot:", err);
       return null;
     }
+    const parsed = parseStoredBoard(raw);
+    if (parsed === "invalid") {
+      // Report once; autosave asks again before its first save replaces the data.
+      if (!this.unreadableIds.has(boardId)) this.keepUnreadable(boardId, raw!);
+      return null;
+    }
+    if (!parsed) return null;
+    return this.migrateOnLoad(boardId, raw!, parsed).snapshot;
   }
+
+  /** True when the board's stored data could not be read this session. */
+  isUnreadable(boardId: string): boolean {
+    return this.unreadableIds.has(boardId);
+  }
+
+  /**
+   * Keep data that could not be read under a separate key, so the empty board shown instead
+   * doesn't overwrite it, and tell the UI.
+   */
+  protected keepUnreadable(boardId: string, raw: string): void {
+    this.unreadableIds.add(boardId);
+    let keptAt: string | null = null;
+    try {
+      this.storage?.setItem(getUnreadableBoardKey(boardId), raw);
+      keptAt = `browser storage (${getUnreadableBoardKey(boardId)})`;
+    } catch (err) {
+      console.warn("Failed to keep unreadable board data:", err);
+    }
+    reportUnreadable({ boardId, keptAt });
+  }
+
+  /** Earlier versions of a board, newest first. Only the disk adapter keeps them. */
+  async listBackups(_boardId: string): Promise<BoardBackup[]> {
+    return [];
+  }
+
+  /** Read one backup. Only the disk adapter keeps them. */
+  async readBackup(_boardId: string, _backupId: string): Promise<BoardSnapshot | null> {
+    return null;
+  }
+
+  /** Make the next save of this board keep the version it replaces as a backup. */
+  backupBeforeNextSave(_boardId: string): void {}
+
+  /** Resolves when every save started so far has been written. */
+  async whenIdle(): Promise<void> {}
 
   /**
    * Upgrade an older snapshot in place. The raw JSON is copied to a backup key
    * first (never overwritten), so a bad migration can be recovered by hand.
    */
-  private migrateOnLoad(boardId: string, raw: string, snapshot: BoardSnapshot): BoardSnapshot {
+  protected migrateOnLoad(
+    boardId: string,
+    raw: string,
+    snapshot: BoardSnapshot,
+  ): { snapshot: BoardSnapshot; changed: boolean } {
     const result = migrateBoardSnapshot(snapshot);
-    if (!result.changed || !this.storage) return result.snapshot;
+    if (!result.changed || !this.storage) return result;
     try {
       const backupKey = getBoardBackupKey(boardId, snapshot.version);
       if (this.storage.getItem(backupKey) === null) {
@@ -169,7 +231,7 @@ export class LocalStorageAdapter implements CanvasStorageAdapter {
     } catch (err) {
       console.warn("Failed to persist migrated board snapshot:", err);
     }
-    return result.snapshot;
+    return result;
   }
 
   saveBoardSync(boardId: string, snapshot: BoardSnapshot): void {
@@ -177,8 +239,10 @@ export class LocalStorageAdapter implements CanvasStorageAdapter {
     try {
       const key = getBoardStorageKey(boardId);
       this.storage.setItem(key, JSON.stringify(snapshot));
+      reportSaveOk();
     } catch (err) {
-      console.warn("Failed to save board snapshot:", err);
+      // Usually the storage quota; without a disk copy this means nothing is being saved.
+      reportSaveError(err);
     }
   }
 
@@ -192,7 +256,14 @@ export class LocalStorageAdapter implements CanvasStorageAdapter {
   }
 }
 
-function isBoardMeta(value: unknown): value is BoardMeta {
+export interface BoardBackup {
+  id: string;
+  /** Epoch ms when the backed-up version was replaced. */
+  at: number;
+  bytes: number;
+}
+
+export function isBoardMeta(value: unknown): value is BoardMeta {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
   return (

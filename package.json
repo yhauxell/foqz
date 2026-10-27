@@ -17,6 +17,7 @@
     "interact": "node ./scripts/live-interact.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:main": "node --test \"electron/*.test.cjs\"",
     "test:e2e": "playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
     "build": "vite build",

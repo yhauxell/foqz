@@ -1,6 +1,7 @@
 import { FocusSettings, type SettingsTab } from "@/components/FocusSettings";
 import { FocusAppSettingsProvider, useFocusAppSettings } from "@/context/FocusAppSettingsContext";
 import { TopbarBoardMenu } from "@/components/TopbarBoardMenu";
+import { StorageStatus } from "@/components/BoardRecovery";
 import { FocusInPlace } from "@/components/FocusInPlace";
 import { GlobalSpotlight, type CommandBarView } from "@/components/GlobalSpotlight";
 import { ProjectConnectorsModal } from "@/components/ProjectConnectorsModal";
@@ -388,6 +389,7 @@ function FocusCanvasAppInner() {
 
           {/* Board Name & History Menu */}
           <TopbarBoardMenu />
+          <StorageStatus />
         </div>
 
         {/* Centered command bar (⌘K) */}

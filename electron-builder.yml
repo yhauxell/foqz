@@ -11,6 +11,7 @@ directories:
 files:
   - dist/**/*
   - electron/**/*
+  - "!electron/**/*.test.cjs"
   - package.json
 
 # --- Auto-update (electron-updater) ---

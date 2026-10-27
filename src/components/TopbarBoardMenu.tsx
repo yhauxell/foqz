@@ -8,6 +8,7 @@ import {
   Download,
   Edit2,
   FileCode,
+  History,
   ImageIcon,
   Layers,
   Maximize2,
@@ -21,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useFlowCanvasStore, useTemporalFlowStore } from "@/poc/store/flowCanvasStore";
 import { getCanvasStorage } from "@/lib/storage";
+import { backupsAvailable, RestoreBackupModal } from "@/components/BoardRecovery";
 import {
   BOARD_SNAPSHOT_VERSION,
   type BoardSnapshot,
@@ -52,6 +54,7 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
   const [pageMenuOpen, setPageMenuOpen] = useState(false);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
 
   const pageMenuRef = useRef<HTMLDivElement>(null);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
@@ -381,6 +384,19 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
               <FileCode className="size-3 text-zinc-500" />
               <span>Export as JSON</span>
             </button>
+            {backupsAvailable() && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActionsMenuOpen(false);
+                  setRestoreOpen(true);
+                }}
+                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+              >
+                <History className="size-3 text-zinc-500" />
+                <span>Restore from backup…</span>
+              </button>
+            )}
 
             {/* Destructive actions */}
             <div className="pt-1 mt-1 border-t border-zinc-100 dark:border-zinc-800">
@@ -396,6 +412,8 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
           </div>
         )}
       </div>
+
+      {restoreOpen && <RestoreBackupModal boardId={activeBoardId} onClose={() => setRestoreOpen(false)} />}
 
       {/* Clear Board Confirmation Modal */}
       {showClearConfirmModal &&
@@ -416,7 +434,10 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
                 <div className="flex flex-col">
                   <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">Clear entire board?</h3>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    This will remove all shapes, tasks, frames, and connections from this board. This action cannot be undone.
+                    This will remove all shapes, tasks, frames, and connections from this board.{" "}
+                    {backupsAvailable()
+                      ? "Undo won't bring them back, but Restore from backup will."
+                      : "This action cannot be undone."}
                   </p>
                 </div>
               </div>
