@@ -246,7 +246,7 @@ export const ProjectFrameNode = memo(function ProjectFrameNode({
               syncRepoTasks(repo).finally(() => setIsSyncingGithub(false));
             }}
             className="flex items-center justify-center size-6 rounded-full border border-zinc-300/80 dark:border-zinc-700 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors cursor-pointer shadow-2xs ml-1.5 shrink-0 disabled:cursor-default"
-            title="Sync status and assignees of linked items with GitHub"
+            title="Sync status, assignees, and labels of linked items with GitHub"
           >
             <RefreshCw className={`size-3 shrink-0 ${isSyncingGithub ? "animate-spin" : ""}`} />
           </button>

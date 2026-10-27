@@ -512,3 +512,42 @@ export async function listAssignableUsers(repoInput: string): Promise<GitHubUser
   if (!resp.ok) throw await githubError(resp, `list assignees for ${repo}`)
   return ((await resp.json()) || []).map((u: any) => ({ login: u.login, avatar_url: u.avatar_url }))
 }
+
+/** Add labels without touching the issue's other labels. GitHub creates labels that don't exist yet. */
+export async function addIssueLabels(repoInput: string, issueNumber: number, labels: string[]): Promise<string[]> {
+  const { repo, headers } = requireRepoAndToken(repoInput)
+  const resp = await fetch(`https://api.github.com/repos/${repo}/issues/${issueNumber}/labels`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ labels }),
+  })
+  if (!resp.ok) throw await githubError(resp, `add labels to #${issueNumber}`)
+  return ((await resp.json()) || []).map((l: any) => l.name)
+}
+
+/** Remove one label. Returns the issue's remaining labels, or null if it was already gone. */
+export async function removeIssueLabel(repoInput: string, issueNumber: number, label: string): Promise<string[] | null> {
+  const { repo, headers } = requireRepoAndToken(repoInput)
+  const resp = await fetch(
+    `https://api.github.com/repos/${repo}/issues/${issueNumber}/labels/${encodeURIComponent(label)}`,
+    { method: 'DELETE', headers },
+  )
+  if (resp.status === 404) return null
+  if (!resp.ok) throw await githubError(resp, `remove label "${label}" from #${issueNumber}`)
+  return ((await resp.json()) || []).map((l: any) => l.name)
+}
+
+/** Labels defined in the repository, for the card's label picker. */
+export async function listRepoLabels(repoInput: string): Promise<GitHubLabel[]> {
+  const repo = normalizeGithubRepoInput(repoInput)
+  const resp = await fetch(`https://api.github.com/repos/${repo}/labels?per_page=100`, {
+    headers: getGithubHeaders(repo),
+  })
+  if (!resp.ok) throw await githubError(resp, `list labels for ${repo}`)
+  return ((await resp.json()) || []).map((l: any) => ({
+    id: l.id,
+    name: l.name,
+    color: l.color,
+    description: l.description,
+  }))
+}

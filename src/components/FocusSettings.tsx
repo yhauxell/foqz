@@ -17,7 +17,13 @@ import {
   X,
 } from "lucide-react";
 import { McpSettingsTab } from "@/components/McpSettingsTab";
-import { getSyncIntervalMinutes, setSyncIntervalMinutes } from "@/lib/githubTaskSync";
+import {
+  getStatePushMode,
+  getSyncIntervalMinutes,
+  setStatePushMode,
+  setSyncIntervalMinutes,
+  type StatePushMode,
+} from "@/lib/githubTaskSync";
 import { McpHostSettings } from "./McpHostSettings";
 import { ClaudeCodeSettings } from "./ClaudeCodeSettings";
 import {
@@ -107,6 +113,31 @@ function GitHubSyncIntervalSelect() {
         <option value={10}>Every 10 minutes</option>
         <option value={30}>Every 30 minutes</option>
         <option value={60}>Every hour</option>
+      </select>
+    </label>
+  );
+}
+
+/** Whether completing or reopening a linked item closes or reopens its GitHub issue. */
+function GitHubStatePushSelect() {
+  const [mode, setMode] = useState<StatePushMode>(() => getStatePushMode());
+  return (
+    <label className="flex items-center justify-between gap-3 pt-2 text-xs">
+      <span className="text-muted-foreground">
+        When a linked item is marked done or reopened
+      </span>
+      <select
+        className="h-7 rounded-md border border-border bg-background px-2 text-xs"
+        value={mode}
+        onChange={(e) => {
+          const next = e.target.value as StatePushMode;
+          setMode(next);
+          setStatePushMode(next);
+        }}
+      >
+        <option value="auto">Close or reopen the issue</option>
+        <option value="ask">Ask first</option>
+        <option value="off">Leave the issue as it is</option>
       </select>
     </label>
   );
@@ -1378,6 +1409,7 @@ export function FocusSettings({
                         </div>
 
                         <GitHubSyncIntervalSelect />
+                        <GitHubStatePushSelect />
                       </div>
                     </div>
                 </Section>

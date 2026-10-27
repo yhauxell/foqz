@@ -1,8 +1,14 @@
 import { useState } from "react";
-import { AlertTriangle, Check, Loader2, RefreshCw, User, UserX } from "lucide-react";
+import { AlertTriangle, Check, GitPullRequest, Loader2, Plus, RefreshCw, Tag, User, UserX } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { listAssignableUsers, type GitHubUser } from "@/lib/githubSync";
-import { resolveSyncConflict, syncTask, useGitHubSyncStatus } from "@/lib/githubTaskSync";
+import { listAssignableUsers, listRepoLabels, type GitHubLabel, type GitHubUser } from "@/lib/githubSync";
+import {
+  approveStatePush,
+  declineStatePush,
+  resolveSyncConflict,
+  syncTask,
+  useGitHubSyncStatus,
+} from "@/lib/githubTaskSync";
 import type { SyncField } from "@/lib/githubReconcile";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
@@ -96,11 +102,142 @@ export function GitHubAssigneePicker({
   );
 }
 
+const MAX_LABEL_CHIPS = 2;
+
+/** The card's labels; click to add or remove them. Changes sync to GitHub via the sync engine. */
+export function GitHubLabelPicker({ nodeId, repo, labels }: { nodeId: string; repo: string; labels: string[] }) {
+  const [open, setOpen] = useState(false);
+  const [repoLabels, setRepoLabels] = useState<GitHubLabel[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) setDraft("");
+    if (!next || repoLabels) return;
+    setError(null);
+    listRepoLabels(repo)
+      .then(setRepoLabels)
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  };
+
+  const has = (name: string) => labels.some((l) => l.toLowerCase() === name.toLowerCase());
+  const write = (next: string[]) => useFlowCanvasStore.getState().updateNodeData(nodeId, { githubLabels: next });
+  const toggle = (name: string) =>
+    write(has(name) ? labels.filter((l) => l.toLowerCase() !== name.toLowerCase()) : [...labels, name]);
+  const addDraft = () => {
+    const name = draft.trim();
+    if (name && !has(name)) write([...labels, name]);
+    setDraft("");
+  };
+
+  // Labels on the card that the repository doesn't define (yet) still show, so they can be removed.
+  const colorOf = new Map((repoLabels || []).map((l) => [l.name.toLowerCase(), l.color]));
+  const options = [
+    ...(repoLabels || []).map((l) => l.name),
+    ...labels.filter((l) => !colorOf.has(l.toLowerCase())),
+  ];
+  const query = draft.trim().toLowerCase();
+  const visible = query ? options.filter((o) => o.toLowerCase().includes(query)) : options;
+  const hidden = labels.length - MAX_LABEL_CHIPS;
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger
+        onClick={stop}
+        className="inline-flex items-center gap-1 shrink-0 rounded-full cursor-pointer"
+        title={labels.length ? `Labels: ${labels.join(", ")} (click to edit)` : "Add labels on GitHub"}
+      >
+        {labels.length === 0 ? (
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-medium text-zinc-500 bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15">
+            <Tag className="size-2 text-zinc-400" />
+            Label
+          </span>
+        ) : (
+          <>
+            {labels.slice(0, MAX_LABEL_CHIPS).map((lbl) => (
+              <span
+                key={lbl}
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-medium bg-zinc-200/60 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300/60 dark:hover:bg-zinc-700"
+              >
+                <Tag className="size-2 text-zinc-400" />
+                <span className="truncate max-w-[60px]">{lbl}</span>
+              </span>
+            ))}
+            {hidden > 0 && <span className="text-[8px] font-medium text-zinc-500">+{hidden}</span>}
+          </>
+        )}
+      </PopoverTrigger>
+      <PopoverContent
+        side="bottom"
+        align="start"
+        sideOffset={6}
+        className="w-56 rounded-xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl border border-black/10 dark:border-white/10 shadow-2xl p-1 text-xs nodrag nopan nowheel"
+        onClick={stop}
+        onPointerDown={stop}
+      >
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            // Keep typing away from canvas shortcuts; Escape closes the picker.
+            e.stopPropagation();
+            if (e.key === "Escape") onOpenChange(false);
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addDraft();
+            }
+          }}
+          placeholder="Filter or add a label"
+          aria-label="Filter or add a label"
+          className="mb-1 w-full rounded-md border border-black/10 dark:border-white/10 bg-transparent px-2 py-1 text-xs outline-none focus:border-blue-500/60"
+        />
+        <div className="max-h-56 overflow-y-auto">
+          {error ? (
+            <p className="px-2 py-1.5 text-[10px] text-rose-600 dark:text-rose-400">{error}</p>
+          ) : !repoLabels ? (
+            <div className="flex items-center gap-2 px-2 py-1.5 text-zinc-500">
+              <Loader2 className="size-3 animate-spin" /> Loading labels…
+            </div>
+          ) : null}
+          {visible.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => toggle(name)}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-zinc-700 dark:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <span
+                className="size-2.5 shrink-0 rounded-full border border-black/10 dark:border-white/10"
+                style={{ backgroundColor: colorOf.get(name.toLowerCase()) ? `#${colorOf.get(name.toLowerCase())}` : undefined }}
+              />
+              <span className="flex-1 truncate">{name}</span>
+              {has(name) && <Check className="size-3 text-emerald-500" />}
+            </button>
+          ))}
+          {query && !options.some((o) => o.toLowerCase() === query) && (
+            <button
+              type="button"
+              onClick={addDraft}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-zinc-700 dark:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <Plus className="size-3 text-zinc-400" />
+              <span className="flex-1 truncate">
+                Add "{draft.trim()}"
+              </span>
+            </button>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /** Small sync state icon next to the issue chip; click to sync now. */
 export function GitHubSyncIndicator({ nodeId }: { nodeId: string }) {
   const runtime = useGitHubSyncStatus((s) => s.byNode[nodeId]);
   const status = runtime?.status;
-  if (status === "conflict") return null;
+  if (status === "conflict" || status === "confirm") return null;
 
   const title =
     status === "syncing"
@@ -189,6 +326,45 @@ export function GitHubConflictBanner({ nodeId }: { nodeId: string }) {
           className="rounded-md border border-amber-600/50 px-2 py-0.5 font-semibold hover:bg-amber-500/15"
         >
           Use GitHub
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Shown when close/reopen is set to Ask first and this card's status changed. */
+export function GitHubStateConfirmBanner({ nodeId, issueNumber }: { nodeId: string; issueNumber: number }) {
+  const runtime = useGitHubSyncStatus((s) => s.byNode[nodeId]);
+  if (runtime?.status !== "confirm" || !runtime.pendingState) return null;
+  const verb = runtime.pendingState === "closed" ? "Close" : "Reopen";
+
+  return (
+    <div
+      className="mt-1.5 flex flex-col gap-1.5 rounded-lg border border-purple-500/40 bg-purple-500/10 px-2 py-1.5 text-[10px] text-purple-800 dark:text-purple-300 nodrag"
+      onClick={stop}
+      onPointerDown={stop}
+    >
+      <div className="flex items-start gap-1.5">
+        <GitPullRequest className="size-3 mt-px shrink-0" />
+        <span>
+          {verb} #{issueNumber} on GitHub too?
+          {runtime.error ? <span className="block text-rose-600 dark:text-rose-400">{runtime.error}</span> : null}
+        </span>
+      </div>
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          onClick={() => void approveStatePush(nodeId)}
+          className="rounded-md bg-purple-600 px-2 py-0.5 font-semibold text-white hover:bg-purple-700"
+        >
+          {verb} issue
+        </button>
+        <button
+          type="button"
+          onClick={() => declineStatePush(nodeId)}
+          className="rounded-md border border-purple-600/50 px-2 py-0.5 font-semibold hover:bg-purple-500/15"
+        >
+          Only here
         </button>
       </div>
     </div>

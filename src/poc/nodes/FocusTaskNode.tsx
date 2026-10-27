@@ -6,13 +6,14 @@ import {
   Plus,
   Target,
   GitPullRequest,
-  Tag,
   BookOpen,
 } from "lucide-react";
 import { getIssuePullRequests, type RelatedPullRequest } from "@/lib/githubSync";
 import {
   GitHubAssigneePicker,
   GitHubConflictBanner,
+  GitHubLabelPicker,
+  GitHubStateConfirmBanner,
   GitHubSyncIndicator,
 } from "../components/GitHubTaskSyncControls";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -381,16 +382,13 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                           />
                         ) : null}
 
-                        {Array.isArray(data.githubLabels) &&
-                          (data.githubLabels as string[]).slice(0, 2).map((lbl) => (
-                            <span
-                              key={lbl}
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-medium bg-zinc-200/60 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0"
-                            >
-                              <Tag className="size-2 text-zinc-400" />
-                              <span className="truncate max-w-[60px]">{lbl}</span>
-                            </span>
-                          ))}
+                        {data.githubRepo ? (
+                          <GitHubLabelPicker
+                            nodeId={id}
+                            repo={String(data.githubRepo)}
+                            labels={Array.isArray(data.githubLabels) ? (data.githubLabels as string[]).map(String) : []}
+                          />
+                        ) : null}
 
                         {relatedPrs.map((pr) => (
                           <a
@@ -415,6 +413,7 @@ export const FocusTaskNode = memo(function FocusTaskNode({
 
                         <div className="basis-full">
                           <GitHubConflictBanner nodeId={id} />
+                          <GitHubStateConfirmBanner nodeId={id} issueNumber={Number(data.githubIssueNumber)} />
                         </div>
                       </div>
                   </div>
