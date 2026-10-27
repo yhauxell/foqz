@@ -7,6 +7,7 @@ import { isActionable } from './nodePredicates'
 import {
   isLocallyDirty,
   reconcile,
+  SNAPSHOT_VERSION,
   snapshotFromLocal,
   type IssueState,
   type LocalTaskFields,
@@ -16,17 +17,20 @@ import {
   type SyncSnapshot,
 } from './githubReconcile'
 import {
+  addIssueLabels,
   changeIssueAssignees,
   getGithubToken,
   getIssue,
   listIssuesUpdatedSince,
+  removeIssueLabel,
   updateGitHubIssue,
   type GitHubIssue,
 } from './githubSync'
 
 /**
- * Two-way sync between actionable canvas items and their linked GitHub issues (open/closed and
- * primary assignee; labels are pulled for display).
+ * Two-way sync between actionable canvas items and their linked GitHub issues: open/closed, primary
+ * assignee, and labels. Whether marking an item done closes the issue (and reopening reopens it) is
+ * a setting: automatically, ask first, or never.
  *
  * Last-synced snapshots (one per card) live in localStorage, outside the undoable canvas store, so
  * undoing a task change makes it differ from the snapshot again and the undo is pushed to GitHub
@@ -36,17 +40,20 @@ import {
 const SNAPSHOTS_KEY = 'foqz_github_sync_snapshots'
 const INTERVAL_KEY = 'foqz_github_sync_interval_min'
 const INTERVAL_EVENT = 'foqz:github-sync-interval-changed'
+const STATE_PUSH_KEY = 'foqz_github_sync_state_push'
 const DEFAULT_INTERVAL_MIN = 10
 const PUSH_DEBOUNCE_MS = 1500
 /** Overlap for `since` polling so clock skew between this machine and GitHub can't drop updates. */
 const POLL_OVERLAP_MS = 2 * 60 * 1000
 
-export type TaskSyncStatus = 'syncing' | 'synced' | 'error' | 'conflict'
+export type TaskSyncStatus = 'syncing' | 'synced' | 'error' | 'conflict' | 'confirm'
 
 export interface TaskSyncRuntime {
   status: TaskSyncStatus
   error?: string
   conflict?: { fields: SyncField[]; remote: RemoteIssueFields }
+  /** With close/reopen set to Ask first: the issue state waiting for the user's go-ahead. */
+  pendingState?: IssueState
 }
 
 /** Per-task sync status. Runtime-only: conflicts are re-detected from the persisted snapshots. */
@@ -71,6 +78,23 @@ export function setSyncIntervalMinutes(minutes: number) {
     localStorage.setItem(INTERVAL_KEY, String(minutes))
   } catch {}
   window.dispatchEvent(new CustomEvent(INTERVAL_EVENT))
+}
+
+/** What happens on GitHub when a linked item is marked done or reopened on the canvas. */
+export type StatePushMode = 'auto' | 'ask' | 'off'
+
+export function getStatePushMode(): StatePushMode {
+  try {
+    const raw = localStorage.getItem(STATE_PUSH_KEY)
+    if (raw === 'ask' || raw === 'off') return raw
+  } catch {}
+  return 'auto'
+}
+
+export function setStatePushMode(mode: StatePushMode) {
+  try {
+    localStorage.setItem(STATE_PUSH_KEY, mode)
+  } catch {}
 }
 
 // --- Snapshots ----------------------------------------------------------------------------------
@@ -103,7 +127,6 @@ interface LinkedTask {
   issueNumber: number
   key: string
   local: LocalTaskFields
-  labels: string[]
   status: string
 }
 
@@ -124,8 +147,8 @@ function toLinkedTask(node: Node): LinkedTask | null {
     local: {
       state: d.status === 'done' ? 'closed' : 'open',
       assignee: d.githubAssignee ? String(d.githubAssignee) : null,
+      labels: Array.isArray(d.githubLabels) ? d.githubLabels.map(String) : [],
     },
-    labels: Array.isArray(d.githubLabels) ? d.githubLabels.map(String) : [],
     status: String(d.status || 'open'),
   }
 }
@@ -137,9 +160,16 @@ function findLinkedTask(nodeId: string): LinkedTask | null {
 
 function snapshotFor(task: LinkedTask): SyncSnapshot {
   const existing = snapshots()[task.key]
-  if (existing) return existing
+  if (existing?.v === SNAPSHOT_VERSION) return existing
+  if (existing) {
+    // Written before labels were pushed, when card labels were display-only. Re-baseline them on
+    // the card's labels so a stale difference is never pushed to GitHub as a removal.
+    const upgraded = { ...existing, labels: [...task.local.labels], v: SNAPSHOT_VERSION }
+    saveSnapshot(task.key, upgraded)
+    return upgraded
+  }
   // First sight of a linked task: it was just imported/created in sync with GitHub.
-  const initial = snapshotFromLocal(task.local, task.labels, 0)
+  const initial = snapshotFromLocal(task.local, 0)
   saveSnapshot(task.key, initial)
   return initial
 }
@@ -205,6 +235,8 @@ function remoteFields(issue: GitHubIssue, trackedAssignee: string | null): Remot
 
 const inFlight = new Set<string>()
 const queued = new Set<string>()
+/** Tasks whose pending close/reopen the user just approved (Ask first). */
+const approvedStatePush = new Set<string>()
 
 /**
  * Fetch (or use the provided) remote issue, merge it with the task, push local changes, pull
@@ -228,7 +260,9 @@ export async function syncTask(nodeId: string, remoteIssue?: GitHubIssue): Promi
     const snapshot = snapshotFor(fresh)
     const remote = remoteFields(issue, snapshot.assignee)
     const plan = reconcile(fresh.local, snapshot, remote, Date.now())
-    const hasPush = plan.push.state !== undefined || plan.push.assignee !== undefined
+    const pendingState = holdStatePush(nodeId, plan, snapshot)
+    const hasPush =
+      plan.push.state !== undefined || plan.push.assignee !== undefined || plan.push.labels !== undefined
     if (hasPush && !getGithubToken(fresh.repo)) {
       throw new Error('GitHub token missing. Add it in Settings → Integrations to push changes.')
     }
@@ -239,6 +273,8 @@ export async function syncTask(nodeId: string, remoteIssue?: GitHubIssue): Promi
 
     if (plan.conflicts.length > 0) {
       setRuntime(nodeId, { status: 'conflict', conflict: { fields: plan.conflicts, remote } })
+    } else if (pendingState) {
+      setRuntime(nodeId, { status: 'confirm', pendingState, error: pushError ?? undefined })
     } else if (pushError) {
       setRuntime(nodeId, { status: 'error', error: pushError })
     } else {
@@ -250,6 +286,26 @@ export async function syncTask(nodeId: string, remoteIssue?: GitHubIssue): Promi
     inFlight.delete(nodeId)
     if (queued.delete(nodeId)) void syncTask(nodeId)
   }
+}
+
+/**
+ * Unless close/reopen is automatic (or the user just approved it), take the state push out of the
+ * plan. With Off it is recorded as declined; with Ask first it is returned so the card can ask.
+ */
+function holdStatePush(nodeId: string, plan: ReconcilePlan, snapshot: SyncSnapshot): IssueState | null {
+  const approved = approvedStatePush.delete(nodeId)
+  const state = plan.push.state
+  if (!state || approved) return null
+  const mode = getStatePushMode()
+  if (mode === 'auto') return null
+  delete plan.push.state
+  // GitHub didn't change (or this would be a pull or a conflict), so it keeps the snapshot state.
+  plan.nextSnapshot.state = snapshot.state
+  if (mode === 'off') {
+    plan.nextSnapshot.declinedState = state
+    return null
+  }
+  return state
 }
 
 /**
@@ -286,6 +342,19 @@ async function executePush(task: LinkedTask, plan: ReconcilePlan): Promise<strin
     }
     nextSnapshot.assignee = to
   }
+
+  if (push.labels) {
+    let labels: string[] | null = null
+    for (const name of push.labels.remove) {
+      // null: already removed on GitHub, which is what we wanted.
+      labels = (await removeIssueLabel(repo, issueNumber, name)) ?? labels
+    }
+    if (push.labels.add.length > 0) labels = await addIssueLabels(repo, issueNumber, push.labels.add)
+    if (labels) {
+      nextSnapshot.labels = labels
+      pull.labels = labels
+    }
+  }
   return null
 }
 
@@ -313,6 +382,22 @@ export async function resolveSyncConflict(nodeId: string, choice: 'mine' | 'gith
   saveSnapshot(task.key, snapshot)
   writeTask(nodeId, patch)
   await syncTask(nodeId)
+}
+
+// --- Close/reopen confirmation (Ask first) -----------------------------------------------------
+
+/** Push the pending close/reopen to GitHub. */
+export async function approveStatePush(nodeId: string) {
+  approvedStatePush.add(nodeId)
+  await syncTask(nodeId)
+}
+
+/** Keep the change on the canvas only; it is not pushed or asked about again. */
+export function declineStatePush(nodeId: string) {
+  const task = findLinkedTask(nodeId)
+  if (!task) return
+  saveSnapshot(task.key, { ...snapshotFor(task), declinedState: task.local.state })
+  setRuntime(nodeId, { status: 'synced' })
 }
 
 // --- Bulk sync ----------------------------------------------------------------------------------
@@ -386,10 +471,20 @@ export function useGitHubSyncEngine() {
         const snapshot = snapshotFor(task)
         if (!isLocallyDirty(task.local, snapshot)) {
           lastDirtySignature.delete(task.nodeId)
+          // Back in sync (e.g. undo): drop a stale prompt, and forget a declined state so marking
+          // the task done again asks again.
+          if (useGitHubSyncStatus.getState().byNode[task.nodeId]?.status === 'confirm') {
+            setRuntime(task.nodeId, { status: 'synced' })
+          }
+          if (snapshot.declinedState && task.local.state === snapshot.state) {
+            const { declinedState: _declined, ...rest } = snapshot
+            saveSnapshot(task.key, rest)
+          }
           continue
         }
         // Schedule once per distinct local edit; failed pushes wait for the next edit or poll.
-        const signature = `${task.local.state}|${task.local.assignee}`
+        const labels = [...task.local.labels].map((l) => l.toLowerCase()).sort().join(',')
+        const signature = `${task.local.state}|${task.local.assignee}|${labels}`
         if (lastDirtySignature.get(task.nodeId) === signature) continue
         lastDirtySignature.set(task.nodeId, signature)
         if (useGitHubSyncStatus.getState().byNode[task.nodeId]?.status === 'conflict') continue

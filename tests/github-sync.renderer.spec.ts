@@ -1,7 +1,7 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 
 /**
- * Two-way to-do <-> GitHub issue sync (status, assignee; labels pulled for display) against an in-memory
+ * Two-way to-do <-> GitHub issue sync (status, assignee, labels) against an in-memory
  * fake of the GitHub REST API. No real network calls: api.github.com and avatar images are routed.
  */
 
@@ -95,6 +95,9 @@ async function setupFakeGitHub(page: Page): Promise<FakeGitHub> {
     }
     if (path === '/issues' && method === 'GET') return json(200, [issueJson()]);
     if (path === '/assignees') return json(200, ['amy', 'bob', 'cat', 'mallory'].map((login) => ({ login })));
+    if (path === '/labels') {
+      return json(200, ['bug', 'enhancement', 'docs'].map((name) => ({ name, color: 'aabbcc' })));
+    }
     if (path.endsWith('/timeline')) return json(200, []);
     return json(404, { message: 'Not Found' });
   });
@@ -137,8 +140,20 @@ async function pickAssignee(page: Page, login: string, id = 'task-gh') {
   await page.getByRole('dialog').getByRole('button', { name: `@${login}`, exact: true }).click();
 }
 
+async function setStatePushMode(page: Page, mode: 'auto' | 'ask' | 'off') {
+  await page.evaluate((m) => localStorage.setItem('foqz_github_sync_state_push', m), mode);
+}
+
+async function toggleLabel(page: Page, name: string, id = 'task-gh') {
+  const dialog = page.getByRole('dialog');
+  if (!(await dialog.isVisible())) {
+    await card(page, id).locator('[title^="Labels:"], [title="Add labels on GitHub"]').click();
+  }
+  await dialog.getByRole('button', { name, exact: true }).click();
+}
+
 async function syncFrame(page: Page) {
-  await page.locator('button[title^="Sync status and assignees"]').click();
+  await page.locator('button[title^="Sync status, assignees, and labels"]').click();
 }
 
 test.describe('GitHub two-way task sync', () => {
@@ -225,5 +240,96 @@ test.describe('GitHub two-way task sync', () => {
 
     expect(gh.writes.filter((w) => w.startsWith('PATCH'))).toEqual([`PATCH /issues/${ISSUE} {"state":"closed"}`]);
     expect(gh.issue.state).toBe('closed');
+  });
+
+  test('adding and removing labels on the card changes only those labels on GitHub', async ({ page }) => {
+    gh.issue.labels = ['enhancement', 'triage']; // added on GitHub meanwhile; must survive
+    await toggleLabel(page, 'bug');
+    await toggleLabel(page, 'enhancement');
+    await page.keyboard.press('Escape');
+
+    await expect.poll(() => gh.issue.labels).toEqual(['triage', 'bug']);
+    expect(gh.writes).toEqual([
+      `DELETE /issues/${ISSUE}/labels/enhancement`,
+      `POST /issues/${ISSUE}/labels {"labels":["bug"]}`,
+    ]);
+    await expect(card(page).locator('[title="Labels: triage, bug (click to edit)"]')).toBeVisible();
+  });
+
+  test('a new label can be typed into the picker', async ({ page }) => {
+    await card(page).locator('[title^="Labels:"]').click();
+    await page.getByRole('dialog').getByRole('textbox', { name: 'Filter or add a label' }).fill('needs design');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    await expect.poll(() => gh.issue.labels).toEqual(['enhancement', 'needs design']);
+    await page.screenshot({ path: 'test-results/github-sync-labels.png' });
+  });
+
+  test('labels from before label sync are never pushed as removals', async ({ page }) => {
+    // Card and snapshot disagree, as could happen while labels were display-only.
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('foqz_github_sync_snapshots'))).not.toBeNull();
+    await page.evaluate(() => {
+      const all = JSON.parse(localStorage.getItem('foqz_github_sync_snapshots') || '{}');
+      for (const key of Object.keys(all)) {
+        delete all[key].v;
+        all[key].labels = ['enhancement', 'wontfix'];
+      }
+      localStorage.setItem('foqz_github_sync_snapshots', JSON.stringify(all));
+    });
+    await page.reload();
+    await expect(card(page)).toBeVisible();
+    gh.issue.labels = ['enhancement', 'wontfix'];
+    await syncFrame(page);
+
+    await expect(card(page).getByText('wontfix', { exact: true })).toBeVisible();
+    expect(gh.writes).toEqual([]);
+  });
+
+  test('with Ask first, the issue closes only after confirming', async ({ page }) => {
+    await setStatePushMode(page, 'ask');
+    await card(page).locator('[title="Mark as completed"]').click();
+
+    const prompt = card(page).getByText(`Close #${ISSUE} on GitHub too?`);
+    await expect(prompt).toBeVisible();
+    expect(gh.writes).toEqual([]);
+    await page.screenshot({ path: 'test-results/github-sync-ask-first.png' });
+
+    await card(page).getByRole('button', { name: 'Close issue' }).click();
+    await expect.poll(() => gh.issue.state).toBe('closed');
+    await expect(prompt).toBeHidden();
+  });
+
+  test('with Ask first, "Only here" keeps the issue open and does not ask again', async ({ page }) => {
+    await setStatePushMode(page, 'ask');
+    await card(page).locator('[title="Mark as completed"]').click();
+    await card(page).getByRole('button', { name: 'Only here' }).click();
+
+    await syncFrame(page);
+    await page.waitForTimeout(2000); // longer than the push debounce
+    await expect(card(page).getByText(/on GitHub too\?/)).toBeHidden();
+    await expect(card(page).locator('[title="Mark as incomplete"]')).toBeVisible();
+    expect(gh.writes).toEqual([]);
+    expect(gh.issue.state).toBe('open');
+
+    // Undo, then complete again: that is a new decision, so it asks again.
+    await card(page).locator('[title="Mark as incomplete"]').click();
+    await card(page).locator('[title="Mark as completed"]').click();
+    await expect(card(page).getByText(`Close #${ISSUE} on GitHub too?`)).toBeVisible();
+  });
+
+  test('with close/reopen off, completing never closes the issue but GitHub closes still pull', async ({ page }) => {
+    await setStatePushMode(page, 'off');
+    await card(page).locator('[title="Mark as completed"]').click();
+    await page.waitForTimeout(2000); // longer than the push debounce
+    await syncFrame(page);
+    await expect(card(page).locator('[title="Mark as incomplete"]')).toBeVisible();
+    expect(gh.writes).toEqual([]);
+
+    gh.issue.state = 'closed';
+    await syncFrame(page);
+    await expect(card(page, 'task-gh2').locator('[title="Mark as incomplete"]')).toBeVisible();
+    expect(gh.writes).toEqual([]);
   });
 });
