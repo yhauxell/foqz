@@ -89,12 +89,34 @@ test.describe('Foqz Electron Native App', () => {
       try {
         // The renderer registers its tools once the canvas has mounted.
         await expect
-          .poll(async () => (await client.listTools()).tools.map((t) => t.name), { timeout: 15000 })
-          .toEqual(expect.arrayContaining(['get_canvas_summary', 'spawn_tasks', 'update_node', 'start_focus_session']));
+          .poll(async () => (await client.listTools()).tools.map((t) => t.name).sort(), { timeout: 15000 })
+          .toEqual(
+            [
+              'create_github_issue',
+              'delete_node',
+              'expand_task',
+              'get_canvas_summary',
+              'spawn_text',
+              'start_focus_session',
+              'stop_focus_session',
+              'update_node',
+            ].sort(),
+          );
 
-        const created = await client.callTool({ name: 'foqz_create_task', arguments: { title: 'Task from MCP e2e' } });
+        const created = await client.callTool({
+          name: 'spawn_text',
+          arguments: { items: [{ text: 'Task from MCP e2e', actionable: true }] },
+        });
         expect(created.isError).toBeFalsy();
         await expect(window.getByText('Task from MCP e2e')).toBeVisible();
+
+        // Removed names still work as aliases, with or without the foqz_ prefix.
+        const viaAlias = await client.callTool({
+          name: 'foqz_spawn_tasks',
+          arguments: { items: [{ text: 'Task via old tool name' }] },
+        });
+        expect(viaAlias.isError).toBeFalsy();
+        await expect(window.getByText('Task via old tool name')).toBeVisible();
 
         const summary = await client.callTool({ name: 'get_canvas_summary', arguments: {} });
         const text = (summary.content as Array<{ text?: string }>).map((c) => c.text).join('\n');
@@ -105,8 +127,8 @@ test.describe('Foqz Electron Native App', () => {
 
       // Settings shows the running server and ready-to-paste client config.
       await window.locator("button[aria-label='Settings']").click();
-      await window.getByRole('button', { name: 'Agents & MCP' }).click();
-      const section = window.getByText('Connect External Agents to Foqz (MCP Server)');
+      await window.getByRole('tab', { name: 'Integrations' }).click();
+      const section = window.getByText('Let external agents use Foqz (MCP server)');
       await section.scrollIntoViewIfNeeded();
       await expect(window.getByText('Running', { exact: true })).toBeVisible();
       await expect(window.getByText(`claude mcp add --transport http foqz ${url}`, { exact: false })).toBeVisible();
