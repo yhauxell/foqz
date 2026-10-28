@@ -116,7 +116,7 @@ test.describe('Foqz Electron Native App', () => {
     }
   });
 
-  test('global quick capture writes an idea and hands focus back', async () => {
+  test('global quick capture adds an idea from a small panel without opening the board', async () => {
     // Uncommon keys, so a Foqz already running on this machine doesn't hold them.
     const toggle = 'CommandOrControl+Alt+Shift+F9';
     const capture = 'CommandOrControl+Alt+Shift+F10';
@@ -128,36 +128,63 @@ test.describe('Foqz Electron Native App', () => {
       await expectIsolatedProfile(app, userDataDir);
       const window = await app.firstWindow();
       await window.waitForSelector('.react-flow', { timeout: 20000 });
-
       expect(await app.evaluate(({ globalShortcut }, acc) => globalShortcut.isRegistered(acc), capture)).toBe(true);
 
-      // Playwright can't press OS-level keys: send what the shortcut handler sends, from a hidden window.
-      await app.evaluate(({ BrowserWindow }) => {
-        const win = BrowserWindow.getAllWindows()[0]!;
-        win.hide();
-        win.show();
-        win.webContents.send('capture:open', { wasHidden: true });
-      });
+      // The panel window is created at startup and stays hidden until the shortcut.
+      await expect.poll(() => app.windows().some((w) => w.url().includes('capture.html'))).toBe(true);
+      const panel = app.windows().find((w) => w.url().includes('capture.html'))!;
+      await panel.waitForSelector('[data-testid="capture-panel"]');
 
-      const input = window.getByPlaceholder('Write something, press Enter. Start with [] for a to-do.');
-      await expect(input).toBeFocused();
-      await input.fill('[] Idea from anywhere');
-      await window.screenshot({ path: 'test-results/electron-quick-capture.png' });
-      await input.press('Enter');
-
-      await expect(window.getByTestId('command-bar')).toHaveCount(0);
-      await expect
-        .poll(() =>
-          window.evaluate(() =>
+      // Playwright can't press OS-level keys: show the panel the way the shortcut does.
+      const showPanel = () =>
+        app.evaluate(({ BrowserWindow }) => {
+          const all = BrowserWindow.getAllWindows();
+          all.find((w) => !w.webContents.getURL().includes('capture.html'))!.hide();
+          const p = all.find((w) => w.webContents.getURL().includes('capture.html'))!;
+          p.webContents.send('capture:shown');
+          p.show();
+          p.focus();
+        });
+      const visibility = () =>
+        app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().map((w) => ({
+            capture: w.webContents.getURL().includes('capture.html'),
+            visible: w.isVisible(),
+            bounds: w.getBounds(),
+          })),
+        );
+      const hasNode = (text: string) =>
+        window.evaluate(
+          (t) =>
             (window as any).useFlowCanvasStore
               .getState()
-              .nodes.some((n: any) => JSON.stringify(n.data).includes('Idea from anywhere')),
-          ),
-        )
-        .toBe(true);
-      await expect
-        .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isVisible()))
-        .toBe(false);
+              .nodes.some((n: any) => JSON.stringify(n.data).includes(t)),
+          text,
+        );
+
+      await showPanel();
+      const input = panel.getByPlaceholder('Capture an idea to Foqz…');
+      await expect(input).toBeFocused();
+      await input.fill('[] Idea from anywhere');
+      await panel.screenshot({ path: 'test-results/electron-quick-capture-panel.png' });
+      const panelBounds = (await visibility()).find((w) => w.capture)!.bounds;
+      expect(panelBounds.width).toBeLessThanOrEqual(640);
+      expect(panelBounds.height).toBeLessThanOrEqual(140);
+
+      await input.press('Enter');
+      await expect.poll(() => hasNode('Idea from anywhere')).toBe(true);
+      const after = await visibility();
+      expect(after.find((w) => w.capture)!.visible).toBe(false);
+      // The board took the idea without being shown.
+      expect(after.find((w) => !w.capture)!.visible).toBe(false);
+
+      // Escape closes without adding, and the next open starts empty.
+      await showPanel();
+      await expect(input).toHaveValue('');
+      await input.fill('Never mind');
+      await input.press('Escape');
+      await expect.poll(async () => (await visibility()).find((w) => w.capture)!.visible).toBe(false);
+      expect(await hasNode('Never mind')).toBe(false);
 
       // Capture shortcut must differ from show / hide; the old value stays registered.
       const res = await window.evaluate(

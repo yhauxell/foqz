@@ -40,9 +40,13 @@ declare global {
       toggleMaximize?: () => Promise<boolean>;
       isMaximized?: () => Promise<boolean>;
       onMaximizedChange?: (callback: (isMaximized: boolean) => void) => () => void;
-      hideWindow?: () => Promise<void>;
-      /** Global quick capture shortcut fired; `wasHidden` when it brought the window up. */
-      onCaptureOpen?: (callback: (payload: { wasHidden: boolean }) => void) => () => void;
+      /** Global quick capture: the panel window sends, the main window adds to the board. */
+      capture?: {
+        submit: (text: string, asTodo: boolean) => Promise<void>;
+        dismiss: () => Promise<void>;
+        onShown: (callback: () => void) => () => void;
+        onAdd: (callback: (payload: { text: string; asTodo: boolean }) => void) => () => void;
+      };
       /** MCP client manager & transport supervisor API */
       mcp?: McpStoreApi;
       /** Embedded Foqz MCP server for external agents */

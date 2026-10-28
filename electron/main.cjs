@@ -621,13 +621,76 @@ function toggleWindow() {
   }
 }
 
-/** Global quick capture: bring the window up with the command bar ready to write. */
+const CAPTURE_WIDTH = 640
+const CAPTURE_HEIGHT = 112
+let captureWindow = null
+
+function loadCapturePage(win) {
+  const devUrl = process.env.VITE_DEV_SERVER_URL
+  if (devUrl) win.loadURL(new URL('capture.html', devUrl.endsWith('/') ? devUrl : `${devUrl}/`).toString())
+  else win.loadFile(path.join(app.getAppPath(), 'dist/capture.html'))
+}
+
+/** Small floating panel for quick capture, kept alive between uses so it opens instantly. */
+function createCaptureWindow() {
+  const isMac = process.platform === 'darwin'
+  captureWindow = new BrowserWindow({
+    width: CAPTURE_WIDTH,
+    height: CAPTURE_HEIGHT,
+    show: false,
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    // An NSPanel floats over full-screen apps without pulling the whole app forward.
+    type: isMac ? 'panel' : undefined,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  })
+  captureWindow.setAlwaysOnTop(true, 'floating')
+  captureWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  captureWindow.on('blur', () => hideCapture())
+  captureWindow.on('closed', () => {
+    captureWindow = null
+  })
+  loadCapturePage(captureWindow)
+}
+
+/** Global quick capture: open the panel on the display under the cursor. */
 function summonCapture() {
-  if (!mainWindow) return
-  const wasHidden = !mainWindow.isVisible()
-  if (wasHidden) showWindow()
-  else mainWindow.focus()
-  mainWindow.webContents.send('capture:open', { wasHidden })
+  if (!captureWindow) createCaptureWindow()
+  if (captureWindow.isVisible()) {
+    captureWindow.focus()
+    return
+  }
+  const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  captureWindow.setBounds({
+    x: Math.round(workArea.x + (workArea.width - CAPTURE_WIDTH) / 2),
+    y: Math.round(workArea.y + workArea.height * 0.22),
+    width: CAPTURE_WIDTH,
+    height: CAPTURE_HEIGHT,
+  })
+  captureWindow.webContents.send('capture:shown')
+  captureWindow.show()
+  captureWindow.focus()
+}
+
+function hideCapture() {
+  if (!captureWindow || !captureWindow.isVisible()) return
+  captureWindow.hide()
+  // Hand focus back to the app the shortcut was pressed in.
+  if (process.platform === 'darwin' && !(mainWindow && mainWindow.isVisible())) app.hide()
 }
 
 function attachWindowBoundsListeners() {
@@ -936,8 +999,16 @@ ipcMain.handle('app:getVersion', () => {
   return { version: app.getVersion(), isPackaged: app.isPackaged }
 })
 
-ipcMain.handle('window:hide', () => {
-  hideWindow()
+ipcMain.handle('capture:submit', (_event, payload) => {
+  const text = typeof payload?.text === 'string' ? payload.text : ''
+  if (text.trim() && mainWindow) {
+    mainWindow.webContents.send('capture:add', { text, asTodo: Boolean(payload?.asTodo) })
+  }
+  hideCapture()
+})
+
+ipcMain.handle('capture:dismiss', () => {
+  hideCapture()
 })
 
 ipcMain.handle('window:toggleMaximize', () => {
@@ -1242,6 +1313,10 @@ app.whenReady().then(async () => {
   applyLoginItem()
   createWindow()
   createTray()
+  // After the board, so it never competes with it at startup.
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (!captureWindow) createCaptureWindow()
+  })
 
   const reg = registerShortcuts()
   if (!reg.ok) {

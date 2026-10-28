@@ -20,13 +20,13 @@ import {
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
 import { isActionable, isDone, nodeTitle, startFocus } from '@/lib/nodeBehaviors'
 import { CANVAS_SHORTCUTS } from '@/poc/shortcuts/shortcutsConfig'
+import { parseCapture } from '@/lib/captureParse'
 
 export type CommandBarView = 'search' | 'shortcuts'
 
 interface GlobalSpotlightProps {
   open: boolean
-  /** `reason` is set when the bar closes by capturing text or by Escape / a backdrop click. */
-  onClose: (reason?: 'capture' | 'dismiss') => void
+  onClose: () => void
   /** "search" (default) or the "?" shortcuts list. */
   initialView?: CommandBarView
   /** Placeholder hint when opened for capture (⌘⇧N). */
@@ -93,21 +93,6 @@ function nodeBadge(nodeType: string, actionable: boolean) {
   }
 }
 
-/** Parse capture prefixes: "[] buy milk" or "/todo buy milk" → to-do, "/note x" → sticky. */
-function parseCapture(raw: string): { text: string; actionable: boolean; style: 'plain' | 'sticky' } {
-  let text = raw.trim()
-  let actionable = false
-  let style: 'plain' | 'sticky' = 'plain'
-  if (/^(\[\s?\]|\/todo\b|\/t\b)/i.test(text)) {
-    actionable = true
-    text = text.replace(/^(\[\s?\]|\/todo\b|\/t\b)\s*/i, '')
-  } else if (/^(\/note|\/sticky)\b/i.test(text)) {
-    style = 'sticky'
-    text = text.replace(/^(\/note|\/sticky)\s*/i, '')
-  }
-  return { text, actionable, style }
-}
-
 export function GlobalSpotlight({ open, onClose, initialView = 'search', captureMode = false }: GlobalSpotlightProps) {
   const [query, setQuery] = useState('')
   const [view, setView] = useState<CommandBarView>(initialView)
@@ -158,7 +143,7 @@ export function GlobalSpotlight({ open, onClose, initialView = 'search', capture
         },
       }),
     )
-    onClose(parsed.text ? 'capture' : undefined)
+    onClose()
   }
 
   const actions = useMemo(
@@ -333,7 +318,7 @@ export function GlobalSpotlight({ open, onClose, initialView = 'search', capture
           setTimeout(() => inputRef.current?.focus(), 0)
           return
         }
-        onClose('dismiss')
+        onClose()
       }
     }
     window.addEventListener('keydown', onGlobalKeyDown)
@@ -384,7 +369,7 @@ export function GlobalSpotlight({ open, onClose, initialView = 'search', capture
   return (
     <div
       className="fixed inset-0 z-[7000] flex items-start justify-center pt-20 sm:pt-24 bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-150"
-      onClick={() => onClose('dismiss')}
+      onClick={onClose}
       data-testid="command-bar"
     >
       <div

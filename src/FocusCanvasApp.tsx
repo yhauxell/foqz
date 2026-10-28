@@ -9,7 +9,7 @@ import { GitHubIssuesModal } from "@/components/GitHubIssuesModal";
 import { CreateGitHubIssueModal } from "@/components/CreateGitHubIssueModal";
 import { useOllama } from "@/lib/ollama";
 import { BookOpen, Maximize2, Minimize2, Search, Settings, Sparkles, MessageSquare, X, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AnnotationsPanel } from "@/components/AnnotationsPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LogbookDrawer } from "@/components/LogbookDrawer";
@@ -21,6 +21,7 @@ import { useMcpHostBridge } from "@/lib/mcpHostBridge";
 import { useReminders } from "@/lib/reminders";
 import { isActionable, startFocus, stopFocus } from "@/lib/nodeBehaviors";
 import { playFocusBlockEndFeedback } from "@/lib/focusSessionFeedback";
+import { parseCapture } from "@/lib/captureParse";
 
 export function FocusCanvasApp() {
   return (
@@ -44,8 +45,6 @@ function FocusCanvasAppInner() {
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [spotlightView, setSpotlightView] = useState<CommandBarView>("search");
   const [spotlightCapture, setSpotlightCapture] = useState(false);
-  // Set when the global capture shortcut brought a hidden window up, so it can go away again.
-  const summonedForCaptureRef = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("app");
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
@@ -108,20 +107,18 @@ function FocusCanvasAppInner() {
     document.body.classList.toggle("dark", isDark);
   }, [isDark]);
 
+  // Text from the global quick capture panel, added even while this window is hidden.
   useEffect(() => {
-    if (!window.focusStore?.onCaptureOpen) return;
-    return window.focusStore.onCaptureOpen(({ wasHidden }) => {
-      summonedForCaptureRef.current = wasHidden;
-      setSpotlightView("search");
-      setSpotlightCapture(true);
-      setSpotlightOpen(true);
+    return window.focusStore?.capture?.onAdd(({ text, asTodo }) => {
+      const parsed = parseCapture(text);
+      if (!parsed.text) return;
+      window.dispatchEvent(
+        new CustomEvent("foqz:new-text", {
+          detail: { text: parsed.text, actionable: asTodo || parsed.actionable, style: parsed.style },
+        }),
+      );
     });
   }, []);
-
-  // Closed some other way (⌘K toggles it shut): don't hide on a later close.
-  useEffect(() => {
-    if (!spotlightOpen) summonedForCaptureRef.current = false;
-  }, [spotlightOpen]);
 
   useEffect(() => {
     if (window.focusStore?.isMaximized) {
@@ -576,13 +573,7 @@ function FocusCanvasAppInner() {
 
           <GlobalSpotlight
             open={spotlightOpen}
-            onClose={(reason) => {
-              setSpotlightOpen(false);
-              const summoned = summonedForCaptureRef.current;
-              summonedForCaptureRef.current = false;
-              // Summoned from another app: capture or Escape hands focus back to it.
-              if (summoned && reason) void window.focusStore?.hideWindow?.();
-            }}
+            onClose={() => setSpotlightOpen(false)}
             initialView={spotlightView}
             captureMode={spotlightCapture}
           />

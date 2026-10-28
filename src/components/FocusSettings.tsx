@@ -884,7 +884,7 @@ export function FocusSettings({
               </Row>
               <Row
                 label="Global quick capture"
-                description="From any app, opens Foqz ready to write. Enter adds it to the board and hands focus back. Leave empty to turn off."
+                description="From any app, opens a small capture box. Enter adds the idea to your board without opening Foqz. Leave empty to turn off."
               >
                 <Input
                   inputSize="sm"
