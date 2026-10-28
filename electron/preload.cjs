@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld('focusStore', {
   fetchOgMetadata: (url) => ipcRenderer.invoke('link:fetchOgMetadata', url),
   toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  hideWindow: () => ipcRenderer.invoke('window:hide'),
+  onCaptureOpen: (callback) => {
+    const listener = (_event, payload) => callback(payload)
+    ipcRenderer.on('capture:open', listener)
+    return () => ipcRenderer.removeListener('capture:open', listener)
+  },
   onMaximizedChange: (callback) => {
     const listener = (_event, isMax) => callback(isMax)
     ipcRenderer.on('window:maximized-changed', listener)

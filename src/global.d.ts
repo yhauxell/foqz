@@ -40,6 +40,9 @@ declare global {
       toggleMaximize?: () => Promise<boolean>;
       isMaximized?: () => Promise<boolean>;
       onMaximizedChange?: (callback: (isMaximized: boolean) => void) => () => void;
+      hideWindow?: () => Promise<void>;
+      /** Global quick capture shortcut fired; `wasHidden` when it brought the window up. */
+      onCaptureOpen?: (callback: (payload: { wasHidden: boolean }) => void) => () => void;
       /** MCP client manager & transport supervisor API */
       mcp?: McpStoreApi;
       /** Embedded Foqz MCP server for external agents */

@@ -296,6 +296,7 @@ const DEFAULT_SETTINGS = {
   openAtLogin: false,
   showDockIcon: false,
   globalToggleShortcut: 'CommandOrControl+Shift+F',
+  globalCaptureShortcut: 'CommandOrControl+Shift+Space',
   notifyOnTimerEnd: true,
   playSoundOnTimerEnd: false,
   colorScheme: 'system',
@@ -361,6 +362,12 @@ function mergeSettings(input) {
       ? parsed.globalToggleShortcut.trim()
       : d.globalToggleShortcut
 
+  // Empty string turns quick capture off; only a missing value falls back to the default.
+  const globalCaptureShortcut =
+    typeof parsed.globalCaptureShortcut === 'string'
+      ? parsed.globalCaptureShortcut.trim()
+      : d.globalCaptureShortcut
+
   const rawWh = parsed.workingHours && typeof parsed.workingHours === 'object' ? parsed.workingHours : d.workingHours
   const startMin =
     typeof rawWh.startMin === 'number' && Number.isFinite(rawWh.startMin) ? Math.max(0, Math.min(1440, Math.round(rawWh.startMin))) : d.workingHours.startMin
@@ -381,6 +388,7 @@ function mergeSettings(input) {
     openAtLogin: typeof parsed.openAtLogin === 'boolean' ? parsed.openAtLogin : d.openAtLogin,
     showDockIcon: typeof parsed.showDockIcon === 'boolean' ? parsed.showDockIcon : d.showDockIcon,
     globalToggleShortcut,
+    globalCaptureShortcut,
     notifyOnTimerEnd:
       typeof parsed.notifyOnTimerEnd === 'boolean' ? parsed.notifyOnTimerEnd : d.notifyOnTimerEnd,
     playSoundOnTimerEnd:
@@ -492,14 +500,27 @@ function scheduleSaveBounds() {
   }, 400)
 }
 
-function registerToggleShortcut() {
-  globalShortcut.unregisterAll()
+function registerOneShortcut(accelerator, handler, label) {
   try {
-    const ok = globalShortcut.register(appSettings.globalToggleShortcut, toggleWindow)
-    return { ok, error: ok ? undefined : 'Could not register shortcut (invalid or reserved).' }
+    const ok = globalShortcut.register(accelerator, handler)
+    return { ok, error: ok ? undefined : `Could not register ${label} shortcut (invalid or reserved).` }
   } catch (e) {
-    return { ok: false, error: e.message || 'Shortcut registration failed.' }
+    return { ok: false, error: e.message || `${label} shortcut registration failed.` }
   }
+}
+
+/** Registers show/hide and quick capture. `failed` names the setting that did not register. */
+function registerShortcuts() {
+  globalShortcut.unregisterAll()
+  const toggle = registerOneShortcut(appSettings.globalToggleShortcut, toggleWindow, 'show / hide')
+  if (!toggle.ok) return { ...toggle, failed: 'globalToggleShortcut' }
+  const capture = appSettings.globalCaptureShortcut
+  if (!capture) return { ok: true }
+  if (capture.toLowerCase() === appSettings.globalToggleShortcut.toLowerCase()) {
+    return { ok: false, error: 'Quick capture needs a different shortcut than show / hide.', failed: 'globalCaptureShortcut' }
+  }
+  const res = registerOneShortcut(capture, summonCapture, 'quick capture')
+  return res.ok ? res : { ...res, failed: 'globalCaptureShortcut' }
 }
 
 function createTrayIcon() {
@@ -598,6 +619,15 @@ function toggleWindow() {
   } else {
     showWindow()
   }
+}
+
+/** Global quick capture: bring the window up with the command bar ready to write. */
+function summonCapture() {
+  if (!mainWindow) return
+  const wasHidden = !mainWindow.isVisible()
+  if (wasHidden) showWindow()
+  else mainWindow.focus()
+  mainWindow.webContents.send('capture:open', { wasHidden })
 }
 
 function attachWindowBoundsListeners() {
@@ -906,6 +936,10 @@ ipcMain.handle('app:getVersion', () => {
   return { version: app.getVersion(), isPackaged: app.isPackaged }
 })
 
+ipcMain.handle('window:hide', () => {
+  hideWindow()
+})
+
 ipcMain.handle('window:toggleMaximize', () => {
   if (!mainWindow) return false
   if (process.platform === 'darwin') {
@@ -1001,12 +1035,15 @@ ipcMain.on('focus:shutdown-ready', () => {
 })
 
 ipcMain.handle('settings:set', async (_event, partial) => {
-  const prevShortcut = appSettings.globalToggleShortcut
+  const prevShortcuts = {
+    globalToggleShortcut: appSettings.globalToggleShortcut,
+    globalCaptureShortcut: appSettings.globalCaptureShortcut,
+  }
   appSettings = mergeSettings({ ...appSettings, ...partial })
-  const shortcutResult = registerToggleShortcut()
+  const shortcutResult = registerShortcuts()
   if (!shortcutResult.ok) {
-    appSettings = mergeSettings({ ...appSettings, globalToggleShortcut: prevShortcut })
-    registerToggleShortcut()
+    appSettings = mergeSettings({ ...appSettings, ...prevShortcuts })
+    registerShortcuts()
     await saveSettingsToDisk()
     return { ok: false, error: shortcutResult.error, settings: appSettings }
   }
@@ -1206,13 +1243,18 @@ app.whenReady().then(async () => {
   createWindow()
   createTray()
 
-  const reg = registerToggleShortcut()
+  const reg = registerShortcuts()
   if (!reg.ok) {
     appSettings = mergeSettings({
       ...appSettings,
-      globalToggleShortcut: DEFAULT_SETTINGS.globalToggleShortcut,
+      [reg.failed]: DEFAULT_SETTINGS[reg.failed],
     })
-    registerToggleShortcut()
+    const retry = registerShortcuts()
+    // The default capture key can be taken by another app: keep show / hide working.
+    if (!retry.ok && retry.failed === 'globalCaptureShortcut') {
+      appSettings = mergeSettings({ ...appSettings, globalCaptureShortcut: '' })
+      registerShortcuts()
+    }
     saveSettingsToDisk().catch(() => {})
   }
 

@@ -219,6 +219,7 @@ export function FocusSettings({
   const { settings, update } = useFocusAppSettings();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [shortcutDraft, setShortcutDraft] = useState(settings.globalToggleShortcut);
+  const [captureShortcutDraft, setCaptureShortcutDraft] = useState(settings.globalCaptureShortcut);
   const [presetsDraft, setPresetsDraft] = useState(() =>
     settings.durationPresets.join(", "),
   );
@@ -306,6 +307,7 @@ export function FocusSettings({
 
   useEffect(() => {
     setShortcutDraft(settings.globalToggleShortcut);
+    setCaptureShortcutDraft(settings.globalCaptureShortcut);
     setPresetsDraft(settings.durationPresets.join(", "));
     setWorkingStart(formatTime(settings.workingHours.startMin));
     setWorkingEnd(formatTime(settings.workingHours.endMin));
@@ -324,6 +326,7 @@ export function FocusSettings({
     }
   }, [
     settings.globalToggleShortcut,
+    settings.globalCaptureShortcut,
     settings.durationPresets,
     settings.workingHours,
     settings.ollamaEnabled,
@@ -501,6 +504,12 @@ export function FocusSettings({
     if (!res.ok) setSaveError(res.error ?? "Could not save shortcut");
   }, [update, shortcutDraft]);
 
+  const persistCaptureShortcut = useCallback(async () => {
+    setSaveError(null);
+    const res = await update({ globalCaptureShortcut: captureShortcutDraft.trim() });
+    if (!res.ok) setSaveError(res.error ?? "Could not save shortcut");
+  }, [update, captureShortcutDraft]);
+
   const persistPresets = useCallback(async () => {
     setSaveError(null);
     const nums = parsePresetsText(presetsDraft);
@@ -567,6 +576,7 @@ export function FocusSettings({
       defaultFocusMinutes: merged.defaultFocusMinutes,
       workingHours: { startMin, endMin },
       globalToggleShortcut: shortcutDraft.trim(),
+      globalCaptureShortcut: captureShortcutDraft.trim(),
       ollamaEnabled,
       ollamaBaseUrl: ollamaUrlDraft.trim(),
       ollamaDefaultModel: ollamaModelDraft.trim(),
@@ -595,6 +605,7 @@ export function FocusSettings({
     workingEnd,
     presetsDraft,
     shortcutDraft,
+    captureShortcutDraft,
     ollamaEnabled,
     ollamaUrlDraft,
     ollamaModelDraft,
@@ -869,6 +880,23 @@ export function FocusSettings({
                   disabled={!isElectron}
                   spellCheck={false}
                   autoComplete="off"
+                />
+              </Row>
+              <Row
+                label="Global quick capture"
+                description="From any app, opens Foqz ready to write. Enter adds it to the board and hands focus back. Leave empty to turn off."
+              >
+                <Input
+                  inputSize="sm"
+                  className="w-full min-w-0 font-mono text-xs"
+                  value={captureShortcutDraft}
+                  onChange={(e) => setCaptureShortcutDraft(e.target.value)}
+                  onBlur={() => void persistCaptureShortcut()}
+                  disabled={!isElectron}
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder="Off"
+                  data-testid="settings-capture-shortcut"
                 />
               </Row>
             </Section>

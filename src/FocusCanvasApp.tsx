@@ -9,7 +9,7 @@ import { GitHubIssuesModal } from "@/components/GitHubIssuesModal";
 import { CreateGitHubIssueModal } from "@/components/CreateGitHubIssueModal";
 import { useOllama } from "@/lib/ollama";
 import { BookOpen, Maximize2, Minimize2, Search, Settings, Sparkles, MessageSquare, X, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnnotationsPanel } from "@/components/AnnotationsPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LogbookDrawer } from "@/components/LogbookDrawer";
@@ -44,6 +44,8 @@ function FocusCanvasAppInner() {
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [spotlightView, setSpotlightView] = useState<CommandBarView>("search");
   const [spotlightCapture, setSpotlightCapture] = useState(false);
+  // Set when the global capture shortcut brought a hidden window up, so it can go away again.
+  const summonedForCaptureRef = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("app");
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
@@ -105,6 +107,21 @@ function FocusCanvasAppInner() {
     document.documentElement.classList.toggle("dark", isDark);
     document.body.classList.toggle("dark", isDark);
   }, [isDark]);
+
+  useEffect(() => {
+    if (!window.focusStore?.onCaptureOpen) return;
+    return window.focusStore.onCaptureOpen(({ wasHidden }) => {
+      summonedForCaptureRef.current = wasHidden;
+      setSpotlightView("search");
+      setSpotlightCapture(true);
+      setSpotlightOpen(true);
+    });
+  }, []);
+
+  // Closed some other way (⌘K toggles it shut): don't hide on a later close.
+  useEffect(() => {
+    if (!spotlightOpen) summonedForCaptureRef.current = false;
+  }, [spotlightOpen]);
 
   useEffect(() => {
     if (window.focusStore?.isMaximized) {
@@ -559,7 +576,13 @@ function FocusCanvasAppInner() {
 
           <GlobalSpotlight
             open={spotlightOpen}
-            onClose={() => setSpotlightOpen(false)}
+            onClose={(reason) => {
+              setSpotlightOpen(false);
+              const summoned = summonedForCaptureRef.current;
+              summonedForCaptureRef.current = false;
+              // Summoned from another app: capture or Escape hands focus back to it.
+              if (summoned && reason) void window.focusStore?.hideWindow?.();
+            }}
             initialView={spotlightView}
             captureMode={spotlightCapture}
           />

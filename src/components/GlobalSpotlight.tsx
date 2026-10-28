@@ -25,7 +25,8 @@ export type CommandBarView = 'search' | 'shortcuts'
 
 interface GlobalSpotlightProps {
   open: boolean
-  onClose: () => void
+  /** `reason` is set when the bar closes by capturing text or by Escape / a backdrop click. */
+  onClose: (reason?: 'capture' | 'dismiss') => void
   /** "search" (default) or the "?" shortcuts list. */
   initialView?: CommandBarView
   /** Placeholder hint when opened for capture (⌘⇧N). */
@@ -157,7 +158,7 @@ export function GlobalSpotlight({ open, onClose, initialView = 'search', capture
         },
       }),
     )
-    onClose()
+    onClose(parsed.text ? 'capture' : undefined)
   }
 
   const actions = useMemo(
@@ -332,7 +333,7 @@ export function GlobalSpotlight({ open, onClose, initialView = 'search', capture
           setTimeout(() => inputRef.current?.focus(), 0)
           return
         }
-        onClose()
+        onClose('dismiss')
       }
     }
     window.addEventListener('keydown', onGlobalKeyDown)
@@ -383,7 +384,7 @@ export function GlobalSpotlight({ open, onClose, initialView = 'search', capture
   return (
     <div
       className="fixed inset-0 z-[7000] flex items-start justify-center pt-20 sm:pt-24 bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-150"
-      onClick={onClose}
+      onClick={() => onClose('dismiss')}
       data-testid="command-bar"
     >
       <div

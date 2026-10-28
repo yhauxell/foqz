@@ -115,4 +115,60 @@ test.describe('Foqz Electron Native App', () => {
       await cleanup();
     }
   });
+
+  test('global quick capture writes an idea and hands focus back', async () => {
+    // Uncommon keys, so a Foqz already running on this machine doesn't hold them.
+    const toggle = 'CommandOrControl+Alt+Shift+F9';
+    const capture = 'CommandOrControl+Alt+Shift+F10';
+    const { app, userDataDir, cleanup } = await launchIsolated({
+      'app-settings.json': { globalToggleShortcut: toggle, globalCaptureShortcut: capture, pinWindow: true },
+    });
+
+    try {
+      await expectIsolatedProfile(app, userDataDir);
+      const window = await app.firstWindow();
+      await window.waitForSelector('.react-flow', { timeout: 20000 });
+
+      expect(await app.evaluate(({ globalShortcut }, acc) => globalShortcut.isRegistered(acc), capture)).toBe(true);
+
+      // Playwright can't press OS-level keys: send what the shortcut handler sends, from a hidden window.
+      await app.evaluate(({ BrowserWindow }) => {
+        const win = BrowserWindow.getAllWindows()[0]!;
+        win.hide();
+        win.show();
+        win.webContents.send('capture:open', { wasHidden: true });
+      });
+
+      const input = window.getByPlaceholder('Write something, press Enter. Start with [] for a to-do.');
+      await expect(input).toBeFocused();
+      await input.fill('[] Idea from anywhere');
+      await window.screenshot({ path: 'test-results/electron-quick-capture.png' });
+      await input.press('Enter');
+
+      await expect(window.getByTestId('command-bar')).toHaveCount(0);
+      await expect
+        .poll(() =>
+          window.evaluate(() =>
+            (window as any).useFlowCanvasStore
+              .getState()
+              .nodes.some((n: any) => JSON.stringify(n.data).includes('Idea from anywhere')),
+          ),
+        )
+        .toBe(true);
+      await expect
+        .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isVisible()))
+        .toBe(false);
+
+      // Capture shortcut must differ from show / hide; the old value stays registered.
+      const res = await window.evaluate(
+        (acc) => (window as any).focusStore.setSettings({ globalCaptureShortcut: acc }),
+        toggle,
+      );
+      expect(res.ok).toBe(false);
+      expect(res.settings.globalCaptureShortcut).toBe(capture);
+      expect(await app.evaluate(({ globalShortcut }, acc) => globalShortcut.isRegistered(acc), capture)).toBe(true);
+    } finally {
+      await cleanup();
+    }
+  });
 });

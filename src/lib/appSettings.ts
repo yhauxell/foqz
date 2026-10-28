@@ -25,6 +25,8 @@ export type AppSettings = {
   /** macOS: show the app in the Dock; when false, tray-only (default). */
   showDockIcon: boolean;
   globalToggleShortcut: string;
+  /** Global quick capture: summons the command bar ready to write. Empty turns it off. */
+  globalCaptureShortcut: string;
   notifyOnTimerEnd: boolean;
   playSoundOnTimerEnd: boolean;
   colorScheme: "light" | "dark" | "system";
@@ -61,6 +63,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   openAtLogin: false,
   showDockIcon: false,
   globalToggleShortcut: "CommandOrControl+Shift+F",
+  globalCaptureShortcut: "CommandOrControl+Shift+Space",
   notifyOnTimerEnd: true,
   playSoundOnTimerEnd: false,
   colorScheme: "light",
@@ -189,6 +192,11 @@ export function mergeAppSettings(
       ? parsed.globalToggleShortcut.trim()
       : base.globalToggleShortcut;
 
+  const globalCaptureShortcut =
+    typeof parsed.globalCaptureShortcut === "string"
+      ? parsed.globalCaptureShortcut.trim()
+      : base.globalCaptureShortcut;
+
   const colorScheme =
     parsed.colorScheme === "light" ||
     parsed.colorScheme === "dark" ||
@@ -223,6 +231,7 @@ export function mergeAppSettings(
         ? parsed.showDockIcon
         : base.showDockIcon,
     globalToggleShortcut,
+    globalCaptureShortcut,
     notifyOnTimerEnd:
       typeof parsed.notifyOnTimerEnd === "boolean"
         ? parsed.notifyOnTimerEnd
