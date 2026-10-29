@@ -89,6 +89,8 @@ const claudeCode = new ClaudeCodeRunner({
     const s = mcpHost.getStatus()
     return { enabled: s.enabled, running: s.status === 'running', url: s.url, token: s.token }
   },
+  // Runs with no folder set start in an empty folder Foqz owns, not the home folder.
+  getDefaultCwd: () => path.join(app.getPath('userData'), 'claude-code'),
 })
 
 app.setName('Foqz')
