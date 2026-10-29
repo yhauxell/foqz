@@ -41,14 +41,70 @@ function resolveBinary(configuredPath) {
   return candidateBinaries().find(isExecutable) || null
 }
 
-function resolveCwd(configuredCwd) {
+/**
+ * The configured folder, or `defaultCwd` (created on demand) when none is set; null when the
+ * configured folder does not exist. The default is an empty folder Foqz owns, never the home folder.
+ */
+function resolveCwd(configuredCwd, defaultCwd) {
   const configured = typeof configuredCwd === 'string' ? configuredCwd.trim() : ''
-  if (!configured) return os.homedir()
+  if (!configured) {
+    try {
+      fsSync.mkdirSync(defaultCwd, { recursive: true })
+      return defaultCwd
+    } catch {
+      return null
+    }
+  }
   const expanded = configured.startsWith('~') ? path.join(os.homedir(), configured.slice(1)) : configured
   try {
     if (fsSync.statSync(expanded).isDirectory()) return expanded
   } catch {}
   return null
+}
+
+// Read-only file tools run without approval even under --restricted and dontAsk, so canvas text
+// (imported GitHub issues included) could otherwise get files read and echoed onto the canvas.
+const BLOCKED_FILE_TOOLS = ['Read', 'Glob', 'Grep']
+
+/**
+ * The CLI arguments for one canvas run. The prompt itself goes over stdin.
+ * @param {{ settings: Record<string, any>, systemPrompt?: string, host: { enabled: boolean, running: boolean, url: string, token: string } }} opts
+ */
+function buildRunArgs({ settings, systemPrompt, host }) {
+  const args = [
+    '-p',
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--include-partial-messages',
+    '--no-session-persistence',
+    // Canvas text (imported GitHub issues included) lands in the prompt, so the run is locked down
+    // whatever the user's own Claude Code settings say: no shell or code-running tools, no file
+    // tools, user and project settings ignored, and anything not pre-approved below refused
+    // instead of prompted for.
+    '--restricted',
+    '--permission-mode',
+    'dontAsk',
+    '--disallowedTools',
+    BLOCKED_FILE_TOOLS.join(','),
+  ]
+  if (typeof systemPrompt === 'string' && systemPrompt.trim()) {
+    args.push('--append-system-prompt', systemPrompt)
+  }
+  if (settings.claudeCodeModel) args.push('--model', settings.claudeCodeModel)
+
+  // Canvas tools come from the embedded Foqz MCP server, and only its tools are pre-approved.
+  if (host.enabled && host.running) {
+    const mcpConfig = {
+      mcpServers: {
+        foqz: { type: 'http', url: host.url, headers: { Authorization: `Bearer ${host.token}` } },
+      },
+    }
+    args.push('--mcp-config', JSON.stringify(mcpConfig), '--strict-mcp-config', '--allowedTools', 'mcp__foqz')
+  } else {
+    args.push('--strict-mcp-config')
+  }
+  return args
 }
 
 /**
@@ -58,11 +114,12 @@ function resolveCwd(configuredCwd) {
  */
 class ClaudeCodeRunner {
   /**
-   * @param {{ ipcMain: Electron.IpcMain, getSettings: () => Record<string, any>, getMcpHost: () => { enabled: boolean, running: boolean, url: string, token: string } }} opts
+   * @param {{ ipcMain: Electron.IpcMain, getSettings: () => Record<string, any>, getMcpHost: () => { enabled: boolean, running: boolean, url: string, token: string }, getDefaultCwd: () => string }} opts
    */
-  constructor({ ipcMain, getSettings, getMcpHost }) {
+  constructor({ ipcMain, getSettings, getMcpHost, getDefaultCwd }) {
     this.getSettings = getSettings
     this.getMcpHost = getMcpHost
+    this.getDefaultCwd = getDefaultCwd
     /** @type {Map<string, import('node:child_process').ChildProcess>} */
     this.running = new Map()
 
@@ -109,41 +166,18 @@ class ClaudeCodeRunner {
     }
     const bin = resolveBinary(settings.claudeCodePath)
     if (!bin) return { ok: false, error: 'Claude Code was not found. Set its path in Settings → Intelligence.' }
-    const cwd = resolveCwd(settings.claudeCodeCwd)
-    if (!cwd) return { ok: false, error: `Working folder ${settings.claudeCodeCwd} does not exist.` }
-
-    const args = [
-      '-p',
-      '--output-format',
-      'stream-json',
-      '--verbose',
-      '--include-partial-messages',
-      '--no-session-persistence',
-      // Canvas text (imported GitHub issues included) lands in the prompt, so the run is locked down
-      // whatever the user's own Claude Code settings say: no shell or code-running tools, user and
-      // project settings ignored, file tools confined to the working folder, and anything not
-      // pre-approved below refused instead of prompted for.
-      '--restricted',
-      '--permission-mode',
-      'dontAsk',
-    ]
-    if (typeof req.systemPrompt === 'string' && req.systemPrompt.trim()) {
-      args.push('--append-system-prompt', req.systemPrompt)
-    }
-    if (settings.claudeCodeModel) args.push('--model', settings.claudeCodeModel)
-
-    // Canvas tools come from the embedded Foqz MCP server, and only its tools are pre-approved.
-    const host = this.getMcpHost()
-    if (host.enabled && host.running) {
-      const mcpConfig = {
-        mcpServers: {
-          foqz: { type: 'http', url: host.url, headers: { Authorization: `Bearer ${host.token}` } },
-        },
+    const defaultCwd = this.getDefaultCwd()
+    const cwd = resolveCwd(settings.claudeCodeCwd, defaultCwd)
+    if (!cwd) {
+      return {
+        ok: false,
+        error: settings.claudeCodeCwd
+          ? `Working folder ${settings.claudeCodeCwd} does not exist.`
+          : `Could not create the working folder ${defaultCwd}.`,
       }
-      args.push('--mcp-config', JSON.stringify(mcpConfig), '--strict-mcp-config', '--allowedTools', 'mcp__foqz')
-    } else {
-      args.push('--strict-mcp-config')
     }
+
+    const args = buildRunArgs({ settings, systemPrompt: req.systemPrompt, host: this.getMcpHost() })
 
     let child
     try {
@@ -202,4 +236,4 @@ class ClaudeCodeRunner {
   }
 }
 
-module.exports = { ClaudeCodeRunner, resolveBinary }
+module.exports = { ClaudeCodeRunner, resolveBinary, resolveCwd, buildRunArgs }

@@ -77,7 +77,7 @@ export function ClaudeCodeSettings({
             <label className="text-xs font-medium text-foreground block mb-1">Working folder</label>
             <Input
               inputSize="sm"
-              placeholder="Home folder"
+              placeholder="An empty folder Foqz owns"
               value={cwdDraft}
               onChange={(e) => setCwdDraft(e.target.value)}
               onBlur={() => void update({ claudeCodeCwd: cwdDraft.trim() })}
