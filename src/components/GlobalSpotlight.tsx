@@ -20,6 +20,7 @@ import {
 import { useFlowCanvasStore } from '@/poc/store/flowCanvasStore'
 import { isActionable, isDone, nodeTitle, startFocus } from '@/lib/nodeBehaviors'
 import { CANVAS_SHORTCUTS } from '@/poc/shortcuts/shortcutsConfig'
+import { parseCapture } from '@/lib/captureParse'
 
 export type CommandBarView = 'search' | 'shortcuts'
 
@@ -90,21 +91,6 @@ function nodeBadge(nodeType: string, actionable: boolean) {
     badgeClass:
       'bg-zinc-100 dark:bg-zinc-800/70 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700/80',
   }
-}
-
-/** Parse capture prefixes: "[] buy milk" or "/todo buy milk" → to-do, "/note x" → sticky. */
-function parseCapture(raw: string): { text: string; actionable: boolean; style: 'plain' | 'sticky' } {
-  let text = raw.trim()
-  let actionable = false
-  let style: 'plain' | 'sticky' = 'plain'
-  if (/^(\[\s?\]|\/todo\b|\/t\b)/i.test(text)) {
-    actionable = true
-    text = text.replace(/^(\[\s?\]|\/todo\b|\/t\b)\s*/i, '')
-  } else if (/^(\/note|\/sticky)\b/i.test(text)) {
-    style = 'sticky'
-    text = text.replace(/^(\/note|\/sticky)\s*/i, '')
-  }
-  return { text, actionable, style }
 }
 
 export function GlobalSpotlight({ open, onClose, initialView = 'search', captureMode = false }: GlobalSpotlightProps) {

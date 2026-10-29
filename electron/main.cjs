@@ -296,6 +296,7 @@ const DEFAULT_SETTINGS = {
   openAtLogin: false,
   showDockIcon: false,
   globalToggleShortcut: 'CommandOrControl+Shift+F',
+  globalCaptureShortcut: 'CommandOrControl+Shift+Space',
   notifyOnTimerEnd: true,
   playSoundOnTimerEnd: false,
   colorScheme: 'system',
@@ -361,6 +362,12 @@ function mergeSettings(input) {
       ? parsed.globalToggleShortcut.trim()
       : d.globalToggleShortcut
 
+  // Empty string turns quick capture off; only a missing value falls back to the default.
+  const globalCaptureShortcut =
+    typeof parsed.globalCaptureShortcut === 'string'
+      ? parsed.globalCaptureShortcut.trim()
+      : d.globalCaptureShortcut
+
   const rawWh = parsed.workingHours && typeof parsed.workingHours === 'object' ? parsed.workingHours : d.workingHours
   const startMin =
     typeof rawWh.startMin === 'number' && Number.isFinite(rawWh.startMin) ? Math.max(0, Math.min(1440, Math.round(rawWh.startMin))) : d.workingHours.startMin
@@ -381,6 +388,7 @@ function mergeSettings(input) {
     openAtLogin: typeof parsed.openAtLogin === 'boolean' ? parsed.openAtLogin : d.openAtLogin,
     showDockIcon: typeof parsed.showDockIcon === 'boolean' ? parsed.showDockIcon : d.showDockIcon,
     globalToggleShortcut,
+    globalCaptureShortcut,
     notifyOnTimerEnd:
       typeof parsed.notifyOnTimerEnd === 'boolean' ? parsed.notifyOnTimerEnd : d.notifyOnTimerEnd,
     playSoundOnTimerEnd:
@@ -492,14 +500,27 @@ function scheduleSaveBounds() {
   }, 400)
 }
 
-function registerToggleShortcut() {
-  globalShortcut.unregisterAll()
+function registerOneShortcut(accelerator, handler, label) {
   try {
-    const ok = globalShortcut.register(appSettings.globalToggleShortcut, toggleWindow)
-    return { ok, error: ok ? undefined : 'Could not register shortcut (invalid or reserved).' }
+    const ok = globalShortcut.register(accelerator, handler)
+    return { ok, error: ok ? undefined : `Could not register ${label} shortcut (invalid or reserved).` }
   } catch (e) {
-    return { ok: false, error: e.message || 'Shortcut registration failed.' }
+    return { ok: false, error: e.message || `${label} shortcut registration failed.` }
   }
+}
+
+/** Registers show/hide and quick capture. `failed` names the setting that did not register. */
+function registerShortcuts() {
+  globalShortcut.unregisterAll()
+  const toggle = registerOneShortcut(appSettings.globalToggleShortcut, toggleWindow, 'show / hide')
+  if (!toggle.ok) return { ...toggle, failed: 'globalToggleShortcut' }
+  const capture = appSettings.globalCaptureShortcut
+  if (!capture) return { ok: true }
+  if (capture.toLowerCase() === appSettings.globalToggleShortcut.toLowerCase()) {
+    return { ok: false, error: 'Quick capture needs a different shortcut than show / hide.', failed: 'globalCaptureShortcut' }
+  }
+  const res = registerOneShortcut(capture, summonCapture, 'quick capture')
+  return res.ok ? res : { ...res, failed: 'globalCaptureShortcut' }
 }
 
 function createTrayIcon() {
@@ -598,6 +619,78 @@ function toggleWindow() {
   } else {
     showWindow()
   }
+}
+
+const CAPTURE_WIDTH = 640
+const CAPTURE_HEIGHT = 112
+let captureWindow = null
+
+function loadCapturePage(win) {
+  const devUrl = process.env.VITE_DEV_SERVER_URL
+  if (devUrl) win.loadURL(new URL('capture.html', devUrl.endsWith('/') ? devUrl : `${devUrl}/`).toString())
+  else win.loadFile(path.join(app.getAppPath(), 'dist/capture.html'))
+}
+
+/** Small floating panel for quick capture, kept alive between uses so it opens instantly. */
+function createCaptureWindow() {
+  const isMac = process.platform === 'darwin'
+  captureWindow = new BrowserWindow({
+    width: CAPTURE_WIDTH,
+    height: CAPTURE_HEIGHT,
+    show: false,
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    // An NSPanel floats over full-screen apps without pulling the whole app forward.
+    type: isMac ? 'panel' : undefined,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  })
+  captureWindow.setAlwaysOnTop(true, 'floating')
+  captureWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  captureWindow.on('blur', () => hideCapture())
+  captureWindow.on('closed', () => {
+    captureWindow = null
+  })
+  loadCapturePage(captureWindow)
+}
+
+/** Global quick capture: open the panel on the display under the cursor. */
+function summonCapture() {
+  if (!captureWindow) createCaptureWindow()
+  if (captureWindow.isVisible()) {
+    captureWindow.focus()
+    return
+  }
+  const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  captureWindow.setBounds({
+    x: Math.round(workArea.x + (workArea.width - CAPTURE_WIDTH) / 2),
+    y: Math.round(workArea.y + workArea.height * 0.22),
+    width: CAPTURE_WIDTH,
+    height: CAPTURE_HEIGHT,
+  })
+  captureWindow.webContents.send('capture:shown')
+  captureWindow.show()
+  captureWindow.focus()
+}
+
+function hideCapture() {
+  if (!captureWindow || !captureWindow.isVisible()) return
+  captureWindow.hide()
+  // Hand focus back to the app the shortcut was pressed in.
+  if (process.platform === 'darwin' && !(mainWindow && mainWindow.isVisible())) app.hide()
 }
 
 function attachWindowBoundsListeners() {
@@ -906,6 +999,18 @@ ipcMain.handle('app:getVersion', () => {
   return { version: app.getVersion(), isPackaged: app.isPackaged }
 })
 
+ipcMain.handle('capture:submit', (_event, payload) => {
+  const text = typeof payload?.text === 'string' ? payload.text : ''
+  if (text.trim() && mainWindow) {
+    mainWindow.webContents.send('capture:add', { text, asTodo: Boolean(payload?.asTodo) })
+  }
+  hideCapture()
+})
+
+ipcMain.handle('capture:dismiss', () => {
+  hideCapture()
+})
+
 ipcMain.handle('window:toggleMaximize', () => {
   if (!mainWindow) return false
   if (process.platform === 'darwin') {
@@ -1001,12 +1106,15 @@ ipcMain.on('focus:shutdown-ready', () => {
 })
 
 ipcMain.handle('settings:set', async (_event, partial) => {
-  const prevShortcut = appSettings.globalToggleShortcut
+  const prevShortcuts = {
+    globalToggleShortcut: appSettings.globalToggleShortcut,
+    globalCaptureShortcut: appSettings.globalCaptureShortcut,
+  }
   appSettings = mergeSettings({ ...appSettings, ...partial })
-  const shortcutResult = registerToggleShortcut()
+  const shortcutResult = registerShortcuts()
   if (!shortcutResult.ok) {
-    appSettings = mergeSettings({ ...appSettings, globalToggleShortcut: prevShortcut })
-    registerToggleShortcut()
+    appSettings = mergeSettings({ ...appSettings, ...prevShortcuts })
+    registerShortcuts()
     await saveSettingsToDisk()
     return { ok: false, error: shortcutResult.error, settings: appSettings }
   }
@@ -1205,14 +1313,23 @@ app.whenReady().then(async () => {
   applyLoginItem()
   createWindow()
   createTray()
+  // After the board, so it never competes with it at startup.
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (!captureWindow) createCaptureWindow()
+  })
 
-  const reg = registerToggleShortcut()
+  const reg = registerShortcuts()
   if (!reg.ok) {
     appSettings = mergeSettings({
       ...appSettings,
-      globalToggleShortcut: DEFAULT_SETTINGS.globalToggleShortcut,
+      [reg.failed]: DEFAULT_SETTINGS[reg.failed],
     })
-    registerToggleShortcut()
+    const retry = registerShortcuts()
+    // The default capture key can be taken by another app: keep show / hide working.
+    if (!retry.ok && retry.failed === 'globalCaptureShortcut') {
+      appSettings = mergeSettings({ ...appSettings, globalCaptureShortcut: '' })
+      registerShortcuts()
+    }
     saveSettingsToDisk().catch(() => {})
   }
 

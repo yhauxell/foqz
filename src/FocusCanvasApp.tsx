@@ -21,6 +21,7 @@ import { useMcpHostBridge } from "@/lib/mcpHostBridge";
 import { useReminders } from "@/lib/reminders";
 import { isActionable, startFocus, stopFocus } from "@/lib/nodeBehaviors";
 import { playFocusBlockEndFeedback } from "@/lib/focusSessionFeedback";
+import { parseCapture } from "@/lib/captureParse";
 
 export function FocusCanvasApp() {
   return (
@@ -105,6 +106,19 @@ function FocusCanvasAppInner() {
     document.documentElement.classList.toggle("dark", isDark);
     document.body.classList.toggle("dark", isDark);
   }, [isDark]);
+
+  // Text from the global quick capture panel, added even while this window is hidden.
+  useEffect(() => {
+    return window.focusStore?.capture?.onAdd(({ text, asTodo }) => {
+      const parsed = parseCapture(text);
+      if (!parsed.text) return;
+      window.dispatchEvent(
+        new CustomEvent("foqz:new-text", {
+          detail: { text: parsed.text, actionable: asTodo || parsed.actionable, style: parsed.style },
+        }),
+      );
+    });
+  }, []);
 
   useEffect(() => {
     if (window.focusStore?.isMaximized) {
