@@ -2,7 +2,8 @@ import type { AppSettings } from "./lib/appSettings";
 import type { McpHostApi, McpStoreApi } from "./lib/mcpTypes";
 import type { LogbookDay, LogbookEntry } from "./types/logbook";
 import type { PendingReminder } from "./lib/reminders";
-import type { ClaudeCodeDetectResult } from "./lib/claudeCode";
+import type { ClaudeCodeDetectResult, ClaudeCodeFolderAccess, ClaudeCodeRunRequest } from "./lib/claudeCode";
+import type { ClaudeCodeProfile } from "./lib/appSettings";
 import type { DiskBoardBackend } from "./lib/storage/DiskBackedStorageAdapter";
 
 export {};
@@ -54,8 +55,21 @@ declare global {
       /** Local Claude Code CLI, run from main (see electron/claudeCode.cjs) */
       claudeCode?: {
         detect: () => Promise<ClaudeCodeDetectResult>;
-        run: (req: { requestId: string; prompt: string; systemPrompt?: string }) => Promise<{ ok: boolean; error?: string }>;
+        /** Where a run for `folder` would start and what it may do there (empty folder: the global one). */
+        resolve: (req: { folder?: string }) => Promise<ClaudeCodeFolderAccess>;
+        run: (req: ClaudeCodeRunRequest) => Promise<{
+          ok: boolean;
+          error?: string;
+          profile?: ClaudeCodeProfile;
+          cwd?: string;
+          /** False for canvas-only runs, which keep no session to resume. */
+          persistent?: boolean;
+        }>;
         cancel: (requestId: string) => Promise<boolean>;
+        /** A local clone of `owner/repo` in the usual project folders, or null. */
+        findClone: (repo: string) => Promise<string | null>;
+        /** Native folder picker; null when cancelled. */
+        pickFolder: () => Promise<string | null>;
         onLine: (callback: (payload: { requestId: string; line: string }) => void) => () => void;
         onExit: (
           callback: (payload: { requestId: string; code: number | null; signal: string | null; stderr: string }) => void,

@@ -156,7 +156,10 @@ export function migrateBoardSnapshot(input: BoardSnapshot): BoardMigrationResult
         if (!strippedGithubToken && typeof conn.githubToken === "string" && conn.githubToken.trim()) {
           strippedGithubToken = conn.githubToken.trim();
         }
-        d.connectors = conn.githubRepo ? { githubRepo: conn.githubRepo } : undefined;
+        const kept: Record<string, string> = {};
+        if (conn.githubRepo) kept.githubRepo = conn.githubRepo;
+        if (typeof conn.localFolder === "string" && conn.localFolder.trim()) kept.localFolder = conn.localFolder.trim();
+        d.connectors = Object.keys(kept).length ? kept : undefined;
         if (!d.connectors) delete d.connectors;
       }
       delete d.customAgent;

@@ -235,7 +235,7 @@ function newEdge(source: string, target: string): Edge {
 }
 
 /** Replace the body of a text node, whatever its style. */
-function textPatch(node: Node, fullText: string): Record<string, any> {
+export function textPatch(node: Node, fullText: string): Record<string, any> {
   if (node.type === 'focusTask') {
     const [first, ...rest] = fullText.split('\n')
     return { title: first.trim(), notes: rest.join('\n').trim() }
@@ -243,7 +243,7 @@ function textPatch(node: Node, fullText: string): Record<string, any> {
   return { text: fullText }
 }
 
-function bodyText(node: Node): string {
+export function bodyText(node: Node): string {
   const d = (node.data || {}) as Record<string, any>
   if (node.type === 'focusTask') return d.notes ? `${d.title || ''}\n${d.notes}` : String(d.title || '')
   return String(d.text ?? d.label ?? '')

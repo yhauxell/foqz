@@ -43,12 +43,33 @@ export type AppSettings = {
   claudeCodeEnabled?: boolean;
   /** Path to the `claude` binary; empty finds it on PATH and the usual install folders. */
   claudeCodePath?: string;
-  /** Folder Claude Code runs in; empty uses the home folder. */
+  /** Folder Claude Code runs in when the item has no folder of its own; empty uses an empty folder Foqz owns. */
   claudeCodeCwd?: string;
   /** Model alias or name passed to `--model`; empty uses Claude Code's default. */
   claudeCodeModel?: string;
+  /** What Claude Code may do in each folder; folders not listed are canvas-only. */
+  claudeCodeFolders?: ClaudeCodeFolder[];
+  /** Claude Code runs allowed at once (one per item). */
+  claudeCodeMaxRuns?: number;
+  /** A run still going after this many minutes is stopped. */
+  claudeCodeTimeoutMinutes?: number;
   activeAiProvider?: AiProviderId;
 };
+
+/**
+ * - `canvas`: canvas tools only, no files.
+ * - `read`: read and search files in the folder, plus canvas tools.
+ * - `workspace`: also edit files and run the allowlisted shell commands.
+ */
+export type ClaudeCodeProfile = "canvas" | "read" | "workspace";
+export const CLAUDE_CODE_PROFILES: ClaudeCodeProfile[] = ["canvas", "read", "workspace"];
+
+export interface ClaudeCodeFolder {
+  path: string;
+  profile: ClaudeCodeProfile;
+  /** Command prefixes such as `npm test`; only used by the workspace profile. */
+  bashAllowlist: string[];
+}
 
 export type AiProviderId = "ollama" | "openai" | "claude-code";
 const AI_PROVIDER_IDS: AiProviderId[] = ["ollama", "openai", "claude-code"];
@@ -81,7 +102,49 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   claudeCodePath: "",
   claudeCodeCwd: "",
   claudeCodeModel: "",
+  claudeCodeFolders: [],
+  claudeCodeMaxRuns: 3,
+  claudeCodeTimeoutMinutes: 15,
 };
+
+/** Mirrors normalizeBashAllowlist in electron/claudeCode.cjs. */
+export function normalizeBashAllowlist(list: unknown): string[] {
+  if (!Array.isArray(list)) return [];
+  const out: string[] = [];
+  for (const raw of list) {
+    const cmd = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
+    if (!cmd || /[(),:*]/.test(cmd) || out.includes(cmd)) continue;
+    out.push(cmd);
+  }
+  return out;
+}
+
+/** Trimmed, without a trailing slash; main resolves `~` and relative paths (electron/claudeCode.cjs). */
+export function normalizeFolderPathInput(p: unknown): string {
+  const trimmed = typeof p === "string" ? p.trim() : "";
+  return trimmed.length > 1 ? trimmed.replace(/\/+$/, "") : trimmed;
+}
+
+function normalizeClaudeCodeFolders(list: unknown): ClaudeCodeFolder[] {
+  if (!Array.isArray(list)) return [];
+  const out: ClaudeCodeFolder[] = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object") continue;
+    const r = raw as Record<string, unknown>;
+    const path = normalizeFolderPathInput(r.path);
+    if (!path || out.some((f) => f.path === path)) continue;
+    out.push({
+      path,
+      profile: CLAUDE_CODE_PROFILES.includes(r.profile as ClaudeCodeProfile) ? (r.profile as ClaudeCodeProfile) : "canvas",
+      bashAllowlist: normalizeBashAllowlist(r.bashAllowlist),
+    });
+  }
+  return out;
+}
+
+function clampSetting(value: unknown, min: number, max: number, fallback: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback;
+}
 
 function isValidBounds(b: unknown): b is AppWindowBounds {
   if (!b || typeof b !== "object") return false;
@@ -284,6 +347,11 @@ export function mergeAppSettings(
       typeof parsed.claudeCodeCwd === "string" ? parsed.claudeCodeCwd.trim() : base.claudeCodeCwd,
     claudeCodeModel:
       typeof parsed.claudeCodeModel === "string" ? parsed.claudeCodeModel.trim() : base.claudeCodeModel,
+    claudeCodeFolders: Array.isArray(parsed.claudeCodeFolders)
+      ? normalizeClaudeCodeFolders(parsed.claudeCodeFolders)
+      : base.claudeCodeFolders,
+    claudeCodeMaxRuns: clampSetting(parsed.claudeCodeMaxRuns, 1, 10, base.claudeCodeMaxRuns),
+    claudeCodeTimeoutMinutes: clampSetting(parsed.claudeCodeTimeoutMinutes, 1, 240, base.claudeCodeTimeoutMinutes),
     activeAiProvider: AI_PROVIDER_IDS.includes(parsed.activeAiProvider as AiProviderId)
       ? (parsed.activeAiProvider as AiProviderId)
       : base.activeAiProvider,

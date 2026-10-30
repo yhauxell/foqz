@@ -13,6 +13,8 @@ export type ProjectAccent = (typeof ALL_PROJECT_ACCENTS)[number];
 
 export type ProjectConnectors = {
   githubRepo?: string;
+  /** Folder local Claude Code runs in for items in this region. */
+  localFolder?: string;
 };
 
 export const ACCENT_STYLES: Record<

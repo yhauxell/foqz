@@ -72,7 +72,10 @@ contextBridge.exposeInMainWorld('focusStore', {
   },
   claudeCode: {
     detect: () => ipcRenderer.invoke('claudeCode:detect'),
+    resolve: (req) => ipcRenderer.invoke('claudeCode:resolve', req),
     run: (req) => ipcRenderer.invoke('claudeCode:run', req),
+    findClone: (repo) => ipcRenderer.invoke('claudeCode:findClone', repo),
+    pickFolder: () => ipcRenderer.invoke('claudeCode:pickFolder'),
     cancel: (requestId) => ipcRenderer.invoke('claudeCode:cancel', requestId),
     onLine: (callback) => {
       const listener = (_event, payload) => callback(payload)

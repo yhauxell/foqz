@@ -18,7 +18,7 @@ const childProcess = require('node:child_process')
 const { McpClientManager } = require('./mcp/McpClientManager.cjs')
 const { FoqzMcpHost } = require('./mcp/FoqzMcpHost.cjs')
 const { ReminderScheduler } = require('./reminders.cjs')
-const { ClaudeCodeRunner } = require('./claudeCode.cjs')
+const { ClaudeCodeRunner, normalizeFolders } = require('./claudeCode.cjs')
 const logbook = require('./logbook.cjs')
 const boardFiles = require('./boardFiles.cjs')
 
@@ -91,6 +91,11 @@ const claudeCode = new ClaudeCodeRunner({
   },
   // Runs with no folder set start in an empty folder Foqz owns, not the home folder.
   getDefaultCwd: () => path.join(app.getPath('userData'), 'claude-code'),
+  pickFolder: async (sender) => {
+    const win = BrowserWindow.fromWebContents(sender) || undefined
+    const res = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
+    return res.canceled || !res.filePaths[0] ? null : res.filePaths[0]
+  },
 })
 
 app.setName('Foqz')
@@ -314,6 +319,9 @@ const DEFAULT_SETTINGS = {
   claudeCodePath: '',
   claudeCodeCwd: '',
   claudeCodeModel: '',
+  claudeCodeFolders: [],
+  claudeCodeMaxRuns: 3,
+  claudeCodeTimeoutMinutes: 15,
   openaiDefaultModel: 'gpt-4o-mini',
 }
 
@@ -427,6 +435,15 @@ function mergeSettings(input) {
       typeof parsed.claudeCodeCwd === 'string' ? parsed.claudeCodeCwd.trim() : d.claudeCodeCwd,
     claudeCodeModel:
       typeof parsed.claudeCodeModel === 'string' ? parsed.claudeCodeModel.trim() : d.claudeCodeModel,
+    claudeCodeFolders: Array.isArray(parsed.claudeCodeFolders)
+      ? normalizeFolders(parsed.claudeCodeFolders)
+      : d.claudeCodeFolders,
+    claudeCodeMaxRuns: Number.isFinite(parsed.claudeCodeMaxRuns)
+      ? Math.min(10, Math.max(1, Math.round(Number(parsed.claudeCodeMaxRuns))))
+      : d.claudeCodeMaxRuns,
+    claudeCodeTimeoutMinutes: Number.isFinite(parsed.claudeCodeTimeoutMinutes)
+      ? Math.min(240, Math.max(1, Math.round(Number(parsed.claudeCodeTimeoutMinutes))))
+      : d.claudeCodeTimeoutMinutes,
     activeAiProvider:
       ['ollama', 'openai', 'claude-code'].includes(parsed.activeAiProvider)
         ? parsed.activeAiProvider
