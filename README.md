@@ -232,11 +232,30 @@ You can also point Foqz at any OpenAI-compatible endpoint (OpenAI, OpenRouter, G
 
 If you use [Claude Code](https://claude.com/claude-code), the canvas chat can run it instead of a model endpoint. It uses your own Claude login and runs `claude -p` on your machine.
 
-1. In **Settings → Intelligence → Claude Code (local)**, tick **Enable Claude Code**. Foqz finds `claude` on your PATH or in `~/.local/bin`; set **Path to claude** if it lives elsewhere. **Working folder** is where it runs (your home folder by default).
+1. In **Settings → Intelligence → Claude Code (local)**, tick **Enable Claude Code**. Foqz finds `claude` on your PATH or in `~/.local/bin`; set **Path to claude** if it lives elsewhere.
 2. Turn on the Foqz MCP server (**Settings → Integrations**, see below) so Claude Code gets the canvas tools.
-
-Runs from the canvas are locked down, whatever your own Claude Code settings say: restricted mode (no shell or code-running tools, your user and project settings and hooks are not loaded, file tools stay inside the working folder) and `dontAsk` permissions, with only the Foqz canvas tools pre-approved. Anything else that would need permission is refused, since there is no terminal to ask in.
 3. Pick **Claude Code** in the chat's provider menu, or as the model used by Foqz.
+
+**Where it runs.** A region can link a local folder in its connectors (**Browse**, or **Find clone** to look for a clone of its GitHub repository in `~/projects`, `~/code`, `~/src` and similar). Items inside it run there; any item can pick its own folder from the bar under the chat header. Without a folder, runs use **Working folder** from Settings, else an empty folder Foqz owns, never your home folder.
+
+**What it may do there** is set per folder, in the region's connectors, the chat bar, or **Settings → Intelligence → Folder access**:
+
+| Access | Claude Code can |
+|---|---|
+| **Canvas only** (default) | Use the canvas tools. No files, no shell, and each message is a fresh run. |
+| **Read files** | Also read and search files in the folder. |
+| **Workspace** | Also edit files, and run the shell commands you list for the folder (each line is a prefix, such as `npm test` or `git status`). Claude Code also runs commands it considers read-only, such as `git log` or `ls`. |
+
+Every run is locked down whatever your own Claude Code settings say: restricted mode (no other shell or code-running tools, file tools confined to the folder, your user and project settings and hooks not loaded) and `dontAsk` permissions, so anything not allowed above is refused rather than prompted for. The filesystem root, your home folder and any folder holding Foqz's own data always stay canvas-only, so a run can never edit the settings that grant its access.
+
+Canvas text, including GitHub issues anyone can write, goes into the prompt. So when a run can read or edit files and the board holds GitHub-imported items, the chat lists them and waits for **Run anyway** before the first run in that folder.
+
+**Using it**
+
+- **Run task** (to-dos): sends the task, its checklist and its GitHub issue, and when the run finishes appends its summary and the changed files to the task. **Mark task done** is offered, never applied for you.
+- **Sessions**: with Read files or Workspace access, follow-ups continue the same Claude Code session (`--resume`), even after a restart. **New session** starts over; if Claude Code no longer has the session, Foqz starts a new one and says so.
+- **Run log**: under each answer, with duration, cost, tool calls and their output, and changed files. Copy it or re-run the request.
+- **Limits**: **Runs at once** (default 3, one per item) and **Timeout** (default 15 minutes) are in Settings. Stopping a run, or quitting Foqz, ends the `claude` process.
 
 ---
 

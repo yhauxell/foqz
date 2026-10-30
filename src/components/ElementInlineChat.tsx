@@ -30,7 +30,22 @@ import { runAgentLoop, type AgentToolCallEvent } from '@/lib/mcpAgentLoop'
 import { NATIVE_FOQZ_TOOLS, createFlowCanvasToolExecutor } from '@/lib/canvasTools'
 import { OPENAI_DEFAULT_MODELS } from '@/lib/aiConnectors'
 import type { AiProviderName } from '@/lib/aiProvider'
-import type { ClaudeCodeDetectResult } from '@/lib/claudeCode'
+import { folderNote, type ClaudeCodeDetectResult, type ClaudeCodeFolderAccess, type ClaudeCodeRunRecord } from '@/lib/claudeCode'
+import {
+  appendNotePatch,
+  buildTaskRunPrompt,
+  canRunAsTask,
+  extractRunSummary,
+  formatRunNote,
+  itemFolder,
+  PROFILE_LABELS,
+  untrustedSources,
+  withFolderProfile,
+  type UntrustedSource,
+} from '@/lib/claudeCodeTask'
+import type { ClaudeCodeProfile } from '@/lib/appSettings'
+import { ClaudeCodeChatBar } from '@/components/ClaudeCodeChatBar'
+import { ClaudeCodeRunLog } from '@/components/ClaudeCodeRunLog'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import {
   FOQZ_SYSTEM_PROMPT,
@@ -52,7 +67,34 @@ export interface ElementAiMessage {
   timestamp: number
   executedTools?: AgentToolCallEvent[]
   activeTool?: string | null
+  /** The local Claude Code run behind this answer, for its run log. */
+  claudeCodeRun?: ClaudeCodeRunRecord
+  /** Answer to "Run task": its summary was appended to the to-do. */
+  taskRun?: boolean
 }
+
+// Run logs are kept on the newest answers only, so a long chat does not bloat the board file.
+const KEEP_RUN_LOGS = 5
+
+function trimRunLogs(list: ElementAiMessage[]): ElementAiMessage[] {
+  let kept = 0
+  return [...list]
+    .reverse()
+    .map((m) => {
+      if (!m.claudeCodeRun) return m
+      kept++
+      return kept > KEEP_RUN_LOGS ? { ...m, claudeCodeRun: undefined } : m
+    })
+    .reverse()
+}
+
+interface ClaudeCodeSession {
+  id: string
+  /** Sessions live per folder in Claude Code, so one only resumes in the folder it started in. */
+  cwd: string
+}
+
+const BOARD_CLAUDE_SESSION_KEY = 'foqz_board_claude_session'
 
 function extractCheckpoints(text: string): string[] {
   const lines = text.split('\n')
@@ -527,6 +569,102 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
     [node, isCanvasScope]
   )
 
+  // Local Claude Code (#88): the folder runs use, what they may do there, and the session to continue.
+  const isClaudeCode = activeConfig.provider === 'claude-code' && Boolean(claudeCodeApi)
+  const ownFolder = isCanvasScope
+    ? ''
+    : String(
+        (node?.type === 'projectFrame' ? (node?.data as any)?.connectors?.localFolder : (node?.data as any)?.localFolder) || '',
+      ).trim()
+  const runFolder = isCanvasScope ? '' : itemFolder(node, containingProject)
+  const folderSettingsKey = JSON.stringify([settings.claudeCodeFolders || [], settings.claudeCodeCwd || ''])
+  const [claudeAccess, setClaudeAccess] = useState<ClaudeCodeFolderAccess | null>(null)
+  useEffect(() => {
+    if (!isClaudeCode || !claudeCodeApi) return
+    let cancelled = false
+    claudeCodeApi
+      .resolve({ folder: runFolder })
+      .then((r) => {
+        if (!cancelled) setClaudeAccess(r)
+      })
+      .catch((e) => {
+        if (!cancelled) setClaudeAccess({ ok: false, error: String(e?.message || e) })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isClaudeCode, claudeCodeApi, runFolder, folderSettingsKey])
+
+  const [boardClaudeSession, setBoardClaudeSession] = useState<ClaudeCodeSession | null>(() => {
+    try {
+      const saved = localStorage.getItem(BOARD_CLAUDE_SESSION_KEY)
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
+  const claudeSession: ClaudeCodeSession | null = isCanvasScope
+    ? boardClaudeSession
+    : ((node?.data as any)?.claudeCodeSession as ClaudeCodeSession | undefined) || null
+  const saveClaudeSession = useCallback(
+    (next: ClaudeCodeSession | null) => {
+      if (isCanvasScope) {
+        setBoardClaudeSession(next)
+        try {
+          if (next) localStorage.setItem(BOARD_CLAUDE_SESSION_KEY, JSON.stringify(next))
+          else localStorage.removeItem(BOARD_CLAUDE_SESSION_KEY)
+        } catch {}
+        return
+      }
+      if (node) useFlowCanvasStore.getState().updateNodeData(node.id, { claudeCodeSession: next || undefined })
+    },
+    [isCanvasScope, node]
+  )
+
+  const setOwnFolder = useCallback(
+    (folder: string) => {
+      if (isCanvasScope) {
+        appSettingsCtx?.update({ claudeCodeCwd: folder })
+        patchCachedAppSettings({ claudeCodeCwd: folder })
+        return
+      }
+      if (!node) return
+      if (node.type === 'projectFrame') {
+        const connectors = ((node.data as any)?.connectors || {}) as Record<string, any>
+        useFlowCanvasStore.getState().updateNodeData(node.id, { connectors: { ...connectors, localFolder: folder || undefined } })
+      } else {
+        useFlowCanvasStore.getState().updateNodeData(node.id, { localFolder: folder || undefined })
+      }
+    },
+    [isCanvasScope, node, appSettingsCtx]
+  )
+
+  const handlePickClaudeFolder = useCallback(async () => {
+    const picked = await claudeCodeApi?.pickFolder()
+    if (picked) setOwnFolder(picked)
+  }, [claudeCodeApi, setOwnFolder])
+
+  const handleClaudeProfileChange = useCallback(
+    (profile: ClaudeCodeProfile) => {
+      if (!claudeAccess?.ok || !claudeAccess.cwd || claudeAccess.isDefault) return
+      const claudeCodeFolders = withFolderProfile(settings.claudeCodeFolders, claudeAccess.cwd, profile)
+      appSettingsCtx?.update({ claudeCodeFolders })
+      patchCachedAppSettings({ claudeCodeFolders })
+    },
+    [claudeAccess, settings.claudeCodeFolders, appSettingsCtx]
+  )
+
+  // A run that can touch files while GitHub-imported text is on the board waits for a yes.
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    text: string
+    runTask: boolean
+    key: string
+    sources: UntrustedSource[]
+    profile: ClaudeCodeProfile
+    cwd: string
+  } | null>(null)
+  const confirmedRunKeys = useRef(new Set<string>())
+
   const [spawnedCount, setSpawnedCount] = useState<number | null>(null)
 
   const handleSpawn = useCallback(
@@ -664,15 +802,18 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
   const handleClearChat = useCallback(() => {
     handleStop()
     saveMessages([])
+    saveClaudeSession(null)
+    setPendingConfirm(null)
     if (isCanvasScope) {
       try {
         localStorage.removeItem('foqz_board_ai_messages')
       } catch {}
     }
-  }, [handleStop, saveMessages, isCanvasScope])
+  }, [handleStop, saveMessages, saveClaudeSession, isCanvasScope])
 
-  const handleSend = async (overridePrompt?: string) => {
-    let text = (overridePrompt || prompt).trim()
+  const handleSend = async (overridePrompt?: string, opts: { runTask?: boolean; confirmed?: boolean } = {}) => {
+    const runTask = Boolean(opts.runTask && canRunAsTask(node))
+    let text = runTask ? `Run task: ${nodeTitle(node!) || currentShapeText}` : (overridePrompt || prompt).trim()
     if (!text || (!node && !isCanvasScope) || isStreaming) return
 
     // Stop any existing stream
@@ -698,6 +839,19 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
         ? `Rename this to "${newTitle}" using update_node(title: ...).`
         : 'Suggest a clearer title and apply it using update_node(title: ...).'
     }
+
+    const usesClaude = activeConfig.provider === 'claude-code'
+    const access = usesClaude ? claudeAccess : null
+    if (usesClaude && access?.ok && access.cwd && access.profile && access.profile !== 'canvas' && !opts.confirmed) {
+      const sources = untrustedSources(allNodes, node, containingProject)
+      const key = `${access.cwd}|${access.profile}|${sources.map((s) => s.label).join(',')}`
+      if (sources.length > 0 && !confirmedRunKeys.current.has(key)) {
+        setPendingConfirm({ text, runTask, key, sources, profile: access.profile, cwd: access.cwd })
+        return
+      }
+    }
+    setPendingConfirm(null)
+    const taskPrompt = runTask && node ? buildTaskRunPrompt(node, containingProject) : ''
 
     const userMsg: ElementAiMessage = {
       id: `user_${Date.now()}`,
@@ -819,6 +973,7 @@ ${containingProject ? `Inside region "${(containingProject.data as any)?.title}"
 
 ${TOOL_GUIDE}`
     }
+    if (usesClaude) systemPrompt += `\n\n${folderNote(access?.ok ? access.profile : undefined, access?.cwd)}`
 
     let assistantText = ''
     const executedToolsList: AgentToolCallEvent[] = []
@@ -832,15 +987,23 @@ ${TOOL_GUIDE}`
             : activeConfig.model,
         apiKey: activeConfig.apiKey,
         baseUrl: activeConfig.baseUrl,
-        userPrompt: text,
+        userPrompt: taskPrompt || text,
         systemPrompt,
         canvasContext: isCanvasScope
           ? `Board overview: ${allNodes.length} items (${allNodes.filter((n) => n.type === 'projectFrame').length} regions, ${allNodes.filter((n) => isActionable(n)).length} to-dos)`
           : `Active Selected Node Context:\n${JSON.stringify(selectedNodeContext, null, 2)}`,
         conversationHistory: updated.slice(-10).map((m) => ({
           role: m.role,
-          content: m.content,
+          content: m.id === userMsg.id && taskPrompt ? taskPrompt : m.content,
         })),
+        claudeCode: usesClaude
+          ? {
+              folder: runFolder,
+              nodeId: node?.id ?? '__canvas__',
+              profile: access?.ok ? access.profile : undefined,
+              sessionId: claudeSession && access?.ok && claudeSession.cwd === access.cwd ? claudeSession.id : null,
+            }
+          : undefined,
         tools: allTools,
         maxSteps: 12,
         onChunk: (delta) => {
@@ -859,15 +1022,27 @@ ${TOOL_GUIDE}`
       })
 
       const finalContent = assistantText || result.finalText
+      const run = result.claudeCodeRun
       const assistantMsg: ElementAiMessage = {
         id: `asst_${Date.now()}`,
         role: 'assistant',
         content: finalContent,
         timestamp: Date.now(),
         executedTools: executedToolsList,
+        ...(run ? { claudeCodeRun: run } : {}),
+        ...(runTask ? { taskRun: true } : {}),
       }
 
-      saveMessages([...updated, assistantMsg])
+      saveMessages(trimRunLogs([...updated, assistantMsg]))
+      if (usesClaude && run) saveClaudeSession(run.sessionId && run.cwd ? { id: run.sessionId, cwd: run.cwd } : null)
+      if (runTask && node && result.success) {
+        // The outcome lands on the to-do; its status stays the user's call.
+        const fresh = useFlowCanvasStore.getState().nodes.find((n) => n.id === node.id)
+        if (fresh) {
+          const note = formatRunNote(extractRunSummary(finalContent), run?.changedFiles || [], new Date())
+          useFlowCanvasStore.getState().updateNodeData(node.id, appendNotePatch(fresh, note))
+        }
+      }
     } catch (err: any) {
       const isAborted =
         err?.name === 'AbortError' ||
@@ -903,6 +1078,20 @@ ${TOOL_GUIDE}`
       setActiveTool(null)
       abortControllerRef.current = null
     }
+  }
+
+  const handleRerun = (messageId: string) => {
+    const idx = messages.findIndex((m) => m.id === messageId)
+    if (idx < 0) return
+    if (messages[idx].taskRun) {
+      void handleSend(undefined, { runTask: true })
+      return
+    }
+    const asked = messages
+      .slice(0, idx)
+      .reverse()
+      .find((m) => m.role === 'user')
+    if (asked) void handleSend(asked.content)
   }
 
   // Scroll to bottom on updates
@@ -1277,6 +1466,22 @@ ${TOOL_GUIDE}`
       {/* Active Node Control Strip */}
       <ActiveNodeControlStrip nodeId={nodeId} isCanvasScope={isCanvasScope} />
 
+      {isClaudeCode && (
+        <ClaudeCodeChatBar
+          access={claudeAccess}
+          hasOwnFolder={Boolean(ownFolder)}
+          ownFolderLabel={isCanvasScope ? 'the board chat' : isProject ? 'this region' : 'this item'}
+          onPickFolder={() => void handlePickClaudeFolder()}
+          onClearFolder={() => setOwnFolder('')}
+          onProfileChange={handleClaudeProfileChange}
+          sessionActive={Boolean(claudeSession)}
+          onNewSession={() => saveClaudeSession(null)}
+          canRunTask={!isCanvasScope && canRunAsTask(node)}
+          onRunTask={() => void handleSend(undefined, { runTask: true })}
+          busy={isStreaming}
+        />
+      )}
+
       {/* Messages Scroll Area */}
       <div ref={scrollRef} className="flex-1 p-3 overflow-y-auto space-y-3 text-xs">
         {messages.length === 0 && !isStreaming && (
@@ -1398,6 +1603,18 @@ ${TOOL_GUIDE}`
                       </div>
                     )
                   })()}
+
+                  {m.claudeCodeRun && (
+                    <ClaudeCodeRunLog
+                      run={m.claudeCodeRun}
+                      onRerun={isStreaming ? undefined : () => handleRerun(m.id)}
+                      onMarkDone={
+                        m.taskRun && node && isActionable(node) && (node.data as any)?.status !== 'done'
+                          ? () => useFlowCanvasStore.getState().updateNodeData(node.id, { status: 'done' })
+                          : undefined
+                      }
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -1444,6 +1661,52 @@ ${TOOL_GUIDE}`
 
       {/* Input bar */}
       <div className="p-2.5 border-t border-black/[0.06] dark:border-white/[0.08] bg-white/40 dark:bg-white/[0.02] shrink-0 space-y-1.5 relative">
+        {pendingConfirm && (
+          <div
+            role="alertdialog"
+            aria-label="Confirm Claude Code run"
+            className="p-2.5 rounded-xl border border-amber-300 dark:border-amber-700/70 bg-amber-50 dark:bg-amber-950/40 text-[11px] text-amber-900 dark:text-amber-100 space-y-1.5"
+          >
+            <div className="flex items-start gap-1.5">
+              <AlertTriangle className="size-3.5 shrink-0 mt-0.5 text-amber-600" />
+              <p>
+                This run can {pendingConfirm.profile === 'workspace' ? 'edit files and run allowed commands' : 'read files'} in{' '}
+                <code className="font-mono">{pendingConfirm.cwd}</code> ({PROFILE_LABELS[pendingConfirm.profile]}). The board has text
+                imported from GitHub, which anyone who can comment on those repositories can write, and Claude Code can read it:
+              </p>
+            </div>
+            <ul className="pl-5 list-disc font-mono text-[10px] max-h-20 overflow-y-auto">
+              {pendingConfirm.sources.slice(0, 8).map((s) => (
+                <li key={s.nodeId}>
+                  {s.label}
+                  {s.title ? ` — ${s.title}` : ''}
+                </li>
+              ))}
+              {pendingConfirm.sources.length > 8 && <li>and {pendingConfirm.sources.length - 8} more</li>}
+            </ul>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingConfirm(null)}
+                className="px-2 py-1 rounded-md text-[11px] hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const p = pendingConfirm
+                  confirmedRunKeys.current.add(p.key)
+                  setPendingConfirm(null)
+                  void handleSend(p.runTask ? undefined : p.text, { runTask: p.runTask, confirmed: true })
+                }}
+                className="px-2 py-1 rounded-md text-[11px] font-medium bg-amber-600 text-white hover:bg-amber-700 cursor-pointer"
+              >
+                Run anyway
+              </button>
+            </div>
+          </div>
+        )}
         {/* Slash Command Autocomplete Popover */}
         {showSlashMenu && matchingCommands.length > 0 && (
           <div className="absolute bottom-[52px] left-2.5 right-2.5 max-h-56 overflow-y-auto bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-black/10 dark:border-white/10 rounded-2xl shadow-xl p-1.5 z-50 space-y-0.5 animate-in fade-in slide-in-from-bottom-2 duration-150">

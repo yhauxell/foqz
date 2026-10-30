@@ -17,6 +17,11 @@ import {
 } from "@/types/canvas";
 import { useFlowCanvasStore } from "@/poc/store/flowCanvasStore";
 import { getGithubToken } from "@/lib/githubSync";
+import { ClaudeCodeFolderField } from "@/components/ClaudeCodeFolderField";
+import { useFocusAppSettingsOptional } from "@/context/FocusAppSettingsContext";
+import { patchCachedAppSettings } from "@/lib/appSettingsCache";
+import { withFolderProfile } from "@/lib/claudeCodeTask";
+import type { ClaudeCodeProfile } from "@/lib/appSettings";
 
 interface ProjectConnectorsModalProps {
   shapeId: string | null;
@@ -236,6 +241,10 @@ export function ProjectConnectorsModal({
   const [activeTab, setActiveTab] = useState<"connectors" | "context">(initialTab);
   const [accentDraft, setAccentDraft] = useState<ProjectAccent>("blue");
   const [githubRepoDraft, setGithubRepoDraft] = useState("");
+  const [localFolderDraft, setLocalFolderDraft] = useState("");
+  const [profileDraft, setProfileDraft] = useState<ClaudeCodeProfile>("canvas");
+  const appSettingsCtx = useFocusAppSettingsOptional();
+  const claudeCodeApi = typeof window !== "undefined" ? window.focusStore?.claudeCode : undefined;
 
   const [projectContextDraft, setProjectContextDraft] = useState("");
   const [lastSyncedAtDraft, setLastSyncedAtDraft] = useState<number | undefined>(undefined);
@@ -248,6 +257,7 @@ export function ProjectConnectorsModal({
     const conn = shape.props.connectors || {};
     setAccentDraft((shape.props.accent as ProjectAccent) || "blue");
     setGithubRepoDraft(conn.githubRepo || "");
+    setLocalFolderDraft(conn.localFolder || "");
     const currentContext = shape.props.projectContext || "";
     if (currentContext.trim().startsWith("{") && currentContext.includes('"encoding": "base64"')) {
       const extracted = extractMarkdownFromGithubResponse(currentContext);
@@ -264,6 +274,18 @@ export function ProjectConnectorsModal({
       }
     }, 50);
   }, [shape, activeTab]);
+
+  // The access Settings grants the folder, shown until the user picks another
+  useEffect(() => {
+    if (!claudeCodeApi || !localFolderDraft.trim()) return;
+    let cancelled = false;
+    claudeCodeApi.resolve({ folder: localFolderDraft }).then((r) => {
+      if (!cancelled && r.ok && r.profile) setProfileDraft(r.profile);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [claudeCodeApi, localFolderDraft]);
 
   // Repos already linked elsewhere on the board
   const suggestedRepos = useMemo(() => {
@@ -296,9 +318,19 @@ export function ProjectConnectorsModal({
   const handleSave = () => {
     if (!shapeId) return;
     const normalizedRepo = normalizeGithubRepo(githubRepoDraft);
+    const localFolder = localFolderDraft.trim();
+    if (claudeCodeApi && localFolder) {
+      // Access is stored per folder, under the path main resolved it to.
+      void claudeCodeApi.resolve({ folder: localFolder }).then((r) => {
+        if (!r.ok || !r.cwd || r.isDefault || r.profile === profileDraft) return;
+        const claudeCodeFolders = withFolderProfile(appSettingsCtx?.settings.claudeCodeFolders, r.cwd, profileDraft);
+        appSettingsCtx?.update({ claudeCodeFolders });
+        patchCachedAppSettings({ claudeCodeFolders });
+      });
+    }
     useFlowCanvasStore.getState().updateNodeData(shapeId, {
       accent: accentDraft,
-      connectors: { githubRepo: normalizedRepo || undefined },
+      connectors: { githubRepo: normalizedRepo || undefined, localFolder: localFolder || undefined },
       projectContext: projectContextDraft.trim() || undefined,
       readmeCachedAt: lastSyncedAtDraft || shape.props.readmeCachedAt,
     });
@@ -481,6 +513,19 @@ export function ProjectConnectorsModal({
                   <span>Browse issues &rarr;</span>
                 </button>
               </div>
+
+              {claudeCodeApi && (
+                <div className="pt-3 mt-1 border-t border-zinc-200 dark:border-zinc-800 space-y-2">
+                  <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">Local folder for Claude Code</div>
+                  <ClaudeCodeFolderField
+                    folder={localFolderDraft}
+                    onFolderChange={setLocalFolderDraft}
+                    profile={profileDraft}
+                    onProfileChange={setProfileDraft}
+                    githubRepo={normalizeGithubRepo(githubRepoDraft) || undefined}
+                  />
+                </div>
+              )}
 
               {suggestedRepos.length > 0 && (
                 <div className="flex items-center gap-1.5 flex-wrap pt-1">

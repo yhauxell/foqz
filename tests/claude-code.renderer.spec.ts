@@ -26,6 +26,9 @@ async function setup(page: Page) {
     (window as any).focusStore = {
       claudeCode: {
         detect: async () => ({ ok: true, path: '/bin/claude', version: '9.9.9 (Claude Code)', canvasTools: true }),
+        resolve: async () => ({ ok: true, cwd: '/foqz', isDefault: true, profile: 'canvas', bashAllowlist: [] }),
+        pickFolder: async () => null,
+        findClone: async () => null,
         cancel: async () => true,
         onLine: (h: any) => (lineHandlers.add(h), () => lineHandlers.delete(h)),
         onExit: (h: any) => (exitHandlers.add(h), () => exitHandlers.delete(h)),

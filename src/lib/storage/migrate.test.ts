@@ -164,6 +164,17 @@ describe("migrateBoardSnapshot v1 → v2", () => {
     expect(result.strippedGithubToken).toBe("ghp_secret");
   });
 
+  it("keeps a region's local folder for Claude Code", () => {
+    const board = legacyBoard();
+    const region = board.nodes.find((n: any) => n.id === "proj-a") as any;
+    region.data.connectors.localFolder = " ~/code/widgets ";
+    const { snapshot } = migrateBoardSnapshot(board);
+    expect(snapshot.nodes.find((n) => n.id === "proj-a")!.data.connectors).toEqual({
+      githubRepo: "acme/widgets",
+      localFolder: "~/code/widgets",
+    });
+  });
+
   it("collapses annotation kinds and re-anchors pins on deleted runways", () => {
     const { snapshot } = migrateBoardSnapshot(legacyBoard());
     expect(snapshot.annotations.a1.kind).toBe("comment");

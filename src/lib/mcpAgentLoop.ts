@@ -12,7 +12,7 @@ import {
 import { getCachedAppSettings } from './appSettingsCache'
 import { resolveActiveAiConfig } from './appSettings'
 import { NATIVE_FOQZ_TOOLS } from './canvasTools'
-import { runClaudeCodeAgent } from './claudeCode'
+import { runClaudeCodeAgent, type ClaudeCodeRunOptions, type ClaudeCodeRunRecord } from './claudeCode'
 
 export interface AgentToolCallEvent {
   id: string
@@ -54,6 +54,8 @@ export interface RunAgentLoopOptions {
     serverName?: string,
   ) => Promise<McpToolCallResult>
   conversationHistory?: AiChatMessage[] | OllamaChatMessage[]
+  /** Folder, access profile and session for the claude-code provider. */
+  claudeCode?: ClaudeCodeRunOptions
 }
 
 export interface AgentLoopResult {
@@ -64,6 +66,8 @@ export interface AgentLoopResult {
   executedTools: AgentToolCallEvent[]
   fallbackUsed?: boolean
   error?: string
+  /** What a claude-code run did, for the chat's run log. */
+  claudeCodeRun?: ClaudeCodeRunRecord
 }
 
 /**
