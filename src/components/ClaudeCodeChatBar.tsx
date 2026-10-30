@@ -73,11 +73,13 @@ export function ClaudeCodeChatBar({
       <select
         aria-label="Claude Code access for this folder"
         value={profile}
-        disabled={!access?.ok || access.isDefault}
+        disabled={!access?.ok || access.isDefault || access.protectedFolder}
         title={
           access?.isDefault
             ? "The Foqz folder is always canvas-only. Choose a folder to give Claude Code file access."
-            : "What Claude Code may do in this folder (shared by everything using it)"
+            : access?.protectedFolder
+              ? "This folder is always canvas-only: it is the root, your home folder, or holds Foqz's own settings. Choose a project folder."
+              : "What Claude Code may do in this folder (shared by everything using it)"
         }
         onChange={(e) => onProfileChange(e.target.value as ClaudeCodeProfile)}
         className={`h-5 rounded-md border px-1 text-[10px] bg-transparent ${

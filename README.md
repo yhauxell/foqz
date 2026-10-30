@@ -246,7 +246,7 @@ If you use [Claude Code](https://claude.com/claude-code), the canvas chat can ru
 | **Read files** | Also read and search files in the folder. |
 | **Workspace** | Also edit files, and run the shell commands you list for the folder (each line is a prefix, such as `npm test` or `git status`). Claude Code also runs commands it considers read-only, such as `git log` or `ls`. |
 
-Every run is locked down whatever your own Claude Code settings say: restricted mode (no other shell or code-running tools, your user and project settings and hooks are not loaded, writes to `.git` and settings refused) and `dontAsk` permissions, so anything not allowed above is refused rather than prompted for.
+Every run is locked down whatever your own Claude Code settings say: restricted mode (no other shell or code-running tools, file tools confined to the folder, your user and project settings and hooks not loaded) and `dontAsk` permissions, so anything not allowed above is refused rather than prompted for. The filesystem root, your home folder and any folder holding Foqz's own data always stay canvas-only, so a run can never edit the settings that grant its access.
 
 Canvas text, including GitHub issues anyone can write, goes into the prompt. So when a run can read or edit files and the board holds GitHub-imported items, the chat lists them and waits for **Run anyway** before the first run in that folder.
 

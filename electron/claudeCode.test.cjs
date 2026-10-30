@@ -237,3 +237,33 @@ test('dispose leaves no process behind', async (t) => {
   await new Promise((r) => child.once('close', r))
   assert.equal(child.signalCode, 'SIGKILL')
 })
+
+const { isProtectedFolder } = require('./claudeCode.cjs')
+
+test('the root, home and Foqz data folders never get more than canvas access', (t) => {
+  const root = tempRoot(t)
+  const userData = path.join(root, 'Library', 'Foqz')
+  assert.equal(isProtectedFolder('/', userData), true)
+  assert.equal(isProtectedFolder(os.homedir(), userData), true)
+  assert.equal(isProtectedFolder(userData, userData), true)
+  assert.equal(isProtectedFolder(path.join(root, 'Library'), userData), true)
+  assert.equal(isProtectedFolder(path.join(root, 'repo'), userData), false)
+  assert.equal(isProtectedFolder(path.join(userData, 'claude-code'), userData), false)
+
+  const handlers = {}
+  const runner = new ClaudeCodeRunner({
+    ipcMain: { handle: (name, fn) => (handlers[name] = fn) },
+    getSettings: () => ({ claudeCodeFolders: [{ path: path.join(root, 'Library'), profile: 'workspace' }] }),
+    getMcpHost: () => HOST_OFF,
+    getDefaultCwd: () => path.join(userData, 'claude-code'),
+  })
+  fs.mkdirSync(userData, { recursive: true })
+  assert.deepEqual(runner.resolve({ folder: path.join(root, 'Library') }), {
+    ok: true,
+    cwd: path.join(root, 'Library'),
+    isDefault: false,
+    profile: 'canvas',
+    bashAllowlist: [],
+    protectedFolder: true,
+  })
+})

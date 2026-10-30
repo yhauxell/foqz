@@ -91,6 +91,7 @@ const claudeCode = new ClaudeCodeRunner({
   },
   // Runs with no folder set start in an empty folder Foqz owns, not the home folder.
   getDefaultCwd: () => path.join(app.getPath('userData'), 'claude-code'),
+  getUserDataDir: () => app.getPath('userData'),
   pickFolder: async (sender) => {
     const win = BrowserWindow.fromWebContents(sender) || undefined
     const res = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })

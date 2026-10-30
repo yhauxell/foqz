@@ -28,6 +28,8 @@ export interface ClaudeCodeFolderAccess {
   isDefault?: boolean
   profile?: ClaudeCodeProfile
   bashAllowlist?: string[]
+  /** The root, home or Foqz data folder: always canvas-only, whatever Settings say. */
+  protectedFolder?: boolean
 }
 
 export interface ClaudeCodeRunRequest {

@@ -117,6 +117,18 @@ function folderAccess(settings, cwd) {
   return match ? { profile: match.profile, bashAllowlist: match.bashAllowlist } : { profile: 'canvas', bashAllowlist: [] }
 }
 
+/**
+ * Folders that can never get more than canvas access: the filesystem root, the home folder, and
+ * any folder holding Foqz's own data, where an edit to app-settings.json could grant more access.
+ */
+function isProtectedFolder(cwd, userDataDir) {
+  const resolved = path.resolve(cwd)
+  if (resolved === path.parse(resolved).root || resolved === path.resolve(os.homedir())) return true
+  if (!userDataDir) return false
+  const rel = path.relative(resolved, path.resolve(userDataDir))
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+}
+
 function clampInt(value, min, max, fallback) {
   const n = Math.round(Number(value))
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback
@@ -250,13 +262,15 @@ class ClaudeCodeRunner {
    *   getSettings: () => Record<string, any>,
    *   getMcpHost: () => { enabled: boolean, running: boolean, url: string, token: string },
    *   getDefaultCwd: () => string,
+   *   getUserDataDir?: () => string,
    *   pickFolder?: (sender: Electron.WebContents) => Promise<string | null>,
    * }} opts
    */
-  constructor({ ipcMain, getSettings, getMcpHost, getDefaultCwd, pickFolder }) {
+  constructor({ ipcMain, getSettings, getMcpHost, getDefaultCwd, getUserDataDir, pickFolder }) {
     this.getSettings = getSettings
     this.getMcpHost = getMcpHost
     this.getDefaultCwd = getDefaultCwd
+    this.getUserDataDir = getUserDataDir || (() => path.dirname(getDefaultCwd()))
     /** @type {Map<string, { child: import('node:child_process').ChildProcess, nodeId: string | null }>} */
     this.running = new Map()
 
@@ -305,6 +319,9 @@ class ClaudeCodeRunner {
         ok: false,
         error: requested ? `Working folder ${requested} does not exist.` : `Could not create the working folder ${defaultCwd}.`,
       }
+    }
+    if (requested && isProtectedFolder(cwd, this.getUserDataDir())) {
+      return { ok: true, cwd, isDefault: false, profile: 'canvas', bashAllowlist: [], protectedFolder: true }
     }
     const access = folderAccess(settings, cwd)
     return { ok: true, cwd, isDefault: !requested, profile: access.profile, bashAllowlist: access.bashAllowlist }
@@ -443,4 +460,5 @@ module.exports = {
   normalizeFolderPath,
   folderAccess,
   findClone,
+  isProtectedFolder,
 }
