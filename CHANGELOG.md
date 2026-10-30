@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/yhauxell/foqz/compare/v1.0.0...v1.1.0) (2026-10-30)
+
+
+### Features
+
+* **claude-code:** run local Claude Code in a folder, with access levels, sessions and a run log ([#98](https://github.com/yhauxell/foqz/issues/98)) ([4c437bc](https://github.com/yhauxell/foqz/commit/4c437bcb50f01d0ce83f0a72b20473d5d705a1e7))
+* **github:** two-way label sync and a setting for close/reopen ([#82](https://github.com/yhauxell/foqz/issues/82)) ([949f3a2](https://github.com/yhauxell/foqz/commit/949f3a22d7354ec4f1b6032bec28e55903235536))
+* **shortcuts:** global quick capture from any app ([#87](https://github.com/yhauxell/foqz/issues/87)) ([b5ed70d](https://github.com/yhauxell/foqz/commit/b5ed70db2f8f703813a319a938f65f5612a8f10f))
+* **storage:** boards as files on disk with backups, save on quit, recovery ([#85](https://github.com/yhauxell/foqz/issues/85)) ([b05b671](https://github.com/yhauxell/foqz/commit/b05b671c328ff39df8bb0802f7863fc5499f21d4))
+
+
+### Bug Fixes
+
+* **claude-code:** block file tools and stop defaulting canvas runs to ~ ([#97](https://github.com/yhauxell/foqz/issues/97)) ([428e60c](https://github.com/yhauxell/foqz/commit/428e60c581d94ad49d80a819337f1436839df6d2)), closes [#89](https://github.com/yhauxell/foqz/issues/89)
+
 ## [1.0.0](https://github.com/yhauxell/foqz/compare/v0.13.1...v1.0.0) (2026-10-25)
 
 
