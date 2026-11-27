@@ -1,3 +1,4 @@
+import { handleEditorKeyDown, useEditingRegistration } from "../utils/textEditorKeys";
 import React, { memo, useState, useRef, useEffect, useCallback } from "react";
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from "@xyflow/react";
 import {
@@ -81,6 +82,8 @@ export const NoteNode = memo(function NoteNode({
       return () => clearTimeout(timer);
     }
   }, [isEditing]);
+
+  useEditingRegistration(id, isEditing);
 
   const handleSave = useCallback(() => {
     setIsEditing(false);
@@ -226,14 +229,18 @@ export const NoteNode = memo(function NoteNode({
             {isEditing ? (
               <textarea
                 ref={textareaRef}
+                id={`text-node-input-${id}`}
                 value={textDraft}
                 placeholder="Write something on your note..."
                 onChange={(e) => setTextDraft(e.target.value)}
                 onBlur={handleSave}
                 onKeyDown={(e) => {
+                  e.stopPropagation();
                   if (e.key === "Escape") {
                     e.preventDefault();
                     handleSave();
+                  } else {
+                    handleEditorKeyDown(e, id);
                   }
                 }}
                 className="w-full h-full bg-transparent outline-none resize-none p-0 border-none shadow-none text-xs leading-relaxed focus:ring-0"

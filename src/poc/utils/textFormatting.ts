@@ -83,6 +83,12 @@ export function clearTextFormatting(str: string): string {
 /**
  * Applies a format to an existing string (used when Text node is selected without active editing).
  */
+/** Wrapped in single-asterisk italics: `*x*` or `***x***`, but not `**bold**`. */
+export function isItalicWrapped(s: string): boolean {
+  if (s.length >= 6 && s.startsWith("***") && s.endsWith("***")) return true;
+  return s.length >= 2 && s.startsWith("*") && s.endsWith("*") && !s.startsWith("**") && !s.endsWith("**");
+}
+
 export function applyFormattingToString(
   text: string,
   format: TextFormatType,
@@ -98,7 +104,7 @@ export function applyFormattingToString(
       return `**${current || "Bold text"}**`;
     }
     case "italic": {
-      if (current.startsWith("*") && current.endsWith("*") && current.length >= 2) {
+      if (isItalicWrapped(current)) {
         return current.slice(1, -1);
       }
       return `*${current || "Italic text"}*`;
@@ -181,7 +187,7 @@ export function applyFormattingToTextarea(
       suffix = "*";
       defaultPlaceholder = "italic text";
       if (hasSelection) {
-        if (selectedText.startsWith("*") && selectedText.endsWith("*") && selectedText.length >= 2) {
+        if (isItalicWrapped(selectedText)) {
           replacement = selectedText.slice(1, -1);
           newSelectStart = start;
           newSelectEnd = start + replacement.length;

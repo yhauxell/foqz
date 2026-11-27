@@ -1,3 +1,4 @@
+import { convertSelected, formatSelected } from "./utils/textEditorKeys";
 import { DEFAULT_NEW_EDGE_RELATION } from "@/lib/edgeRelations";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -1198,6 +1199,10 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       window.dispatchEvent(new CustomEvent("foqz:open-shortcuts"));
     },
     onEscape: handleEscape,
+    onConvertStyle: convertSelected,
+    onFormatSelected: (format) => {
+      formatSelected(format);
+    },
   });
 
   // Canvas Click Handler (Click-to-place for Task, Text, and Note)

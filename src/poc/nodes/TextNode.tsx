@@ -1,3 +1,4 @@
+import { handleEditorKeyDown } from "../utils/textEditorKeys";
 import React, { memo, useState, useRef, useEffect, useCallback } from "react";
 import { Handle, Position, useReactFlow, useStore, type NodeProps, type Node } from "@xyflow/react";
 import { renderMarkdownBlock } from "@/lib/markdown";
@@ -341,26 +342,8 @@ export const TextNode = memo(function TextNode({
               e.preventDefault();
               editingRef.current = false; // the blur on unmount must not save into a deleted node
               useFlowCanvasStore.getState().deleteNode(id);
-            } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
-              e.preventDefault();
-              const updated = applyFormattingToTextarea(e.currentTarget, "bold");
-              setVal(updated);
-            } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "i") {
-              e.preventDefault();
-              const updated = applyFormattingToTextarea(e.currentTarget, "italic");
-              setVal(updated);
-            } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "u") {
-              e.preventDefault();
-              const updated = applyFormattingToTextarea(e.currentTarget, "underline");
-              setVal(updated);
-            } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "x") {
-              e.preventDefault();
-              const updated = applyFormattingToTextarea(e.currentTarget, "strike");
-              setVal(updated);
-            } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-              e.preventDefault();
-              const updated = applyFormattingToTextarea(e.currentTarget, "link");
-              setVal(updated);
+            } else {
+              handleEditorKeyDown(e, id);
             }
           }}
           className={`${fixedWidth ? "w-full flex-1 min-w-0" : ""} block bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none shadow-none focus:ring-0 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400/80 dark:placeholder:text-zinc-500/80 leading-relaxed font-sans`}

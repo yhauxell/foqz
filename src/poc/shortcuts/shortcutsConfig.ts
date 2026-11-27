@@ -18,13 +18,18 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
   { id: "tool-box", name: "Rectangle", keyDisplay: "R", category: "Tools", description: "Drag to draw a rectangle" },
   { id: "tool-circle", name: "Circle", keyDisplay: "O", category: "Tools", description: "Drag to draw a circle" },
   { id: "tool-arrow", name: "Arrow", keyDisplay: "A", category: "Tools", description: "Drag to draw an arrow" },
-  { id: "tool-connection", name: "Connect", keyDisplay: "L", category: "Tools", description: "Drag between handles: depends on / relates to" },
+  { id: "tool-connection", name: "Connect", keyDisplay: "L", category: "Tools", description: "Drag between handles: a plain line; click its dot for depends on / relates to" },
   { id: "tool-pencil", name: "Pencil", keyDisplay: "P", category: "Tools", description: "Freehand drawing" },
   { id: "tool-comment", name: "Annotate", keyDisplay: "C", category: "Tools", description: "Pin a comment, question or decision" },
 
   // Text behaviors
   { id: "text-new", name: "New text at cursor", keyDisplay: "⌘N", category: "Text", description: "Start writing where the pointer is" },
   { id: "text-actionable", name: "Make it a to-do", keyDisplay: "⌘↵", category: "Text", description: "Toggle the checkbox on selected text" },
+  { id: "text-style-plain", name: "To plain text", keyDisplay: "⌥1", category: "Text", description: "Convert the selection; while typing, pull the selected words into a new text" },
+  { id: "text-style-sticky", name: "To sticky note", keyDisplay: "⌥2", category: "Text", description: "Convert the selection; while typing, pull the selected words into a new sticky" },
+  { id: "text-style-card", name: "To task card", keyDisplay: "⌥3", category: "Text", description: "Convert the selection; while typing, pull the selected words into a new task" },
+  { id: "text-format", name: "Bold / Italic / Underline", keyDisplay: "⌘B / ⌘I / ⌘U", category: "Text", description: "While typing: the selected words. Text selected: the whole text" },
+  { id: "text-strike", name: "Strikethrough / Link", keyDisplay: "⌘⇧X / ⌘K", category: "Text", description: "⌘K adds a link while typing" },
   { id: "text-focus", name: "Focus here", keyDisplay: "F", category: "Text", description: "Zoom in, dim the rest, start the timer" },
   { id: "text-exit-focus", name: "Leave focus", keyDisplay: "Esc", category: "Text", description: "Back to the whole board" },
 
