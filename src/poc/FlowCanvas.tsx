@@ -1,3 +1,12 @@
+import { TidyBoardDialog } from "@/components/TidyBoardDialog";
+import { ActionItemsReview } from "@/components/ActionItemsReview";
+import { canHaveIcon } from "@/lib/icons";
+import { deriveTasks } from "@/lib/derivedTasks";
+import { DerivedTaskBadges } from "./components/DerivedTaskBadges";
+import { dropTarget, mindmapOf, reparent } from "@/lib/mindmap/mindmap";
+import { runMindmapSync, useMindmaps } from "./hooks/useMindmaps";
+import { convertSelected, formatSelected } from "./utils/textEditorKeys";
+import { DEFAULT_NEW_EDGE_RELATION } from "@/lib/edgeRelations";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
@@ -74,7 +83,7 @@ function getSvgPathFromStroke(stroke: number[][]) {
 const PRO_OPTIONS = { hideAttribution: true };
 const DEFAULT_EDGE_OPTIONS = {
   type: "semantic",
-  data: { relation: "depends" },
+  data: { relation: DEFAULT_NEW_EDGE_RELATION },
 };
 const MULTI_SELECTION_KEY_CODE = ["Meta", "Control", "Shift"];
 const ZOOM_ACTIVATION_KEY_CODE = ["Meta", "Control"];
@@ -630,7 +639,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           {
             ...params,
             type: "semantic",
-            data: { relation: "depends" },
+            data: { relation: DEFAULT_NEW_EDGE_RELATION },
           },
           eds
         )
@@ -647,6 +656,34 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   const handleNodeDragStop = useCallback(
     (_event: MouseEvent | TouchEvent, node: Node) => {
       if (node.type === "projectFrame") return;
+
+      // Inside a mind map, a branch is moved by dropping it on its new parent; anywhere
+      // else it snaps back into the layout. The root moves the whole map (and can join a region).
+      const map = mindmapOf(node);
+      if (map && map.parentId !== null) {
+        const absOf = (n: Node) => {
+          const i = getInternalNode(n.id);
+          return {
+            x: i?.internals?.positionAbsolute?.x ?? n.position.x,
+            y: i?.internals?.positionAbsolute?.y ?? n.position.y,
+            w: i?.measured?.width ?? 120,
+            h: i?.measured?.height ?? 44,
+          };
+        };
+        const b = absOf(node);
+        const center = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+        // What you drop on is what's under the pointer.
+        const pt = "clientX" in _event ? _event : _event.changedTouches?.[0];
+        const pointer = pt ? screenToFlowPosition({ x: pt.clientX, y: pt.clientY }) : null;
+        const target = dropTarget(node, pointer ?? center, absOf);
+        if (target) {
+          const root = useFlowCanvasStore.getState().nodes.find((n) => n.id === map.rootId);
+          const rb = root ? absOf(root) : null;
+          reparent(node.id, target.id, rb && center.x < rb.x + rb.w / 2 ? "left" : "right");
+        }
+        runMindmapSync();
+        return;
+      }
 
       const currentNodes = useFlowCanvasStore.getState().nodes;
       const frames = currentNodes.filter((n) => n.type === "projectFrame" && n.id !== node.id);
@@ -713,7 +750,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         );
       }
     },
-    [getInternalNode, setNodes]
+    [getInternalNode, setNodes, screenToFlowPosition]
   );
 
   // Helper spawners
@@ -1138,6 +1175,12 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   }, [fitView, setNodes]);
 
   // Unified Keyboard Shortcuts Hook
+  const viewportCenter = useCallback(
+    () => screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }),
+    [screenToFlowPosition]
+  );
+  useMindmaps({ enabled: activeTool === "select", viewportCenter });
+
   useFlowCanvasShortcuts({
     onSelectTool: () => selectTool("select"),
     onBoxTool: () => selectTool("box"),
@@ -1197,6 +1240,43 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
       window.dispatchEvent(new CustomEvent("foqz:open-shortcuts"));
     },
     onEscape: handleEscape,
+    onConvertStyle: convertSelected,
+    onFormatSelected: (format) => {
+      formatSelected(format);
+    },
+    onDeriveTask: () => {
+      deriveTasks("auto");
+    },
+    onTidy: () => window.dispatchEvent(new CustomEvent("foqz:tidy-board")),
+    onExtractActionItems: () => window.dispatchEvent(new CustomEvent("foqz:extract-action-items")),
+    onIcon: () => {
+      const s = useFlowCanvasStore.getState();
+      const selected = s.nodes.filter((n) => n.selected);
+      const openPicker = () =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("foqz:open-icon-picker")))
+        );
+      if (selected.length === 1 && canHaveIcon(selected[0])) {
+        openPicker();
+      } else if (selected.length === 0) {
+        // Nothing selected: drop a standalone icon in the middle of the view and pick it.
+        const pos = viewportCenter();
+        const id = `icon-${Date.now()}`;
+        s.setNodes((nodes) => [
+          ...nodes,
+          {
+            id,
+            type: "icon",
+            position: { x: Math.round(pos.x - 32), y: Math.round(pos.y - 32) },
+            style: { width: 64, height: 64 },
+            selected: true,
+            data: { icon: { set: "lucide", name: "star" } },
+          },
+        ]);
+        s.setSelectedNodeId?.(id);
+        openPicker();
+      }
+    },
   });
 
   // Canvas Click Handler (Click-to-place for Task, Text, and Note)
@@ -1680,7 +1760,10 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         <FlowZoomControls sidebarOpen={sidebarOpen} />
         <FlowShapeMenu selectedNode={selectedNode} />
         <ReminderBadges />
+        <DerivedTaskBadges />
       </ReactFlow>
+      <ActionItemsReview />
+      <TidyBoardDialog />
 
       {/* Live Freehand Pencil Preview Overlay (Smooth 60fps) */}
       {pencilPreviewSvgPath && (

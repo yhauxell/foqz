@@ -1,3 +1,12 @@
+import { CanvasIcon } from "@/components/CanvasIcon";
+import { canHaveIcon, iconOf } from "@/lib/icons";
+import { IconPicker } from "./IconPicker";
+import { Shapes } from "lucide-react";
+import { deriveTasks, isDerivable } from "@/lib/derivedTasks";
+import { ListChecks, ListTodo } from "lucide-react";
+import { addChild, makeMindmap, mindmapOf, toggleCollapse } from "@/lib/mindmap/mindmap";
+import { FoldHorizontal, GitBranchPlus, Network } from "lucide-react";
+import { canFormatWholeNode } from "../utils/textEditorKeys";
 import React, { memo, useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import {
   useReactFlow,
@@ -98,10 +107,10 @@ const BORDER_STYLES = [
   },
 ];
 
-const TEXT_STYLES: Array<{ id: TextStyle; label: string; hint: string; icon: React.ComponentType<{ className?: string }> }> = [
-  { id: "plain", label: "Plain", hint: "Text on the canvas", icon: TypeIcon },
-  { id: "sticky", label: "Sticky", hint: "On a sticky note", icon: StickyNote },
-  { id: "card", label: "Card", hint: "On a card, always a to-do", icon: LayoutList },
+const TEXT_STYLES: Array<{ id: TextStyle; label: string; hint: string; shortcut: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { id: "plain", label: "Plain", hint: "Text on the canvas", icon: TypeIcon, shortcut: "⌥1" },
+  { id: "sticky", label: "Sticky", hint: "On a sticky note", icon: StickyNote, shortcut: "⌥2" },
+  { id: "card", label: "Card", hint: "On a card, always a to-do", icon: LayoutList, shortcut: "⌥3" },
 ];
 
 /** Text size presets (FigJam / Miro style) instead of a pixel stepper. */
@@ -112,7 +121,7 @@ const TEXT_SIZES = [
   { label: "XL", px: 32 },
 ];
 
-type MenuId = "style" | "size" | "color" | "border" | "spear" | "more" | "highlight" | "link" | "reminder";
+type MenuId = "style" | "size" | "color" | "border" | "spear" | "more" | "highlight" | "link" | "reminder" | "derive" | "icon";
 
 function useOutsideClick(ref: React.RefObject<HTMLDivElement | null>, onClose: () => void) {
   useEffect(() => {
@@ -280,6 +289,12 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
 
   // A different selection starts with every dropdown closed.
   useEffect(() => setOpenMenu(null), [selectedNode?.id]);
+  // `I` opens the icon picker for the selection.
+  useEffect(() => {
+    const open = () => setOpenMenu("icon");
+    window.addEventListener("foqz:open-icon-picker", open);
+    return () => window.removeEventListener("foqz:open-icon-picker", open);
+  }, []);
 
   // Near the canvas edge, slide the toolbar sideways instead of letting the tool rail cover it.
   useLayoutEffect(() => {
@@ -323,23 +338,18 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     (format: TextFormatType, options?: { url?: string; color?: HighlightColor }) => {
       if (!selectedNode) return;
       const id = selectedNode.id;
-      let textarea = document.getElementById(`text-node-input-${id}`) as HTMLTextAreaElement | null;
-      if (
-        !textarea &&
-        typeof document !== "undefined" &&
-        document.activeElement instanceof HTMLTextAreaElement &&
-        document.activeElement.id.startsWith("text-node-input-")
-      ) {
-        textarea = document.activeElement;
-      }
+      // The editor being typed in: whichever textarea in this node has focus (text, sticky,
+      // card title or card notes), else the node's main editor.
+      const active = typeof document !== "undefined" ? document.activeElement : null;
+      const nodeEl = document.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
+      let textarea: HTMLTextAreaElement | null =
+        active instanceof HTMLTextAreaElement && nodeEl?.contains(active) ? active : null;
+      if (!textarea) textarea = document.getElementById(`text-node-input-${id}`) as HTMLTextAreaElement | null;
 
       if (textarea) {
-        const updated = applyFormattingToTextarea(textarea, format, options);
-        useFlowCanvasStore.getState().updateNodeData(id, { text: updated });
-        setNodes((nodes) =>
-          nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, text: updated } } : n))
-        );
-      } else {
+        // The editor's own onChange picks up the new value; it is saved when editing ends.
+        applyFormattingToTextarea(textarea, format, options);
+      } else if (canFormatWholeNode(selectedNode)) {
         const currentText = (selectedNode.data?.text as string) || "";
         const updated = applyFormattingToString(currentText, format, options);
         useFlowCanvasStore.getState().updateNodeData(id, { text: updated });
@@ -528,7 +538,77 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
   const below = toolbarPosition === Position.Bottom;
 
   const isTextLike = isTextNode(selectedNode);
-  const isEditingText = isText && editingNodeId === selectedNode.id;
+  const isEditingText = isTextNode(selectedNode) && editingNodeId === selectedNode.id;
+  const canFormatWhole = canFormatWholeNode(selectedNode);
+  const mapData = mindmapOf(selectedNode);
+  const hasBranches = !!mapData && useFlowCanvasStore.getState().nodes.some((n) => mindmapOf(n)?.parentId === selectedNode.id);
+
+  const iconEligible = canHaveIcon(selectedNode);
+  const currentIcon = iconOf(selectedNode);
+  const iconControl = iconEligible && (
+    <div className="relative">
+      <ToolButton label={selectedNode.type === "icon" ? "Change icon (I)" : "Icon (I)"} active={openMenu === "icon"} onClick={() => toggleMenu("icon")}>
+        {currentIcon ? <CanvasIcon icon={currentIcon} size={14} /> : <Shapes className="size-3.5" />}
+      </ToolButton>
+      {openMenu === "icon" && (
+        <Panel below={below}>
+          <IconPicker
+            onClose={() => setOpenMenu(null)}
+            onPick={(name) => {
+              useFlowCanvasStore.getState().updateNodeData(selectedNode.id, { icon: { set: "lucide", name } });
+              setOpenMenu(null);
+            }}
+            onRemove={
+              currentIcon && selectedNode.type !== "icon"
+                ? () => {
+                    useFlowCanvasStore.getState().updateNodeData(selectedNode.id, { icon: undefined });
+                    setOpenMenu(null);
+                  }
+                : undefined
+            }
+          />
+        </Panel>
+      )}
+    </div>
+  );
+
+  /** "Make task": the element keeps its look; a linked task card appears beside it. */
+  const deriveControl = isDerivable(selectedNode) && (
+    <div className="relative">
+      {hasBranches ? (
+        <>
+          <ToolButton label="Make task (⇧T)" active={openMenu === "derive"} onClick={() => toggleMenu("derive")}>
+            <ListTodo className="size-3.5" />
+          </ToolButton>
+          {openMenu === "derive" && (
+            <Panel below={below} className="w-56">
+              <MenuItem
+                label="One task, branches as checklist"
+                shortcut="⇧T"
+                icon={<ListTodo className="size-3.5" />}
+                onClick={() => {
+                  setOpenMenu(null);
+                  deriveTasks("checklist", [selectedNode.id]);
+                }}
+              />
+              <MenuItem
+                label="One task per branch"
+                icon={<ListChecks className="size-3.5" />}
+                onClick={() => {
+                  setOpenMenu(null);
+                  deriveTasks("perBranch", [selectedNode.id]);
+                }}
+              />
+            </Panel>
+          )}
+        </>
+      ) : (
+        <ToolButton label="Make task (⇧T)" onClick={() => deriveTasks("auto", [selectedNode.id])}>
+          <ListTodo className="size-3.5" />
+        </ToolButton>
+      )}
+    </div>
+  );
   const style = textStyleOf(selectedNode);
   const styleMeta = TEXT_STYLES.find((t) => t.id === style) ?? TEXT_STYLES[0];
   const StyleIcon = styleMeta.icon;
@@ -592,6 +672,58 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
     </div>
   );
 
+  const highlightControl = (
+            <div className="relative">
+              <ToolButton label="Highlight text" active={openMenu === "highlight"} onClick={() => toggleMenu("highlight")}>
+                <Highlighter className="size-3.5" />
+              </ToolButton>
+              {openMenu === "highlight" && (
+                <Panel below={below} className="flex flex-col gap-1 p-1.5">
+                  <div className="flex items-center gap-1.5 px-0.5">
+                    {HIGHLIGHT_COLORS.map((c) => (
+                      <button
+                        key={c.name}
+                        type="button"
+                        title={`Highlight ${c.name}`}
+                        onPointerDown={(e) => e.preventDefault()}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleFormatAction("highlight", { color: c });
+                          setOpenMenu(null);
+                        }}
+                        className="size-5 rounded-full border border-black/10 dark:border-white/20 transition-transform hover:scale-110 cursor-pointer"
+                        style={{ backgroundColor: c.bg }}
+                      />
+                    ))}
+                  </div>
+                </Panel>
+              )}
+            </div>
+  );
+
+  /** Formatting for a selected text or sticky without entering edit mode: applies to the whole text. */
+  const wholeNodeFormatting = canFormatWhole && (
+    <>
+      <Divider />
+      <ToolButton label="Bold all (⌘B)" onClick={() => handleFormatAction("bold")}>
+        <Bold className="size-3.5" />
+      </ToolButton>
+      <ToolButton label="Italic all (⌘I)" onClick={() => handleFormatAction("italic")}>
+        <Italic className="size-3.5" />
+      </ToolButton>
+      <ToolButton label="Strikethrough all (⌘⇧X)" onClick={() => handleFormatAction("strike")}>
+        <Strikethrough className="size-3.5" />
+      </ToolButton>
+      {highlightControl}
+      <ToolButton label="Clear formatting" onClick={() => handleFormatAction("clear")}>
+        <RemoveFormatting className="size-3.5" />
+      </ToolButton>
+      <Divider />
+    </>
+  );
+
   return (
     <NodeToolbar nodeId={selectedNode.id} isVisible={true} position={toolbarPosition} offset={10} align="center">
       <div
@@ -606,6 +738,7 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
         {isEditingText ? (
           /* While typing: only formatting, like the inline text bar in Canva or Miro. */
           <>
+            {isText && (<>
             <div className="flex items-center">
               <ToolButton label="Decrease font size" onClick={() => handleFontSize(currentFontSize - 2)}>
                 <Minus className="size-3.5" />
@@ -618,6 +751,7 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
               </ToolButton>
             </div>
             <Divider />
+            </>)}
             <ToolButton label="Bold (**text**)" onClick={() => handleFormatAction("bold")}>
               <Bold className="size-3.5" />
             </ToolButton>
@@ -666,34 +800,7 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
                 </Panel>
               )}
             </div>
-            <div className="relative">
-              <ToolButton label="Highlight text" active={openMenu === "highlight"} onClick={() => toggleMenu("highlight")}>
-                <Highlighter className="size-3.5" />
-              </ToolButton>
-              {openMenu === "highlight" && (
-                <Panel below={below} className="flex flex-col gap-1 p-1.5">
-                  <div className="flex items-center gap-1.5 px-0.5">
-                    {HIGHLIGHT_COLORS.map((c) => (
-                      <button
-                        key={c.name}
-                        type="button"
-                        title={`Highlight ${c.name}`}
-                        onPointerDown={(e) => e.preventDefault()}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleFormatAction("highlight", { color: c });
-                          setOpenMenu(null);
-                        }}
-                        className="size-5 rounded-full border border-black/10 dark:border-white/20 transition-transform hover:scale-110 cursor-pointer"
-                        style={{ backgroundColor: c.bg }}
-                      />
-                    ))}
-                  </div>
-                </Panel>
-              )}
-            </div>
+            {highlightControl}
             <ToolButton label="Clear formatting" onClick={() => handleFormatAction("clear")}>
               <RemoveFormatting className="size-3.5" />
             </ToolButton>
@@ -727,6 +834,7 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
                               role="radio"
                               label={t.label}
                               hint={t.hint}
+                              shortcut={t.shortcut}
                               icon={<Icon className="size-3.5" />}
                               selected={style === t.id}
                               onClick={() => {
@@ -750,6 +858,26 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
                   >
                     <CheckSquare className="size-3.5" />
                   </ToolButton>
+                )}
+
+                {isText && !mapData && (
+                  <ToolButton label="Mind map from this (M)" onClick={() => makeMindmap(selectedNode.id)}>
+                    <Network className="size-3.5" />
+                  </ToolButton>
+                )}
+                {mapData && (
+                  <>
+                    <ToolButton label="Add branch (Tab)" onClick={() => addChild(selectedNode.id)}>
+                      <GitBranchPlus className="size-3.5" />
+                    </ToolButton>
+                    <ToolButton
+                      label={mapData.collapsed ? "Show branch (/)" : "Fold branch (/)"}
+                      pressed={!!mapData.collapsed}
+                      onClick={() => toggleCollapse(selectedNode.id)}
+                    >
+                      <FoldHorizontal className="size-3.5" />
+                    </ToolButton>
+                  </>
                 )}
 
                 {isText && (
@@ -788,9 +916,20 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
                     )}
                   </div>
                 )}
+                {wholeNodeFormatting}
               </>
             )}
 
+            {iconControl}
+            {deriveControl}
+            {(mapData || selectedNode.type === "projectFrame") && (
+              <ToolButton
+                label="Extract action items with AI (⇧E)"
+                onClick={() => window.dispatchEvent(new CustomEvent("foqz:extract-action-items"))}
+              >
+                <Sparkles className="size-3.5 text-violet-500" />
+              </ToolButton>
+            )}
             {selectedNode.type !== "image" && selectedNode.type !== "linkCard" && colorControl}
 
             {isBorderEligible && !isTextLike && (

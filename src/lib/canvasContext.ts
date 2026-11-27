@@ -2,6 +2,7 @@
  * Foqz Canvas Context Extractor
  * Pure React Flow implementation for AI Copilot and MCP Tools.
  */
+import { edgeRelation } from "@/lib/edgeRelations";
 import type { LogbookEntry } from "@/types/logbook";
 import type { Annotation } from "@/types/annotations";
 import { getLogbookEntriesByIds } from "./logbookService";
@@ -66,11 +67,17 @@ function describeNode(n: any, nodes: any[]): Omit<ShapeContextItem, "rawType" | 
     const todo = isActionable(n) ? `To-do, ${d.status === "done" ? "done" : "open"}` : STYLE_LABEL[style];
     const focus = d.focusSecondsSpent ? `, ${Math.round(Number(d.focusSecondsSpent) / 60)}m focused` : "";
     const github = d.githubIssueNumber ? `, GitHub #${d.githubIssueNumber}` : "";
+    const map = d.mindmap
+      ? d.mindmap.parentId
+        ? `, mind map branch of "${nodeTitle(nodes.find((p) => p.id === d.mindmap.parentId)) || "?"}"`
+        : ", mind map topic"
+      : "";
+    const derived = d.derivedFrom ? `, made from "${nodeTitle(nodes.find((p) => p.id === d.derivedFrom)) || "a removed element"}"` : "";
     return {
       id: n.id,
       type: n.type,
       label,
-      fullText: `[${todo}] "${body.replace(/\n+/g, " / ").slice(0, 400) || label}"${inRegion}${focus}${github}`,
+      fullText: `[${todo}] "${body.replace(/\n+/g, " / ").slice(0, 400) || label}"${inRegion}${map}${derived}${focus}${github}`,
     };
   }
   if (n.type === "projectFrame") {
@@ -80,11 +87,16 @@ function describeNode(n: any, nodes: any[]): Omit<ShapeContextItem, "rawType" | 
   }
   if (n.type === "box" || n.type === "circle") {
     const label = d.label || (n.type === "box" ? "Rectangle" : "Circle");
-    return { id: n.id, type: n.type, label, fullText: `[${n.type === "box" ? "Rectangle" : "Circle"}] "${label}"${inRegion}` };
+    const icon = d.icon?.name ? ` (icon: ${d.icon.name})` : "";
+    return { id: n.id, type: n.type, label, fullText: `[${n.type === "box" ? "Rectangle" : "Circle"}] "${label}"${icon}${inRegion}` };
   }
   if (n.type === "linkCard") {
     const label = d.title || d.url || "Link";
     return { id: n.id, type: n.type, label, fullText: `[Link] "${label}"${d.url ? ` (${d.url})` : ""}${inRegion}` };
+  }
+  if (n.type === "icon") {
+    const label = d.icon?.name || "icon";
+    return { id: n.id, type: n.type, label, fullText: `[Icon] "${label}"${inRegion}` };
   }
   if (n.type === "image") {
     const label = d.alt || "Image";
@@ -137,8 +149,11 @@ export function getFlowCanvasContext(
     const src = nodes.find((n) => n.id === e.source);
     const tgt = nodes.find((n) => n.id === e.target);
     if (!src || !tgt) continue;
+    const rel = edgeRelation(e);
     const relText =
-      e.data?.relation === "relates"
+      rel === "plain"
+        ? `- "${nodeTitle(src)}" — "${nodeTitle(tgt)}" (connected${e.data?.label ? `: ${e.data.label}` : ""})`
+        : rel === "relates"
         ? `- "${nodeTitle(src)}" RELATES TO "${nodeTitle(tgt)}"`
         : `- "${nodeTitle(tgt)}" DEPENDS ON "${nodeTitle(src)}"`;
     relationships.push(relText);

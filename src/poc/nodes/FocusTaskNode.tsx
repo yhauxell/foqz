@@ -1,3 +1,5 @@
+import { centerOn, elementTitle } from "@/lib/derivedTasks";
+import { handleEditorKeyDown, useEditingRegistration } from "../utils/textEditorKeys";
 import React, { memo, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { NodeResizer, Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
@@ -110,6 +112,13 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(data.title || "");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const derivedFrom = typeof data.derivedFrom === "string" ? data.derivedFrom : null;
+  const sourceTitle = useFlowCanvasStore((s) => {
+    if (!derivedFrom) return null;
+    const src = s.nodes.find((n) => n.id === derivedFrom);
+    return src ? elementTitle(src) : null;
+  });
+  useEditingRegistration(id, isEditingTitle || isEditingNotes);
   const [notesDraft, setNotesDraft] = useState(data.notes || "");
 
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -419,6 +428,26 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                   </div>
                 ) : null}
 
+                {derivedFrom && (
+                  <button
+                    type="button"
+                    data-derived-from={derivedFrom}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (sourceTitle !== null) centerOn(derivedFrom);
+                    }}
+                    title={sourceTitle !== null ? "Go to where this task came from" : "The element this came from was deleted"}
+                    className={`nodrag mb-0.5 max-w-full truncate text-left text-[10px] leading-tight ${
+                      sourceTitle !== null
+                        ? "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 cursor-pointer"
+                        : "text-zinc-400 line-through cursor-default"
+                    }`}
+                  >
+                    ↖ {sourceTitle ?? "source removed"}
+                  </button>
+                )}
+
                 {/* Natural In-Place Title Editing */}
                 {isEditingTitle ? (
                   <textarea
@@ -439,6 +468,8 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                         e.preventDefault();
                         setTitleDraft(data.title || "");
                         setIsEditingTitle(false);
+                      } else {
+                        handleEditorKeyDown(e, id);
                       }
                     }}
                     className="w-full bg-transparent outline-none resize-none overflow-hidden p-0 m-0 border-none text-[13px] leading-snug font-medium text-zinc-900 dark:text-zinc-100 shadow-none focus:ring-0"
@@ -595,6 +626,8 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                       e.preventDefault();
                       setNotesDraft(data.notes || "");
                       setIsEditingNotes(false);
+                    } else {
+                      handleEditorKeyDown(e, id);
                     }
                   }}
                   className="w-full bg-black/[0.02] dark:bg-white/[0.04] p-1.5 rounded-lg border border-rose-400 outline-none text-[11px] leading-relaxed font-mono"

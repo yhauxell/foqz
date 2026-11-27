@@ -1,3 +1,4 @@
+import { isDependencyEdge } from "@/lib/edgeRelations";
 import { create } from "zustand";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { temporal, type TemporalState } from "zundo";
@@ -983,7 +984,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
               const sweptData = (sweptNode.data || {}) as Record<string, any>;
               const isDep = liveDependencies.includes(sweptNode.id);
               const hasEdgeFromSwept = currentEdges.some(
-                (e) => e.source === sweptNode.id && e.target === n.id
+                (e) => e.source === sweptNode.id && e.target === n.id && isDependencyEdge(e)
               );
 
               if (isDep || hasEdgeFromSwept) {
@@ -1019,7 +1020,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>()(
                 (other) =>
                   other.id !== node.id &&
                   ((other.data as any)?.dependencies?.includes(node.id) ||
-                    currentEdges.some((e) => e.source === node.id && e.target === other.id))
+                    currentEdges.some((e) => e.source === node.id && e.target === other.id && isDependencyEdge(e)))
               )
               .map((other) => other.id);
 

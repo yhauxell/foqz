@@ -1,3 +1,4 @@
+import { canFormatWholeNode } from "@/poc/utils/textEditorKeys";
 import { FocusSettings, type SettingsTab } from "@/components/FocusSettings";
 import { FocusAppSettingsProvider, useFocusAppSettings } from "@/context/FocusAppSettingsContext";
 import { TopbarBoardMenu } from "@/components/TopbarBoardMenu";
@@ -339,12 +340,16 @@ function FocusCanvasAppInner() {
 
       const mod = e.metaKey || e.ctrlKey;
 
-      // Fit View (Cmd+B or Cmd+\)
+      // Fit View (Cmd+B or Cmd+\). With a text or sticky selected, Cmd+B bolds it instead
+      // (handled by the canvas shortcuts).
+      const formattableSelected = useFlowCanvasStore
+        .getState()
+        .nodes.some((n) => n.selected && canFormatWholeNode(n));
       if (
         mod &&
         !e.shiftKey &&
         !e.altKey &&
-        (e.key.toLowerCase() === "b" || e.key === "\\")
+        ((e.key.toLowerCase() === "b" && !formattableSelected) || e.key === "\\")
       ) {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent("foqz:fit-view"));

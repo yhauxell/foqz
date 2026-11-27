@@ -1,3 +1,4 @@
+import { IconNode } from "./IconNode";
 import type { NodeTypes } from "@xyflow/react";
 import { FocusTaskNode } from "./FocusTaskNode";
 import { ProjectFrameNode } from "./ProjectFrameNode";
@@ -22,6 +23,7 @@ export const nodeTypes: NodeTypes = {
   image: ImageNode,
   linkCard: LinkCardNode,
   arrow: ArrowNode,
+  icon: IconNode,
 };
 
 export * from "./CircleNode";

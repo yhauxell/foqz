@@ -1,3 +1,7 @@
+import { useEffect } from "react";
+import { styleShortcut } from "../utils/textEditorKeys";
+import type { TextFormatType } from "../utils/textFormatting";
+import type { TextStyle } from "@/lib/nodePredicates";
 import { useHotkeys } from "react-hotkeys-hook";
 
 interface FlowCanvasShortcutsProps {
@@ -25,6 +29,12 @@ interface FlowCanvasShortcutsProps {
   onUngroupSelected: () => void;
   onToggleShortcutsModal: () => void;
   onEscape: () => void;
+  onConvertStyle: (style: TextStyle) => void;
+  onFormatSelected: (format: TextFormatType) => void;
+  onDeriveTask: () => void;
+  onIcon: () => void;
+  onExtractActionItems: () => void;
+  onTidy: () => void;
 }
 
 /** Canvas shortcuts. Keep in sync with `src/poc/shortcuts/shortcutsConfig.ts`. */
@@ -53,6 +63,12 @@ export function useFlowCanvasShortcuts({
   onUngroupSelected,
   onToggleShortcutsModal,
   onEscape,
+  onConvertStyle,
+  onFormatSelected,
+  onDeriveTask,
+  onIcon,
+  onExtractActionItems,
+  onTidy,
 }: FlowCanvasShortcutsProps) {
   // Tools
   useHotkeys("v", () => onSelectTool(), { preventDefault: true, enabled });
@@ -93,4 +109,32 @@ export function useFlowCanvasShortcuts({
   useHotkeys("0", () => onFitView(), { preventDefault: true, enabled });
   useHotkeys(["?", "shift+?"], () => onToggleShortcutsModal(), { preventDefault: true, enabled });
   useHotkeys("escape", () => onEscape(), { preventDefault: true, enabled });
+
+  // Text ⇄ sticky ⇄ card on the selection (⌥1/2/3). Matched on the physical key so the
+  // macOS ⌥-characters (¡ ™ £) don't break it; editors handle these keys themselves.
+  useEffect(() => {
+    if (!enabled) return;
+    const onKey = (e: KeyboardEvent) => {
+      const style = styleShortcut(e);
+      if (!style) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault();
+      onConvertStyle(style);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [enabled, onConvertStyle]);
+
+  // A task card from the selected elements; the elements keep their look.
+  useHotkeys("shift+t", () => onDeriveTask(), { preventDefault: true, enabled });
+  useHotkeys("i", () => onIcon(), { preventDefault: true, enabled });
+  useHotkeys("shift+e", () => onExtractActionItems(), { preventDefault: true, enabled });
+  useHotkeys(["meta+shift+k", "ctrl+shift+k"], () => onTidy(), { preventDefault: true, enabled });
+
+  // Formatting a selected text or sticky without entering edit mode.
+  useHotkeys(["meta+b", "ctrl+b"], () => onFormatSelected("bold"), { preventDefault: false, enabled });
+  useHotkeys(["meta+i", "ctrl+i"], () => onFormatSelected("italic"), { preventDefault: true, enabled });
+  useHotkeys(["meta+u", "ctrl+u"], () => onFormatSelected("underline"), { preventDefault: true, enabled });
+  useHotkeys(["meta+shift+x", "ctrl+shift+x"], () => onFormatSelected("strike"), { preventDefault: true, enabled });
 }
