@@ -2,6 +2,7 @@
  * Foqz Canvas Context Extractor
  * Pure React Flow implementation for AI Copilot and MCP Tools.
  */
+import { edgeRelation } from "@/lib/edgeRelations";
 import type { LogbookEntry } from "@/types/logbook";
 import type { Annotation } from "@/types/annotations";
 import { getLogbookEntriesByIds } from "./logbookService";
@@ -137,8 +138,11 @@ export function getFlowCanvasContext(
     const src = nodes.find((n) => n.id === e.source);
     const tgt = nodes.find((n) => n.id === e.target);
     if (!src || !tgt) continue;
+    const rel = edgeRelation(e);
     const relText =
-      e.data?.relation === "relates"
+      rel === "plain"
+        ? `- "${nodeTitle(src)}" — "${nodeTitle(tgt)}" (connected${e.data?.label ? `: ${e.data.label}` : ""})`
+        : rel === "relates"
         ? `- "${nodeTitle(src)}" RELATES TO "${nodeTitle(tgt)}"`
         : `- "${nodeTitle(tgt)}" DEPENDS ON "${nodeTitle(src)}"`;
     relationships.push(relText);

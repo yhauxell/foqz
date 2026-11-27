@@ -1,3 +1,4 @@
+import { edgeRelation } from "@/lib/edgeRelations";
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   ArrowUp,
@@ -908,7 +909,7 @@ export function ElementInlineChat({ nodeId, onClose }: ElementInlineChatProps) {
             .map((e) => ({
               direction: e.source === node.id ? 'outgoing' : 'incoming',
               otherNodeId: e.source === node.id ? e.target : e.source,
-              relation: (e.data as any)?.relation || 'depends',
+              relation: edgeRelation(e),
             })),
           resolvedDependencies: nodeData.resolvedDependencies || [],
           // Only annotations the user shared with AI, and still open.

@@ -1,3 +1,4 @@
+import { DEFAULT_NEW_EDGE_RELATION } from "@/lib/edgeRelations";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
@@ -74,7 +75,7 @@ function getSvgPathFromStroke(stroke: number[][]) {
 const PRO_OPTIONS = { hideAttribution: true };
 const DEFAULT_EDGE_OPTIONS = {
   type: "semantic",
-  data: { relation: "depends" },
+  data: { relation: DEFAULT_NEW_EDGE_RELATION },
 };
 const MULTI_SELECTION_KEY_CODE = ["Meta", "Control", "Shift"];
 const ZOOM_ACTIVATION_KEY_CODE = ["Meta", "Control"];
@@ -630,7 +631,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
           {
             ...params,
             type: "semantic",
-            data: { relation: "depends" },
+            data: { relation: DEFAULT_NEW_EDGE_RELATION },
           },
           eds
         )

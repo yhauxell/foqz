@@ -8,10 +8,11 @@ import {
   type EdgeProps,
   type Edge,
 } from "@xyflow/react";
-import { Link2, Package, Trash2, Zap } from "lucide-react";
+import { Link2, Minus, Package, Trash2, Zap } from "lucide-react";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import { edgeRelation, type EdgeRelation } from "@/lib/edgeRelations";
 
-export type SemanticRelation = "depends" | "relates";
+export type SemanticRelation = EdgeRelation;
 
 export interface SemanticEdgeData {
   relation?: SemanticRelation;
@@ -34,6 +35,14 @@ const RELATION_CONFIG: Record<
     icon: React.ComponentType<{ className?: string }>;
   }
 > = {
+  plain: {
+    label: "connected",
+    stroke: "#71717a",
+    badgeBg: "bg-white/90 dark:bg-zinc-900/90",
+    badgeText: "text-zinc-600 dark:text-zinc-300",
+    badgeBorder: "border-zinc-200 dark:border-zinc-700",
+    icon: Minus,
+  },
   depends: {
     label: "depends on",
     stroke: "#3b82f6",
@@ -83,7 +92,11 @@ export const SemanticEdge = memo(function SemanticEdge({
   const menuContainerRef = useRef<HTMLDivElement>(null);
 
   const isAnimated = Boolean(data?.animated);
-  const relation: SemanticRelation = data?.relation || "depends";
+  const relation: SemanticRelation = edgeRelation({ data });
+  const isPlain = relation === "plain";
+  const label = typeof data?.label === "string" ? data.label.trim() : "";
+  const [hovered, setHovered] = useState(false);
+  const [editingLabel, setEditingLabel] = useState(false);
   const config = RELATION_CONFIG[relation] || RELATION_CONFIG.depends;
   const IconComponent = config.icon;
 
@@ -92,7 +105,10 @@ export const SemanticEdge = memo(function SemanticEdge({
   let strokeLinecap: "round" | "butt" = "butt";
   let isSolid = false;
 
-  if (relation === "depends") {
+  if (relation === "plain") {
+    strokeColor = selected ? "#3f3f46" : "#a1a1aa";
+    isSolid = true;
+  } else if (relation === "depends") {
     strokeColor = selected ? "#2563eb" : "#3b82f6";
     isSolid = true;
   } else {
@@ -163,6 +179,8 @@ export const SemanticEdge = memo(function SemanticEdge({
         stroke="transparent"
         strokeWidth={24}
         className="cursor-pointer pointer-events-auto"
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       />
 
       <BaseEdge
@@ -241,9 +259,14 @@ export const SemanticEdge = memo(function SemanticEdge({
           }}
           className="nodrag nopan"
         >
-          {/* Main Clickable Relation Pill */}
+          {/* Main Clickable Relation Pill. Plain lines stay quiet: only their label, or a dot on hover. */}
           <div
-            className="relative group"
+            data-edge-relation={relation}
+            className={`relative group ${
+              isPlain && !label && !selected && !hovered && !menuOpen ? "opacity-0 hover:opacity-100" : ""
+            }`}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
@@ -268,13 +291,24 @@ export const SemanticEdge = memo(function SemanticEdge({
                 selected ? "ring-2 ring-blue-500/80" : "hover:scale-105"
               }`}
               style={{ fontFamily: "'Shantell Sans', cursive, sans-serif" }}
-              title="Click to change relationship, style, animation, or disconnect"
+              title="Click to change relationship, label, animation, or disconnect"
             >
-              <svg className="size-2.5 opacity-50" viewBox="0 0 10 10" fill="none">
-                <path d="M1 5h8M6 2l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <IconComponent className="size-3 shrink-0" />
-              <span>{config.label}</span>
+              {isPlain ? (
+                label ? (
+                  <span>{label}</span>
+                ) : (
+                  <span className="block size-1.5 rounded-full bg-zinc-400" aria-label="Connection options" />
+                )
+              ) : (
+                <>
+                  <svg className="size-2.5 opacity-50" viewBox="0 0 10 10" fill="none">
+                    <path d="M1 5h8M6 2l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <IconComponent className="size-3 shrink-0" />
+                  <span>{config.label}</span>
+                  {label && <span className="opacity-70">· {label}</span>}
+                </>
+              )}
               {isAnimated && (
                 <Zap className="size-2.5 text-indigo-500 fill-indigo-500 ml-0.5" />
               )}
@@ -295,6 +329,24 @@ export const SemanticEdge = memo(function SemanticEdge({
 
                 <button
                   type="button"
+                  data-relation-option="plain"
+                  onClick={(e) => handleSelectRelation("plain", e)}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                    relation === "plain"
+                      ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 font-semibold"
+                      : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  <Minus className="size-3 text-zinc-500 shrink-0" />
+                  <span>Just a line</span>
+                  <svg className="ml-auto size-8 h-2.5" viewBox="0 0 32 10" fill="none">
+                    <line x1="0" y1="5" x2="32" y2="5" stroke="#a1a1aa" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  data-relation-option="depends"
                   onClick={(e) => handleSelectRelation("depends", e)}
                   className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     relation === "depends"
@@ -314,6 +366,7 @@ export const SemanticEdge = memo(function SemanticEdge({
 
                 <button
                   type="button"
+                  data-relation-option="relates"
                   onClick={(e) => handleSelectRelation("relates", e)}
                   className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     relation === "relates"
@@ -332,6 +385,40 @@ export const SemanticEdge = memo(function SemanticEdge({
                 </button>
 
                 <div className="h-[1px] bg-zinc-200 dark:bg-zinc-800 my-0.5" />
+
+                {editingLabel ? (
+                  <input
+                    autoFocus
+                    defaultValue={label}
+                    placeholder="Label…"
+                    aria-label="Connection label"
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") {
+                        updateEdgeData(id, { label: e.currentTarget.value.trim() || undefined });
+                        setEditingLabel(false);
+                      } else if (e.key === "Escape") {
+                        setEditingLabel(false);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      updateEdgeData(id, { label: e.currentTarget.value.trim() || undefined });
+                      setEditingLabel(false);
+                    }}
+                    className="mx-1 px-2 py-1 text-xs rounded-md bg-zinc-100 dark:bg-zinc-800 outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingLabel(true);
+                    }}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
+                  >
+                    <span>{label ? "Edit label" : "Add label"}</span>
+                  </button>
+                )}
 
                 {/* Animated Toggle */}
                 <button
