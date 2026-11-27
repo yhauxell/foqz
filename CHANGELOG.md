@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/yhauxell/foqz/compare/v1.1.0...v1.2.0) (2026-11-27)
+
+
+### Features
+
+* **diagramming:** mind maps, plain connections, tasks from diagrams, icons, AI action items, tidy board ([#109](https://github.com/yhauxell/foqz/issues/109)) ([612ef48](https://github.com/yhauxell/foqz/commit/612ef480b6abe04a5f7571ba9b200cadfe771217))
+
 ## [1.1.0](https://github.com/yhauxell/foqz/compare/v1.0.0...v1.1.0) (2026-10-30)
 
 
