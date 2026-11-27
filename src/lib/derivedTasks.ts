@@ -41,11 +41,51 @@ function size(n: Node) {
   };
 }
 
-/** The area tasks are placed beside: the whole map for a map node, the element otherwise. */
-function groupOf(nodes: Node[], n: Node): { key: string; members: Node[] } {
-  const m = mindmapOf(n);
-  if (m) return { key: m.rootId, members: nodes.filter((x) => mindmapOf(x)?.rootId === m.rootId && !x.hidden) };
-  return { key: n.id, members: [n] };
+/**
+ * The diagram an element belongs to: everything connected to it by lines (and its whole
+ * mind map) in the same region. Tasks go beside the diagram, never inside it.
+ */
+function diagramOf(nodes: Node[], edges: Edge[], n: Node): { key: string; members: Node[] } {
+  const byId = new Map(nodes.map((x) => [x.id, x]));
+  const seen = new Set<string>([n.id]);
+  const queue = [n.id];
+  const parent = n.parentId ?? null;
+  while (queue.length) {
+    const id = queue.pop()!;
+    const cur = byId.get(id);
+    const m = mindmapOf(cur);
+    const linked = [
+      ...edges.filter((e) => e.source === id).map((e) => e.target),
+      ...edges.filter((e) => e.target === id).map((e) => e.source),
+      ...(m ? nodes.filter((x) => mindmapOf(x)?.rootId === m.rootId).map((x) => x.id) : []),
+    ];
+    for (const other of linked) {
+      const o = byId.get(other);
+      if (!o || seen.has(other) || (o.parentId ?? null) !== parent || o.type === "focusTask") continue;
+      seen.add(other);
+      queue.push(other);
+    }
+  }
+  const members = [...seen].map((id) => byId.get(id)!).filter((x) => x && !x.hidden);
+  const key = mindmapOf(n)?.rootId ?? [...seen].sort()[0];
+  return { key, members };
+}
+
+const TASK_W = 280;
+const TASK_H = 82;
+
+/** First free slot in a column to the right of `right`, scanning down from `top`. */
+function freeSlot(peers: { x: number; y: number; w: number; h: number }[], right: number, top: number) {
+  const pad = 16;
+  for (let col = 0; col < 6; col++) {
+    const x = Math.round(right + 120 + col * (TASK_W + 40));
+    for (let step = 0; step < 60; step++) {
+      const y = Math.round(top + step * 24);
+      const hit = peers.some((b) => x < b.x + b.w + pad && x + TASK_W + pad > b.x && y < b.y + b.h + pad && y + TASK_H + pad > b.y);
+      if (!hit) return { x, y };
+    }
+  }
+  return { x: Math.round(right + 120), y: Math.round(top) };
 }
 
 function mapChildren(nodes: Node[], id: string): Node[] {
@@ -103,18 +143,19 @@ export function deriveTasks(mode: DeriveMode = "auto", ids?: string[]): string[]
 
   const created: Node[] = [];
   for (const source of roots) {
-    const group = groupOf(nodes, source);
+    const group = diagramOf(nodes, store.edges, source);
     const right = Math.max(...group.members.map((m) => m.position.x + size(m).w));
     const top = Math.min(...group.members.map((m) => m.position.y));
-    const already = nodes.filter((n) => (n.data as any)?.derivedGroup === group.key).length;
     for (const d of draftsFor(nodes, source, mode)) {
-      const k = already + created.filter((c) => (c.data as any).derivedGroup === group.key).length;
+      const peers = [...nodes, ...created]
+        .filter((x) => (x.parentId ?? null) === (source.parentId ?? null) && !x.hidden && x.type !== "projectFrame")
+        .map((x) => ({ x: x.position.x, y: x.position.y, ...size(x) }));
       const id = `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const text: Node = {
         id,
         type: "text",
         parentId: source.parentId,
-        position: { x: Math.round(right + 120), y: Math.round(top + k * 104) },
+        position: freeSlot(peers, right, top),
         data: { text: d.notes ? `${d.title}\n${d.notes}` : d.title },
       };
       const card = convertTextStyle(text, "card");
