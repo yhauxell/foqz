@@ -1,3 +1,7 @@
+import { CanvasIcon } from "@/components/CanvasIcon";
+import { canHaveIcon, iconOf } from "@/lib/icons";
+import { IconPicker } from "./IconPicker";
+import { Shapes } from "lucide-react";
 import { deriveTasks, isDerivable } from "@/lib/derivedTasks";
 import { ListChecks, ListTodo } from "lucide-react";
 import { addChild, makeMindmap, mindmapOf, toggleCollapse } from "@/lib/mindmap/mindmap";
@@ -117,7 +121,7 @@ const TEXT_SIZES = [
   { label: "XL", px: 32 },
 ];
 
-type MenuId = "style" | "size" | "color" | "border" | "spear" | "more" | "highlight" | "link" | "reminder" | "derive";
+type MenuId = "style" | "size" | "color" | "border" | "spear" | "more" | "highlight" | "link" | "reminder" | "derive" | "icon";
 
 function useOutsideClick(ref: React.RefObject<HTMLDivElement | null>, onClose: () => void) {
   useEffect(() => {
@@ -285,6 +289,12 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
 
   // A different selection starts with every dropdown closed.
   useEffect(() => setOpenMenu(null), [selectedNode?.id]);
+  // `I` opens the icon picker for the selection.
+  useEffect(() => {
+    const open = () => setOpenMenu("icon");
+    window.addEventListener("foqz:open-icon-picker", open);
+    return () => window.removeEventListener("foqz:open-icon-picker", open);
+  }, []);
 
   // Near the canvas edge, slide the toolbar sideways instead of letting the tool rail cover it.
   useLayoutEffect(() => {
@@ -532,6 +542,35 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
   const canFormatWhole = canFormatWholeNode(selectedNode);
   const mapData = mindmapOf(selectedNode);
   const hasBranches = !!mapData && useFlowCanvasStore.getState().nodes.some((n) => mindmapOf(n)?.parentId === selectedNode.id);
+
+  const iconEligible = canHaveIcon(selectedNode);
+  const currentIcon = iconOf(selectedNode);
+  const iconControl = iconEligible && (
+    <div className="relative">
+      <ToolButton label={selectedNode.type === "icon" ? "Change icon (I)" : "Icon (I)"} active={openMenu === "icon"} onClick={() => toggleMenu("icon")}>
+        {currentIcon ? <CanvasIcon icon={currentIcon} size={14} /> : <Shapes className="size-3.5" />}
+      </ToolButton>
+      {openMenu === "icon" && (
+        <Panel below={below}>
+          <IconPicker
+            onClose={() => setOpenMenu(null)}
+            onPick={(name) => {
+              useFlowCanvasStore.getState().updateNodeData(selectedNode.id, { icon: { set: "lucide", name } });
+              setOpenMenu(null);
+            }}
+            onRemove={
+              currentIcon && selectedNode.type !== "icon"
+                ? () => {
+                    useFlowCanvasStore.getState().updateNodeData(selectedNode.id, { icon: undefined });
+                    setOpenMenu(null);
+                  }
+                : undefined
+            }
+          />
+        </Panel>
+      )}
+    </div>
+  );
 
   /** "Make task": the element keeps its look; a linked task card appears beside it. */
   const deriveControl = isDerivable(selectedNode) && (
@@ -881,6 +920,7 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
               </>
             )}
 
+            {iconControl}
             {deriveControl}
             {selectedNode.type !== "image" && selectedNode.type !== "linkCard" && colorControl}
 

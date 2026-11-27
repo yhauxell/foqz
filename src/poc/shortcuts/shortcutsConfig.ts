@@ -41,6 +41,8 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
 
   { id: "derive-task", name: "Make task from this", keyDisplay: "⇧T", category: "Text", description: "A linked task card beside the diagram; the element keeps its look and shows done/total" },
 
+  { id: "icon", name: "Icon", keyDisplay: "I", category: "Text", description: "Add an icon to the selected text or shape; nothing selected drops a standalone icon" },
+
   // Canvas
   { id: "canvas-region", name: "New region", keyDisplay: "⌘⇧P", category: "Canvas", description: "An area that holds whatever you drop in it" },
   { id: "canvas-group", name: "Group into region", keyDisplay: "⌘G", category: "Canvas", description: "Wrap the selection in a region" },

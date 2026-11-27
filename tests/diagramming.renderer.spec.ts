@@ -349,3 +349,46 @@ test.describe('#104 derive tasks from diagram elements', () => {
     expect(titles).toEqual(['Build', 'Marketing', 'Marketing']);
   });
 });
+
+test.describe('#106 SVG icons', () => {
+  test('I opens a searchable picker; the icon renders as SVG and can be removed', async ({ page }) => {
+    await emptyCanvas(page);
+    await seed(page, [text('t', 300, 250, 'Ship it'), box_('b', 600, 250, 'Postgres')]);
+    await node(page, 't').click();
+    await page.keyboard.press('i');
+    const picker = page.getByRole('dialog', { name: 'Choose an icon' });
+    await expect(picker).toBeVisible();
+    await picker.getByLabel('Search icons').fill('rocket');
+    await expect(picker.getByRole('button', { name: 'Icon rocket', exact: true })).toBeVisible();
+    await picker.getByLabel('Search icons').press('Enter');
+    await expect.poll(async () => (await state(page)).nodes.find((n: any) => n.id === 't').data.icon).toEqual({ set: 'lucide', name: 'rocket' });
+    await expect(node(page, 't').locator('svg[data-icon="rocket"]')).toBeVisible();
+
+    // Aliases: "db" finds the database icon; shapes take icons too.
+    await node(page, 'b').click();
+    await page.getByRole('button', { name: 'Icon (I)' }).click();
+    await page.getByLabel('Search icons').fill('db');
+    await page.getByRole('button', { name: 'Icon database', exact: true }).click();
+    await expect(node(page, 'b').locator('svg[data-icon="database"]')).toBeVisible();
+
+    await node(page, 't').click();
+    await page.keyboard.press('i');
+    await page.getByRole('button', { name: 'Remove icon' }).click();
+    await expect(node(page, 't').locator('svg[data-icon]')).toHaveCount(0);
+  });
+
+  test('with nothing selected, I drops a standalone icon that stays crisp when zoomed', async ({ page }) => {
+    await emptyCanvas(page);
+    await page.keyboard.press('i');
+    await expect.poll(async () => (await state(page)).nodes.filter((n: any) => n.type === 'icon').length).toBe(1);
+    await page.getByLabel('Search icons').fill('lightbulb');
+    await page.getByRole('button', { name: 'Icon lightbulb', exact: true }).click();
+    const icon = (await state(page)).nodes.find((n: any) => n.type === 'icon');
+    expect(icon.data.icon.name).toBe('lightbulb');
+    // Vector at any zoom: it is an inline <svg>, not a bitmap.
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('foqz:flow-zoom-reset')));
+    const svg = node(page, icon.id).locator('svg[data-icon="lightbulb"]');
+    await expect(svg).toBeVisible();
+    expect(await svg.evaluate((el) => el.tagName.toLowerCase())).toBe('svg');
+  });
+});

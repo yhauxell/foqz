@@ -1,3 +1,5 @@
+import { CanvasIcon } from "@/components/CanvasIcon";
+import { iconOf } from "@/lib/icons";
 import { addChild, addSibling, hiddenCount, mindmapOf, outdent, selectOnly, toggleCollapse } from "@/lib/mindmap/mindmap";
 import { handleEditorKeyDown } from "../utils/textEditorKeys";
 import React, { memo, useState, useRef, useEffect, useCallback } from "react";
@@ -175,6 +177,7 @@ export const TextNode = memo(function TextNode({
   const isFocusTarget = useFlowCanvasStore((s) => s.activeFocusNodeId === id);
   const collapsedCount = useFlowCanvasStore((s) => ((data.mindmap as any)?.collapsed ? hiddenCount(s.nodes, id) : 0));
   const actionable = data.actionable === true;
+  const leadingIcon = iconOf({ data });
   const done = actionable && data.status === "done";
   const fontSize = Number(data.fontSize) || 16;
   // Width set by the user, never the measured one: feeding the measured size back made the box only grow.
@@ -307,7 +310,7 @@ export const TextNode = memo(function TextNode({
           : selected
           ? "ring-1.5 ring-blue-500/70 bg-white/70 dark:bg-zinc-900/70 shadow-xs"
           : "hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-      } ${actionable ? "flex items-start gap-2" : ""}`}
+      } ${actionable || leadingIcon ? "flex items-start gap-2" : ""}`}
       data-actionable={actionable || undefined}
       data-done={done || undefined}
       data-width-mode={fixedWidth ? "fixed" : "auto"}
@@ -345,6 +348,16 @@ export const TextNode = memo(function TextNode({
         >
           +{collapsedCount}
         </button>
+      )}
+
+      {leadingIcon && (
+        <CanvasIcon
+          icon={leadingIcon}
+          size={Math.round(fontSize * 1.15)}
+          color={data.color}
+          className="text-zinc-800 dark:text-zinc-100"
+          strokeWidth={2}
+        />
       )}
 
       {actionable && (

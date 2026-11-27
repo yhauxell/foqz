@@ -1,3 +1,4 @@
+import { canHaveIcon } from "@/lib/icons";
 import { deriveTasks } from "@/lib/derivedTasks";
 import { DerivedTaskBadges } from "./components/DerivedTaskBadges";
 import { dropTarget, mindmapOf, reparent } from "@/lib/mindmap/mindmap";
@@ -1243,6 +1244,34 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     },
     onDeriveTask: () => {
       deriveTasks("auto");
+    },
+    onIcon: () => {
+      const s = useFlowCanvasStore.getState();
+      const selected = s.nodes.filter((n) => n.selected);
+      const openPicker = () =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("foqz:open-icon-picker")))
+        );
+      if (selected.length === 1 && canHaveIcon(selected[0])) {
+        openPicker();
+      } else if (selected.length === 0) {
+        // Nothing selected: drop a standalone icon in the middle of the view and pick it.
+        const pos = viewportCenter();
+        const id = `icon-${Date.now()}`;
+        s.setNodes((nodes) => [
+          ...nodes,
+          {
+            id,
+            type: "icon",
+            position: { x: Math.round(pos.x - 32), y: Math.round(pos.y - 32) },
+            style: { width: 64, height: 64 },
+            selected: true,
+            data: { icon: { set: "lucide", name: "star" } },
+          },
+        ]);
+        s.setSelectedNodeId?.(id);
+        openPicker();
+      }
     },
   });
 

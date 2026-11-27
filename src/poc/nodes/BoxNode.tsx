@@ -1,3 +1,5 @@
+import { CanvasIcon } from "@/components/CanvasIcon";
+import { iconOf } from "@/lib/icons";
 import React, { memo, useState, useRef, useEffect, useCallback } from "react";
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from "@xyflow/react";
 import rough from "roughjs";
@@ -185,7 +187,8 @@ export const BoxNode = memo(function BoxNode({
       />
 
       {/* Editable Text Label (Only displayed when text exists or editing) */}
-      <div className="relative z-10 px-4 py-2 w-full text-center flex items-center justify-center h-full">
+      <div className="relative z-10 px-4 py-2 w-full text-center flex flex-col items-center justify-center gap-1 h-full">
+        {iconOf({ data }) && <CanvasIcon icon={iconOf({ data })!} size={24} className="text-zinc-700 dark:text-zinc-200" />}
         {isEditing ? (
           <textarea
             value={val}
