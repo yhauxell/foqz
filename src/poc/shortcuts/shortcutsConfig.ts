@@ -39,6 +39,8 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
   { id: "map-nav", name: "Move around a map", keyDisplay: "← → ↑ ↓", category: "Text", description: "Parent, children and siblings; drop a node on another to move its branch" },
   { id: "map-fold", name: "Fold branch", keyDisplay: "/", category: "Text", description: "Hide or show everything under the selected node" },
 
+  { id: "derive-task", name: "Make task from this", keyDisplay: "⇧T", category: "Text", description: "A linked task card beside the diagram; the element keeps its look and shows done/total" },
+
   // Canvas
   { id: "canvas-region", name: "New region", keyDisplay: "⌘⇧P", category: "Canvas", description: "An area that holds whatever you drop in it" },
   { id: "canvas-group", name: "Group into region", keyDisplay: "⌘G", category: "Canvas", description: "Wrap the selection in a region" },

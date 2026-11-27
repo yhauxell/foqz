@@ -264,3 +264,88 @@ test.describe('#102/#103 mind maps', () => {
     expect((await state(page)).edges).toHaveLength(0);
   });
 });
+
+const box_ = (id: string, x: number, y: number, label: string) => ({
+  id,
+  type: 'box',
+  position: { x, y },
+  style: { width: 160, height: 90 },
+  data: { label },
+});
+
+test.describe('#104 derive tasks from diagram elements', () => {
+  test('⇧T makes a linked task beside a shape; the shape keeps its look and shows progress', async ({ page }) => {
+    await emptyCanvas(page);
+    await seed(page, [box_('api', 200, 250, 'Payments API')]);
+    await node(page, 'api').click();
+    await page.keyboard.press('Shift+T');
+
+    await expect.poll(async () => (await state(page)).nodes.length).toBe(2);
+    const { nodes } = await state(page);
+    const src = nodes.find((n: any) => n.id === 'api');
+    const task = nodes.find((n: any) => n.type === 'focusTask');
+    expect(src.type).toBe('box');
+    expect(src.position).toEqual({ x: 200, y: 250 });
+    expect(task.data).toMatchObject({ title: 'Payments API', derivedFrom: 'api', status: 'open' });
+    expect(task.position.x).toBeGreaterThan(200 + 160);
+    expect(src.data).toEqual({ label: 'Payments API' }); // the shape itself is untouched
+
+    const badge = page.locator('[data-derived-badge="api"]');
+    await expect(badge).toHaveText('0/1');
+    await page.evaluate((id) => (window as any).useFlowCanvasStore.getState().updateNodeData(id, { status: 'done' }), task.id);
+    await expect(badge).toHaveText('1/1');
+
+    // The task links back; deleting the source leaves a "source removed" link.
+    await expect(node(page, task.id).locator('[data-derived-from="api"]')).toContainText('Payments API');
+    await page.evaluate(() => (window as any).useFlowCanvasStore.getState().deleteNode('api'));
+    await expect(node(page, task.id).locator('[data-derived-from="api"]')).toContainText('source removed');
+  });
+
+  test('a "depends on" line between shapes becomes a blocker between their tasks', async ({ page }) => {
+    await emptyCanvas(page);
+    await seed(
+      page,
+      [box_('db', 100, 120, 'Database'), box_('api', 100, 300, 'API'), box_('ui', 100, 480, 'UI')],
+      [
+        { id: 'd', type: 'semantic', source: 'db', sourceHandle: 'bottom', target: 'api', targetHandle: 'top', data: { relation: 'depends' } },
+        { id: 'p', type: 'semantic', source: 'api', sourceHandle: 'bottom', target: 'ui', targetHandle: 'top', data: { relation: 'plain' } },
+      ]
+    );
+    await page.evaluate(() => {
+      const s = (window as any).useFlowCanvasStore.getState();
+      s.setNodes((ns: any[]) => ns.map((n) => ({ ...n, selected: true })));
+    });
+    await page.keyboard.press('Shift+T');
+    await expect.poll(async () => (await state(page)).nodes.filter((n: any) => n.type === 'focusTask').length).toBe(3);
+    const { nodes, edges } = await state(page);
+    const taskOf = (src: string) => nodes.find((n: any) => n.data.derivedFrom === src).id;
+    const taskEdges = edges.filter((e: any) => e.id.startsWith('e-derived-'));
+    expect(taskEdges).toHaveLength(1); // the plain line carries no dependency
+    expect(taskEdges[0]).toMatchObject({ source: taskOf('db'), target: taskOf('api'), data: { relation: 'depends' } });
+  });
+
+  test('a map branch becomes one task with a checklist, or one task per branch', async ({ page }) => {
+    await emptyCanvas(page);
+    await seed(page, [text('root', 300, 300, 'Launch\n- Marketing\n  - Post\n  - Video\n- Build')]);
+    await node(page, 'root').click();
+    await page.keyboard.press('m');
+    await expect.poll(async () => Object.keys(mapOf((await state(page)).nodes)).length).toBe(5);
+    const m = mapOf((await state(page)).nodes);
+
+    await selectNode(page, m.Marketing.id);
+    await page.keyboard.press('Shift+T');
+    await expect.poll(async () => (await state(page)).nodes.filter((n: any) => n.type === 'focusTask').length).toBe(1);
+    let task = (await state(page)).nodes.find((n: any) => n.type === 'focusTask');
+    expect(task.data.title).toBe('Marketing');
+    expect(task.data.notes).toBe('- [ ] Post\n- [ ] Video');
+    // Tasks never join the map.
+    expect(task.data.mindmap).toBeUndefined();
+
+    await node(page, 'root').click();
+    await page.getByRole('button', { name: 'Make task (⇧T)' }).click();
+    await page.getByRole('menuitem', { name: /One task per branch/ }).click();
+    await expect.poll(async () => (await state(page)).nodes.filter((n: any) => n.type === 'focusTask').length).toBe(3);
+    const titles = (await state(page)).nodes.filter((n: any) => n.type === 'focusTask').map((n: any) => n.data.title).sort();
+    expect(titles).toEqual(['Build', 'Marketing', 'Marketing']);
+  });
+});

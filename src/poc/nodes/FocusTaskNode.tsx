@@ -1,3 +1,4 @@
+import { centerOn, elementTitle } from "@/lib/derivedTasks";
 import { handleEditorKeyDown, useEditingRegistration } from "../utils/textEditorKeys";
 import React, { memo, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { NodeResizer, Handle, Position, type NodeProps, type Node } from "@xyflow/react";
@@ -111,6 +112,12 @@ export const FocusTaskNode = memo(function FocusTaskNode({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(data.title || "");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const derivedFrom = typeof data.derivedFrom === "string" ? data.derivedFrom : null;
+  const sourceTitle = useFlowCanvasStore((s) => {
+    if (!derivedFrom) return null;
+    const src = s.nodes.find((n) => n.id === derivedFrom);
+    return src ? elementTitle(src) : null;
+  });
   useEditingRegistration(id, isEditingTitle || isEditingNotes);
   const [notesDraft, setNotesDraft] = useState(data.notes || "");
 
@@ -420,6 +427,26 @@ export const FocusTaskNode = memo(function FocusTaskNode({
                       </div>
                   </div>
                 ) : null}
+
+                {derivedFrom && (
+                  <button
+                    type="button"
+                    data-derived-from={derivedFrom}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (sourceTitle !== null) centerOn(derivedFrom);
+                    }}
+                    title={sourceTitle !== null ? "Go to where this task came from" : "The element this came from was deleted"}
+                    className={`nodrag mb-0.5 max-w-full truncate text-left text-[10px] leading-tight ${
+                      sourceTitle !== null
+                        ? "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 cursor-pointer"
+                        : "text-zinc-400 line-through cursor-default"
+                    }`}
+                  >
+                    ↖ {sourceTitle ?? "source removed"}
+                  </button>
+                )}
 
                 {/* Natural In-Place Title Editing */}
                 {isEditingTitle ? (

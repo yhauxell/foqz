@@ -1,3 +1,5 @@
+import { deriveTasks, isDerivable } from "@/lib/derivedTasks";
+import { ListChecks, ListTodo } from "lucide-react";
 import { addChild, makeMindmap, mindmapOf, toggleCollapse } from "@/lib/mindmap/mindmap";
 import { FoldHorizontal, GitBranchPlus, Network } from "lucide-react";
 import { canFormatWholeNode } from "../utils/textEditorKeys";
@@ -115,7 +117,7 @@ const TEXT_SIZES = [
   { label: "XL", px: 32 },
 ];
 
-type MenuId = "style" | "size" | "color" | "border" | "spear" | "more" | "highlight" | "link" | "reminder";
+type MenuId = "style" | "size" | "color" | "border" | "spear" | "more" | "highlight" | "link" | "reminder" | "derive";
 
 function useOutsideClick(ref: React.RefObject<HTMLDivElement | null>, onClose: () => void) {
   useEffect(() => {
@@ -529,6 +531,45 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
   const isEditingText = isTextNode(selectedNode) && editingNodeId === selectedNode.id;
   const canFormatWhole = canFormatWholeNode(selectedNode);
   const mapData = mindmapOf(selectedNode);
+  const hasBranches = !!mapData && useFlowCanvasStore.getState().nodes.some((n) => mindmapOf(n)?.parentId === selectedNode.id);
+
+  /** "Make task": the element keeps its look; a linked task card appears beside it. */
+  const deriveControl = isDerivable(selectedNode) && (
+    <div className="relative">
+      {hasBranches ? (
+        <>
+          <ToolButton label="Make task (⇧T)" active={openMenu === "derive"} onClick={() => toggleMenu("derive")}>
+            <ListTodo className="size-3.5" />
+          </ToolButton>
+          {openMenu === "derive" && (
+            <Panel below={below} className="w-56">
+              <MenuItem
+                label="One task, branches as checklist"
+                shortcut="⇧T"
+                icon={<ListTodo className="size-3.5" />}
+                onClick={() => {
+                  setOpenMenu(null);
+                  deriveTasks("checklist", [selectedNode.id]);
+                }}
+              />
+              <MenuItem
+                label="One task per branch"
+                icon={<ListChecks className="size-3.5" />}
+                onClick={() => {
+                  setOpenMenu(null);
+                  deriveTasks("perBranch", [selectedNode.id]);
+                }}
+              />
+            </Panel>
+          )}
+        </>
+      ) : (
+        <ToolButton label="Make task (⇧T)" onClick={() => deriveTasks("auto", [selectedNode.id])}>
+          <ListTodo className="size-3.5" />
+        </ToolButton>
+      )}
+    </div>
+  );
   const style = textStyleOf(selectedNode);
   const styleMeta = TEXT_STYLES.find((t) => t.id === style) ?? TEXT_STYLES[0];
   const StyleIcon = styleMeta.icon;
@@ -840,6 +881,7 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
               </>
             )}
 
+            {deriveControl}
             {selectedNode.type !== "image" && selectedNode.type !== "linkCard" && colorControl}
 
             {isBorderEligible && !isTextLike && (

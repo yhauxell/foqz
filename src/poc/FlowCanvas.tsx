@@ -1,3 +1,5 @@
+import { deriveTasks } from "@/lib/derivedTasks";
+import { DerivedTaskBadges } from "./components/DerivedTaskBadges";
 import { dropTarget, mindmapOf, reparent } from "@/lib/mindmap/mindmap";
 import { runMindmapSync, useMindmaps } from "./hooks/useMindmaps";
 import { convertSelected, formatSelected } from "./utils/textEditorKeys";
@@ -1239,6 +1241,9 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     onFormatSelected: (format) => {
       formatSelected(format);
     },
+    onDeriveTask: () => {
+      deriveTasks("auto");
+    },
   });
 
   // Canvas Click Handler (Click-to-place for Task, Text, and Note)
@@ -1722,6 +1727,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         <FlowZoomControls sidebarOpen={sidebarOpen} />
         <FlowShapeMenu selectedNode={selectedNode} />
         <ReminderBadges />
+        <DerivedTaskBadges />
       </ReactFlow>
 
       {/* Live Freehand Pencil Preview Overlay (Smooth 60fps) */}
