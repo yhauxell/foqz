@@ -33,6 +33,12 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
   { id: "text-focus", name: "Focus here", keyDisplay: "F", category: "Text", description: "Zoom in, dim the rest, start the timer" },
   { id: "text-exit-focus", name: "Leave focus", keyDisplay: "Esc", category: "Text", description: "Back to the whole board" },
 
+  // Mind maps
+  { id: "map-new", name: "Mind map", keyDisplay: "M", category: "Text", description: "Selected text becomes the central topic (an indented list becomes a whole map); nothing selected starts a new one" },
+  { id: "map-child", name: "Add branch / sibling", keyDisplay: "Tab / ↵", category: "Text", description: "While typing in a map: Tab adds a child, Enter a sibling, ⇧Tab moves up a level" },
+  { id: "map-nav", name: "Move around a map", keyDisplay: "← → ↑ ↓", category: "Text", description: "Parent, children and siblings; drop a node on another to move its branch" },
+  { id: "map-fold", name: "Fold branch", keyDisplay: "/", category: "Text", description: "Hide or show everything under the selected node" },
+
   // Canvas
   { id: "canvas-region", name: "New region", keyDisplay: "⌘⇧P", category: "Canvas", description: "An area that holds whatever you drop in it" },
   { id: "canvas-group", name: "Group into region", keyDisplay: "⌘G", category: "Canvas", description: "Wrap the selection in a region" },

@@ -1,3 +1,5 @@
+import { addChild, makeMindmap, mindmapOf, toggleCollapse } from "@/lib/mindmap/mindmap";
+import { FoldHorizontal, GitBranchPlus, Network } from "lucide-react";
 import { canFormatWholeNode } from "../utils/textEditorKeys";
 import React, { memo, useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import {
@@ -526,6 +528,7 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
   const isTextLike = isTextNode(selectedNode);
   const isEditingText = isTextNode(selectedNode) && editingNodeId === selectedNode.id;
   const canFormatWhole = canFormatWholeNode(selectedNode);
+  const mapData = mindmapOf(selectedNode);
   const style = textStyleOf(selectedNode);
   const styleMeta = TEXT_STYLES.find((t) => t.id === style) ?? TEXT_STYLES[0];
   const StyleIcon = styleMeta.icon;
@@ -775,6 +778,26 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
                   >
                     <CheckSquare className="size-3.5" />
                   </ToolButton>
+                )}
+
+                {isText && !mapData && (
+                  <ToolButton label="Mind map from this (M)" onClick={() => makeMindmap(selectedNode.id)}>
+                    <Network className="size-3.5" />
+                  </ToolButton>
+                )}
+                {mapData && (
+                  <>
+                    <ToolButton label="Add branch (Tab)" onClick={() => addChild(selectedNode.id)}>
+                      <GitBranchPlus className="size-3.5" />
+                    </ToolButton>
+                    <ToolButton
+                      label={mapData.collapsed ? "Show branch (/)" : "Fold branch (/)"}
+                      pressed={!!mapData.collapsed}
+                      onClick={() => toggleCollapse(selectedNode.id)}
+                    >
+                      <FoldHorizontal className="size-3.5" />
+                    </ToolButton>
+                  </>
                 )}
 
                 {isText && (

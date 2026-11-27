@@ -1,3 +1,5 @@
+import { dropTarget, mindmapOf, reparent } from "@/lib/mindmap/mindmap";
+import { runMindmapSync, useMindmaps } from "./hooks/useMindmaps";
 import { convertSelected, formatSelected } from "./utils/textEditorKeys";
 import { DEFAULT_NEW_EDGE_RELATION } from "@/lib/edgeRelations";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -650,6 +652,34 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     (_event: MouseEvent | TouchEvent, node: Node) => {
       if (node.type === "projectFrame") return;
 
+      // Inside a mind map, a branch is moved by dropping it on its new parent; anywhere
+      // else it snaps back into the layout. The root moves the whole map (and can join a region).
+      const map = mindmapOf(node);
+      if (map && map.parentId !== null) {
+        const absOf = (n: Node) => {
+          const i = getInternalNode(n.id);
+          return {
+            x: i?.internals?.positionAbsolute?.x ?? n.position.x,
+            y: i?.internals?.positionAbsolute?.y ?? n.position.y,
+            w: i?.measured?.width ?? 120,
+            h: i?.measured?.height ?? 44,
+          };
+        };
+        const b = absOf(node);
+        const center = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+        // What you drop on is what's under the pointer.
+        const pt = "clientX" in _event ? _event : _event.changedTouches?.[0];
+        const pointer = pt ? screenToFlowPosition({ x: pt.clientX, y: pt.clientY }) : null;
+        const target = dropTarget(node, pointer ?? center, absOf);
+        if (target) {
+          const root = useFlowCanvasStore.getState().nodes.find((n) => n.id === map.rootId);
+          const rb = root ? absOf(root) : null;
+          reparent(node.id, target.id, rb && center.x < rb.x + rb.w / 2 ? "left" : "right");
+        }
+        runMindmapSync();
+        return;
+      }
+
       const currentNodes = useFlowCanvasStore.getState().nodes;
       const frames = currentNodes.filter((n) => n.type === "projectFrame" && n.id !== node.id);
       const currentParent = frames.find((f) => f.id === node.parentId);
@@ -715,7 +745,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         );
       }
     },
-    [getInternalNode, setNodes]
+    [getInternalNode, setNodes, screenToFlowPosition]
   );
 
   // Helper spawners
@@ -1140,6 +1170,12 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
   }, [fitView, setNodes]);
 
   // Unified Keyboard Shortcuts Hook
+  const viewportCenter = useCallback(
+    () => screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }),
+    [screenToFlowPosition]
+  );
+  useMindmaps({ enabled: activeTool === "select", viewportCenter });
+
   useFlowCanvasShortcuts({
     onSelectTool: () => selectTool("select"),
     onBoxTool: () => selectTool("box"),

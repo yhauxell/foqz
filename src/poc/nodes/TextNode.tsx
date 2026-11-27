@@ -1,3 +1,4 @@
+import { addChild, addSibling, hiddenCount, mindmapOf, outdent, selectOnly, toggleCollapse } from "@/lib/mindmap/mindmap";
 import { handleEditorKeyDown } from "../utils/textEditorKeys";
 import React, { memo, useState, useRef, useEffect, useCallback } from "react";
 import { Handle, Position, useReactFlow, useStore, type NodeProps, type Node } from "@xyflow/react";
@@ -63,6 +64,14 @@ function beginHistoryGesture() {
     useFlowCanvasStore.temporal.getState().resume();
     if (after !== before) store.setNodes(after);
   };
+}
+
+/** Deletes a text; inside a mind map, its parent becomes the selection so you can keep going. */
+function deleteAndSelectParent(id: string) {
+  const store = useFlowCanvasStore.getState();
+  const parentId = mindmapOf(store.nodes.find((n) => n.id === id))?.parentId;
+  store.deleteNode(id);
+  if (parentId) selectOnly(parentId);
 }
 
 const CONNECT_HANDLE_CLASS =
@@ -164,6 +173,7 @@ export const TextNode = memo(function TextNode({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const valRef = useRef(val);
   const isFocusTarget = useFlowCanvasStore((s) => s.activeFocusNodeId === id);
+  const collapsedCount = useFlowCanvasStore((s) => ((data.mindmap as any)?.collapsed ? hiddenCount(s.nodes, id) : 0));
   const actionable = data.actionable === true;
   const done = actionable && data.status === "done";
   const fontSize = Number(data.fontSize) || 16;
@@ -189,11 +199,20 @@ export const TextNode = memo(function TextNode({
   useEffect(() => {
     if (isEditing && textareaRef.current) {
       const el = textareaRef.current;
-      const timer = setTimeout(() => {
-        el.focus();
-        el.setSelectionRange(el.value.length, el.value.length);
-      }, 50);
-      return () => clearTimeout(timer);
+      // Focus as soon as possible so fast typing (mind maps: Tab, type, Enter, type) lands in
+      // the editor instead of triggering canvas shortcuts. A new node is invisible until React
+      // Flow measures it, and focus() fails until then, so retry every frame for a moment.
+      let frame = 0;
+      let tries = 0;
+      const tryFocus = () => {
+        if (document.activeElement !== el) {
+          el.focus();
+          if (document.activeElement === el) el.setSelectionRange(el.value.length, el.value.length);
+        }
+        if (document.activeElement !== el && ++tries < 30) frame = requestAnimationFrame(tryFocus);
+      };
+      tryFocus();
+      return () => cancelAnimationFrame(frame);
     }
   }, [isEditing]);
 
@@ -240,7 +259,7 @@ export const TextNode = memo(function TextNode({
     setIsEditing(false);
     const currentVal = valRef.current;
     if (!currentVal.trim() && data.isNew) {
-      useFlowCanvasStore.getState().deleteNode(id);
+      deleteAndSelectParent(id);
       return;
     }
     useFlowCanvasStore.getState().updateNodeData(id, { text: currentVal, isNew: false, autoEdit: false });
@@ -311,6 +330,23 @@ export const TextNode = memo(function TextNode({
       <Handle type="source" id="bottom" position={Position.Bottom} className={`${CONNECT_HANDLE_CLASS} !bottom-[-12px]`} />
       <Handle type="source" id="left" position={Position.Left} className={`${CONNECT_HANDLE_CLASS} !left-[-12px]`} />
 
+      {collapsedCount > 0 && (
+        <button
+          type="button"
+          className="nodrag absolute top-1/2 -translate-y-1/2 z-10 min-w-6 h-5 px-1.5 rounded-full bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-[10px] font-semibold shadow-sm cursor-pointer"
+          style={(data.mindmap as any)?.side === "left" ? { left: -30 } : { right: -30 }}
+          title="Show branch (/)"
+          aria-label={`Show ${collapsedCount} hidden`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleCollapse(id);
+          }}
+        >
+          +{collapsedCount}
+        </button>
+      )}
+
       {actionable && (
         <TodoCheckbox
           nodeId={id}
@@ -331,6 +367,22 @@ export const TextNode = memo(function TextNode({
           onBlur={handleSave}
           onKeyDown={(e) => {
             e.stopPropagation();
+            // Mind map: Enter adds a sibling, Tab a child, Shift+Tab moves up a level.
+            if (data.mindmap && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "Enter" || e.key === "Tab")) {
+              if (e.key === "Enter" && e.shiftKey) return; // new line
+              e.preventDefault();
+              if (e.key === "Tab" && e.shiftKey) {
+                outdent(id);
+                return;
+              }
+              const empty = !val.trim();
+              handleSave();
+              if (!empty) {
+                if (e.key === "Enter") addSibling(id);
+                else addChild(id);
+              }
+              return;
+            }
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
               e.preventDefault();
               handleSave();
@@ -341,7 +393,7 @@ export const TextNode = memo(function TextNode({
             } else if ((e.key === "Backspace" || e.key === "Delete") && !val) {
               e.preventDefault();
               editingRef.current = false; // the blur on unmount must not save into a deleted node
-              useFlowCanvasStore.getState().deleteNode(id);
+              deleteAndSelectParent(id);
             } else {
               handleEditorKeyDown(e, id);
             }
