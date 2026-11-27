@@ -510,3 +510,57 @@ test.describe('#108 Tidy board', () => {
     await expect.poll(async () => (await state(page)).nodes.map((n: any) => [n.id, n.position])).toEqual(before);
   });
 });
+
+test.describe('editor keys and persistence', () => {
+  test('⌥3 with no selection types its character (e.g. # on Spanish layouts)', async ({ page }) => {
+    await emptyCanvas(page);
+    await seed(page, [text('t', 300, 250, 'Heading')]);
+    await node(page, 't').dblclick();
+    const ta = page.locator('#text-node-input-t');
+    await expect(ta).toBeFocused();
+    const notPrevented = (selected: boolean) =>
+      ta.evaluate((el: HTMLTextAreaElement, selected) => {
+        el.setSelectionRange(0, selected ? 3 : 0);
+        return el.dispatchEvent(
+          new KeyboardEvent('keydown', { key: '#', code: 'Digit3', altKey: true, bubbles: true, cancelable: true })
+        );
+      }, selected);
+    expect(await notPrevented(false)).toBe(true);
+    expect(await notPrevented(true)).toBe(false); // with a selection it extracts instead
+  });
+
+  test('maps, icons, plain lines and derived tasks survive a reload', async ({ page }) => {
+    await emptyCanvas(page);
+    await seed(
+      page,
+      [
+        text('r', 200, 300, 'Topic', { mindmap: { rootId: 'r', parentId: null, order: 0 } }),
+        text('c', 400, 300, 'Branch', { mindmap: { rootId: 'r', parentId: 'r', order: 0, side: 'right' } }),
+        text('g', 600, 300, 'Leaf', { mindmap: { rootId: 'r', parentId: 'c', order: 0, side: 'right' } }),
+        { id: 'ic', type: 'icon', position: { x: 200, y: 500 }, style: { width: 64, height: 64 }, data: { icon: { set: 'lucide', name: 'rocket' } } },
+        box_('b', 500, 500, 'Box'),
+      ],
+      [{ id: 'p', type: 'semantic', source: 'ic', sourceHandle: 'right', target: 'b', targetHandle: 'left', data: { relation: 'plain' } }]
+    );
+    await node(page, 'c').click();
+    await page.keyboard.press('/');
+    await expect(node(page, 'g')).toBeHidden();
+    await selectNode(page, 'b');
+    await page.keyboard.press('Shift+T');
+    await expect.poll(async () => (await state(page)).nodes.some((n: any) => n.type === 'focusTask')).toBe(true);
+    await page.waitForTimeout(1500); // autosave
+
+    await page.reload();
+    await page.locator('.react-flow__node').first().waitFor();
+    await page.waitForTimeout(300);
+    const { nodes, edges } = await state(page);
+    expect(nodes.find((n: any) => n.id === 'ic')).toMatchObject({ type: 'icon', data: { icon: { name: 'rocket' } } });
+    expect(nodes.find((n: any) => n.id === 'c').data.mindmap.collapsed).toBe(true);
+    expect(nodes.find((n: any) => n.id === 'g').hidden).toBe(true);
+    expect(edges.find((e: any) => e.id === 'p').data.relation).toBe('plain');
+    expect(edges.filter((e: any) => e.data?.mindmap)).toHaveLength(2);
+    expect(nodes.find((n: any) => n.type === 'focusTask').data.derivedFrom).toBe('b');
+    await expect(page.locator('[data-derived-badge="b"]')).toHaveText('0/1');
+    await expect(node(page, 'ic').locator('svg[data-icon="rocket"]')).toBeVisible();
+  });
+});

@@ -47,14 +47,14 @@ export function handleEditorKeyDown(
     applyFormattingToTextarea(e.currentTarget, format);
     return true;
   }
+  // ⌥1/2/3 only act on a selection: without one, let the key type its character
+  // (on many layouts ⌥3 is "#", ⌥2 "@", ⌥1 "|").
   const style = styleShortcut(e);
-  if (style) {
+  const ta = e.currentTarget;
+  if (style && ta.selectionStart !== ta.selectionEnd) {
     e.preventDefault();
     e.stopPropagation();
-    const ta = e.currentTarget;
-    if (ta.selectionStart !== ta.selectionEnd) {
-      extractSelectionToNode(ta, nodeId, style);
-    }
+    extractSelectionToNode(ta, nodeId, style);
     return true;
   }
   return false;
