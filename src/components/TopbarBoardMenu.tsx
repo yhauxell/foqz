@@ -1,3 +1,4 @@
+import { Sparkle } from "lucide-react";
 import { memo, useCallback, useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -370,6 +371,21 @@ export const TopbarBoardMenu = memo(function TopbarBoardMenu({
                 <span>Zoom to 100%</span>
               </div>
               <span className="text-[10px] text-zinc-400 font-mono">1</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent("foqz:tidy-board"));
+                setActionsMenuOpen(false);
+              }}
+              className="w-full flex items-center justify-between px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkle className="size-3 text-zinc-500" />
+                <span>Tidy board…</span>
+              </div>
+              <span className="text-[10px] text-zinc-400 font-mono">⌘⇧K</span>
             </button>
 
             {/* Export section */}

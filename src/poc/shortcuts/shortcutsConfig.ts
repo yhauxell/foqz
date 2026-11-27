@@ -46,6 +46,7 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
   { id: "extract-actions", name: "Extract action items (AI)", keyDisplay: "⇧E", category: "Text", description: "AI proposes tasks from the selected map, region or shapes; you check which to create" },
 
   // Canvas
+  { id: "canvas-tidy", name: "Tidy board", keyDisplay: "⌘⇧K", category: "Canvas", description: "Separate overlaps, group loose items, fold maps; preview first, one undo" },
   { id: "canvas-region", name: "New region", keyDisplay: "⌘⇧P", category: "Canvas", description: "An area that holds whatever you drop in it" },
   { id: "canvas-group", name: "Group into region", keyDisplay: "⌘G", category: "Canvas", description: "Wrap the selection in a region" },
   { id: "canvas-ungroup", name: "Dissolve region", keyDisplay: "⌘⇧G", category: "Canvas", description: "Remove the region, keep its contents" },

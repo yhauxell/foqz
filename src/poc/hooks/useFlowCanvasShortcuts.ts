@@ -34,6 +34,7 @@ interface FlowCanvasShortcutsProps {
   onDeriveTask: () => void;
   onIcon: () => void;
   onExtractActionItems: () => void;
+  onTidy: () => void;
 }
 
 /** Canvas shortcuts. Keep in sync with `src/poc/shortcuts/shortcutsConfig.ts`. */
@@ -67,6 +68,7 @@ export function useFlowCanvasShortcuts({
   onDeriveTask,
   onIcon,
   onExtractActionItems,
+  onTidy,
 }: FlowCanvasShortcutsProps) {
   // Tools
   useHotkeys("v", () => onSelectTool(), { preventDefault: true, enabled });
@@ -128,6 +130,7 @@ export function useFlowCanvasShortcuts({
   useHotkeys("shift+t", () => onDeriveTask(), { preventDefault: true, enabled });
   useHotkeys("i", () => onIcon(), { preventDefault: true, enabled });
   useHotkeys("shift+e", () => onExtractActionItems(), { preventDefault: true, enabled });
+  useHotkeys(["meta+shift+k", "ctrl+shift+k"], () => onTidy(), { preventDefault: true, enabled });
 
   // Formatting a selected text or sticky without entering edit mode.
   useHotkeys(["meta+b", "ctrl+b"], () => onFormatSelected("bold"), { preventDefault: false, enabled });

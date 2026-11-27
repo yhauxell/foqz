@@ -457,3 +457,56 @@ test.describe('#105 AI action items', () => {
     expect((await state(page)).nodes).toHaveLength(1);
   });
 });
+
+test.describe('#108 Tidy board', () => {
+  test('preview, tidy a cluttered board, then one undo restores it', async ({ page }) => {
+    await emptyCanvas(page);
+    const seeded = [
+      text('a', 200, 200, 'Overlap A'),
+      text('b', 215, 210, 'Overlap B'),
+      text('c', 230, 220, 'Overlap C'),
+      box_('x', 600, 200, 'Service'),
+      box_('y', 620, 230, 'Store'),
+    ];
+    await seed(page, seeded, [
+      { id: 'xy', type: 'semantic', source: 'x', sourceHandle: 'right', target: 'y', targetHandle: 'left', data: { relation: 'plain' } },
+    ]);
+    const before = (await state(page)).nodes.map((n: any) => [n.id, n.position]);
+
+    await page.keyboard.press('ControlOrMeta+Shift+K');
+    const dialog = page.getByRole('dialog', { name: 'Tidy board' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Separate overlapping elements')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Tidy', exact: true }).click();
+    await expect(dialog.getByRole('status')).toContainText('Tidied:');
+    await dialog.getByRole('button', { name: 'Done' }).click();
+
+    const after = await state(page);
+    // Nothing deleted, no text or link changed.
+    for (const s of seeded) {
+      const n = after.nodes.find((m: any) => m.id === s.id);
+      expect(n, s.id).toBeTruthy();
+      expect(n.data).toMatchObject(s.data);
+    }
+    expect(after.edges).toHaveLength(1);
+    // The loose texts were separated and grouped into a region; the connected pair moved together.
+    const region = after.nodes.find((n: any) => n.type === 'projectFrame');
+    expect(region).toBeTruthy();
+    expect(['a', 'b', 'c'].every((id) => after.nodes.find((n: any) => n.id === id).parentId === region.id)).toBe(true);
+    const boxes = await Promise.all(['a', 'b', 'c'].map((id) => node(page, id).boundingBox()));
+    for (let i = 0; i < 3; i++)
+      for (let j = i + 1; j < 3; j++) {
+        const p = boxes[i]!;
+        const q = boxes[j]!;
+        const hit = p.x < q.x + q.width && q.x < p.x + p.width && p.y < q.y + q.height && q.y < p.y + p.height;
+        expect(hit).toBe(false);
+      }
+    const x = after.nodes.find((n: any) => n.id === 'x').position;
+    const y = after.nodes.find((n: any) => n.id === 'y').position;
+    expect([y.x - x.x, y.y - x.y]).toEqual([20, 30]);
+
+    // One undo puts everything back.
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(async () => (await state(page)).nodes.map((n: any) => [n.id, n.position])).toEqual(before);
+  });
+});

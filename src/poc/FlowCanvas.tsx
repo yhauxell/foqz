@@ -1,3 +1,4 @@
+import { TidyBoardDialog } from "@/components/TidyBoardDialog";
 import { ActionItemsReview } from "@/components/ActionItemsReview";
 import { canHaveIcon } from "@/lib/icons";
 import { deriveTasks } from "@/lib/derivedTasks";
@@ -1246,6 +1247,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     onDeriveTask: () => {
       deriveTasks("auto");
     },
+    onTidy: () => window.dispatchEvent(new CustomEvent("foqz:tidy-board")),
     onExtractActionItems: () => window.dispatchEvent(new CustomEvent("foqz:extract-action-items")),
     onIcon: () => {
       const s = useFlowCanvasStore.getState();
@@ -1761,6 +1763,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         <DerivedTaskBadges />
       </ReactFlow>
       <ActionItemsReview />
+      <TidyBoardDialog />
 
       {/* Live Freehand Pencil Preview Overlay (Smooth 60fps) */}
       {pencilPreviewSvgPath && (
