@@ -1,3 +1,4 @@
+import { ActionItemsReview } from "@/components/ActionItemsReview";
 import { canHaveIcon } from "@/lib/icons";
 import { deriveTasks } from "@/lib/derivedTasks";
 import { DerivedTaskBadges } from "./components/DerivedTaskBadges";
@@ -1245,6 +1246,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
     onDeriveTask: () => {
       deriveTasks("auto");
     },
+    onExtractActionItems: () => window.dispatchEvent(new CustomEvent("foqz:extract-action-items")),
     onIcon: () => {
       const s = useFlowCanvasStore.getState();
       const selected = s.nodes.filter((n) => n.selected);
@@ -1758,6 +1760,7 @@ export function FlowCanvasApp({ sidebarOpen = false }: FlowCanvasAppProps) {
         <ReminderBadges />
         <DerivedTaskBadges />
       </ReactFlow>
+      <ActionItemsReview />
 
       {/* Live Freehand Pencil Preview Overlay (Smooth 60fps) */}
       {pencilPreviewSvgPath && (

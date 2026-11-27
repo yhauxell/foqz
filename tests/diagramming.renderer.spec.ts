@@ -392,3 +392,68 @@ test.describe('#106 SVG icons', () => {
     expect(await svg.evaluate((el) => el.tagName.toLowerCase())).toBe('svg');
   });
 });
+
+test.describe('#105 AI action items', () => {
+  async function mockAi(page: Page, answer: (prompt: string) => string) {
+    const prompts: string[] = [];
+    await page.route('**/api/chat', async (route) => {
+      const body = route.request().postDataJSON();
+      const prompt = body.messages.map((m: any) => m.content).join('\n');
+      prompts.push(prompt);
+      const line = JSON.stringify({ message: { role: 'assistant', content: answer(prompt) }, done: true });
+      await route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: line + '\n' });
+    });
+    return prompts;
+  }
+
+  test('proposes items from a map; only the checked, edited ones become linked tasks', async ({ page }) => {
+    const prompts = await mockAi(page, (p) => {
+      const id = (label: string) => p.match(new RegExp(`\\[([^\\]]+)\\] text: "${label}"`))![1];
+      return JSON.stringify({
+        items: [
+          { title: 'Write the launch post', sourceId: id('Marketing') },
+          { title: 'Book a venue', sourceId: 'not-on-board' },
+          { title: 'Ship v1', sourceId: id('Launch') },
+        ],
+      });
+    });
+    await emptyCanvas(page);
+    await seed(page, [text('root', 300, 300, 'Launch\n- Marketing\n  - Post\n- Build')]);
+    await node(page, 'root').click();
+    await page.keyboard.press('m');
+    await expect.poll(async () => Object.keys(mapOf((await state(page)).nodes)).length).toBe(4);
+
+    await page.keyboard.press('Shift+E');
+    const dialog = page.getByRole('dialog', { name: 'Action items' });
+    await expect(dialog.getByLabel('Action item')).toHaveCount(3);
+    expect(prompts[0]).toContain('(branch of root)');
+    // Nothing is created before confirming.
+    expect((await state(page)).nodes.filter((n: any) => n.type === 'focusTask')).toHaveLength(0);
+
+    await dialog.getByLabel('Keep Book a venue').uncheck();
+    await dialog.getByLabel('Action item').nth(2).fill('Ship v1.0');
+    await dialog.getByRole('button', { name: 'Create 2 tasks' }).click();
+    await expect(dialog).toBeHidden();
+
+    const { nodes } = await state(page);
+    const m = mapOf(nodes);
+    const tasks = nodes.filter((n: any) => n.type === 'focusTask');
+    expect(tasks.map((t: any) => [t.data.title, t.data.derivedFrom]).sort()).toEqual([
+      ['Ship v1.0', 'root'],
+      ['Write the launch post', m.Marketing.id],
+    ]);
+  });
+
+  test('an unusable answer shows an error with retry, and creates nothing', async ({ page }) => {
+    await mockAi(page, () => 'Sorry, I cannot help with that.');
+    await emptyCanvas(page);
+    await seed(page, [box_('b', 300, 300, 'Billing service')]);
+    await node(page, 'b').click();
+    await page.keyboard.press('Shift+E');
+    const dialog = page.getByRole('dialog', { name: 'Action items' });
+    await expect(dialog.getByText(/didn't return any action items/)).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    expect((await state(page)).nodes).toHaveLength(1);
+  });
+});

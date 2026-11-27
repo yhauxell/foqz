@@ -102,13 +102,13 @@ function checklist(nodes: Node[], children: Node[]): string {
   return children.map((c) => `- [ ] ${elementTitle(c)}`).join("\n");
 }
 
-interface Draft {
+export interface TaskDraft {
   sourceId: string;
   title: string;
   notes: string;
 }
 
-function draftsFor(nodes: Node[], source: Node, mode: DeriveMode): Draft[] {
+function draftsFor(nodes: Node[], source: Node, mode: DeriveMode): TaskDraft[] {
   const children = mapChildren(nodes, source.id);
   if (mode === "perBranch" && children.length) {
     return children.map((c) => ({
@@ -141,27 +141,37 @@ export function deriveTasks(mode: DeriveMode = "auto", ids?: string[]): string[]
     return true;
   });
 
+  return createTasks(roots.flatMap((source) => draftsFor(nodes, source, mode)));
+}
+
+/**
+ * Creates task cards from drafts, each linked to its source element and placed beside that
+ * element's diagram. Dependencies the user drew between sources carry over to the tasks.
+ */
+export function createTasks(drafts: TaskDraft[]): string[] {
+  const store = useFlowCanvasStore.getState();
+  const nodes = store.nodes;
   const created: Node[] = [];
-  for (const source of roots) {
+  for (const d of drafts) {
+    const source = nodes.find((n) => n.id === d.sourceId);
+    if (!source) continue;
     const group = diagramOf(nodes, store.edges, source);
     const right = Math.max(...group.members.map((m) => m.position.x + size(m).w));
     const top = Math.min(...group.members.map((m) => m.position.y));
-    for (const d of draftsFor(nodes, source, mode)) {
-      const peers = [...nodes, ...created]
-        .filter((x) => (x.parentId ?? null) === (source.parentId ?? null) && !x.hidden && x.type !== "projectFrame")
-        .map((x) => ({ x: x.position.x, y: x.position.y, ...size(x) }));
-      const id = `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const text: Node = {
-        id,
-        type: "text",
-        parentId: source.parentId,
-        position: freeSlot(peers, right, top),
-        data: { text: d.notes ? `${d.title}\n${d.notes}` : d.title },
-      };
-      const card = convertTextStyle(text, "card");
-      card.data = { ...card.data, derivedFrom: d.sourceId, derivedGroup: group.key };
-      created.push(card);
-    }
+    const peers = [...nodes, ...created]
+      .filter((x) => (x.parentId ?? null) === (source.parentId ?? null) && !x.hidden && x.type !== "projectFrame")
+      .map((x) => ({ x: x.position.x, y: x.position.y, ...size(x) }));
+    const id = `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const text: Node = {
+      id,
+      type: "text",
+      parentId: source.parentId,
+      position: freeSlot(peers, right, top),
+      data: { text: d.notes ? `${d.title}\n${d.notes}` : d.title },
+    };
+    const card = convertTextStyle(text, "card");
+    card.data = { ...card.data, derivedFrom: d.sourceId, derivedGroup: group.key };
+    created.push(card);
   }
 
   // "Depends on" between two elements → "depends on" between their tasks.

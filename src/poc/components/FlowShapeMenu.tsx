@@ -922,6 +922,14 @@ export const FlowShapeMenu = memo(function FlowShapeMenu({ selectedNode }: FlowS
 
             {iconControl}
             {deriveControl}
+            {(mapData || selectedNode.type === "projectFrame") && (
+              <ToolButton
+                label="Extract action items with AI (⇧E)"
+                onClick={() => window.dispatchEvent(new CustomEvent("foqz:extract-action-items"))}
+              >
+                <Sparkles className="size-3.5 text-violet-500" />
+              </ToolButton>
+            )}
             {selectedNode.type !== "image" && selectedNode.type !== "linkCard" && colorControl}
 
             {isBorderEligible && !isTextLike && (

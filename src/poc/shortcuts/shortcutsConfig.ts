@@ -43,6 +43,8 @@ export const CANVAS_SHORTCUTS: ShortcutCommand[] = [
 
   { id: "icon", name: "Icon", keyDisplay: "I", category: "Text", description: "Add an icon to the selected text or shape; nothing selected drops a standalone icon" },
 
+  { id: "extract-actions", name: "Extract action items (AI)", keyDisplay: "⇧E", category: "Text", description: "AI proposes tasks from the selected map, region or shapes; you check which to create" },
+
   // Canvas
   { id: "canvas-region", name: "New region", keyDisplay: "⌘⇧P", category: "Canvas", description: "An area that holds whatever you drop in it" },
   { id: "canvas-group", name: "Group into region", keyDisplay: "⌘G", category: "Canvas", description: "Wrap the selection in a region" },
